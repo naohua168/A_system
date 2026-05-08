@@ -1,0 +1,191 @@
+services:
+  # ====== Hadoop HDFS ======
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    ports:
+      - "9870:9870"   # HDFS Web UI
+      - "9000:9000"   # HDFS RPC
+    volumes:
+      - ../data/hadoop/namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=stock_cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"   # DataNode Web UI
+    volumes:
+      - ../data/hadoop/datanode1:/hadoop/dfs/data
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9864/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    depends_on:
+      - namenode
+    volumes:
+      - ../data/hadoop/datanode2:/hadoop/dfs/data
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== YARN ======
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    depends_on:
+      - namenode
+      - datanode1
+    ports:
+      - "8088:8088"   # YARN Web UI
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager1
+    depends_on:
+      - namenode
+      - datanode1
+      - resourcemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== MySQL 8.0 (业务数据) ======
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - "3307:3306"
+    volumes:
+      - ../data/mysql:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      MYSQL_ROOT_PASSWORD: hadoop123
+      MYSQL_DATABASE: stock_analysis
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-phadoop123"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== Hive (数据仓库 - 嵌入式 Derby Metastore) ======
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    depends_on:
+      - namenode
+    ports:
+      - "10000:10000" # Hive Server2 (Thrift JDBC)
+      - "10002:10002" # Hive Web UI
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - ./hive/conf/hive-site.xml:/opt/hive/conf/hive-site.xml
+      - ./hive/entrypoint-wrapper.sh:/usr/local/bin/startup.sh
+    healthcheck:
+      test: ["CMD", "bash", "-c", "/opt/hive/bin/beeline -u jdbc:hive2://localhost:10000 -e 'SHOW DATABASES;' >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== Spark (实时计算引擎) ======
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: spark-master
+    ports:
+      - "8080:8080"   # Spark Web UI
+      - "7077:7077"   # Spark Master RPC
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    volumes:
+      - ../data/spark/logs:/opt/spark/logs
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  spark-worker:
+    image: apache/spark:3.5.0
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081"   # Spark Worker Web UI
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_WEBUI_PORT=8081
+    volumes:
+      - ../data/spark/worker-logs:/opt/spark/logs
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+networks:
+  bigdata-net:
+    driver: bridge
+    name: bigdata-net

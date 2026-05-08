@@ -1,0 +1,33 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: stock-analysis-backend
+  profiles:
+    active: dev
+  datasource:
+    url: jdbc:mysql://localhost:3307/stock_analysis?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: hadoop123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  redis:
+    host: localhost
+    port: 6379
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.stock.entity
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-not-delete-value: 0
+      logic-delete-value: 1
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.stock: debug

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <!-- Hive Metastore: 嵌入式 Derby 数据库 -->
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:derby:/opt/hive/metastore_db;create=true</value>
+    <description>JDBC connect string for a JDBC metastore</description>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>org.apache.derby.jdbc.EmbeddedDriver</value>
+    <description>Driver class name for a JDBC metastore</description>
+  </property>
+  <property>
+    <name>datanucleus.autoCreateSchema</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.metastore.schema.verification</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>/user/hive/warehouse</value>
+    <description>location of default database for the warehouse</description>
+  </property>
+  <property>
+    <name>hive.server2.enable.doAs</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.exec.scratchdir</name>
+    <value>/tmp/hive</value>
+  </property>
+</configuration>
