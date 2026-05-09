@@ -77,6 +77,7 @@ class E2ETester:
         required_dirs = [
             "data-collector", "backend", "frontend",
             "bigdata-processing", "analysis-algorithms",
+            "ai-service",
         ]
         for d in required_dirs:
             if not (ROOT / d).exists():
@@ -163,6 +164,41 @@ class E2ETester:
         except FileNotFoundError:
             raise RuntimeError("beeline 未安装")
 
+    def check_ai_service(self):
+        """9. AI 对话服务模块"""
+        ai_root = ROOT / "ai-service"
+        if not ai_root.exists():
+            raise FileNotFoundError("ai-service 目录不存在")
+        required_files = [
+            "app/main.py", "app/config.py", "app/api/dialogue.py",
+            "app/models/deepseek_client.py", "app/services/dialogue_service.py",
+            "requirements.txt",
+        ]
+        for f in required_files:
+            if not (ai_root / f).exists():
+                raise FileNotFoundError(f"缺少文件: ai-service/{f}")
+        return "AI 服务模块完整"
+
+    def check_ai_backend_controller(self):
+        """10. 后端 AI 控制器"""
+        controller = ROOT / "backend/src/main/java/com/stock/controller/AiDialogueController.java"
+        if not controller.exists():
+            raise FileNotFoundError("缺少 AiDialogueController.java")
+        return "后端 AI 控制器就绪"
+
+    def check_ai_frontend_page(self):
+        """11. 前端 AI 对话页面"""
+        chat_view = ROOT / "frontend/src/views/ChatView.vue"
+        api_ai = ROOT / "frontend/src/api/ai.ts"
+        if not chat_view.exists():
+            raise FileNotFoundError("缺少 ChatView.vue")
+        if not api_ai.exists():
+            raise FileNotFoundError("缺少 api/ai.ts")
+        content = chat_view.read_text(encoding="utf-8")
+        if "占位页面" in content or "此功能正在开发中" in content:
+            raise AssertionError("ChatView.vue 仍是占位页面，未完成开发")
+        return "前端 AI 对话页面就绪"
+
 
 def main():
     parser = argparse.ArgumentParser(description="端到端全链路验证")
@@ -198,7 +234,13 @@ def main():
     print("\n🎨 4. 前端")
     tester.check("TypeScript 编译", tester.check_frontend_build)
 
-    # ------ 链5: HDFS/Hive ------
+    # ------ 链5: AI 服务 ------
+    print("\n🤖 5. AI 对话服务")
+    tester.check("AI 服务模块", tester.check_ai_service)
+    tester.check("后端 AI 控制器", tester.check_ai_backend_controller)
+    tester.check("前端 AI 对话页面", tester.check_ai_frontend_page)
+
+    # ------ 链6: HDFS/Hive ------
     if not args.skip_hdfs:
         print("\n💾 5. 大数据存储")
         tester.check("HDFS 连接", tester.check_hdfs_connect)

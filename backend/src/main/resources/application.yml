@@ -28,6 +28,11 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
+# AI 对话服务配置
+ai:
+  service:
+    url: http://localhost:8000
+
 logging:
   level:
     com.stock: debug

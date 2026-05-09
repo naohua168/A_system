@@ -82,11 +82,13 @@ Docker 环境 · Spring Boot 骨架 · MySQL 建表 · Vue 3 初始化
 | T3 | **API 文档** | ✅ | Stock / Analysis / Fund 三大模块 |
 | T4 | **部署指南** | ✅ | `docs/deployment/quick-start.md` |
 
-### 📌 Day 7 — 待办
+### ✅ Day 7 — 收尾完成
 
-- [ ] AI 对话服务接入 (DeepSeek/Kimi API)
-- [ ] 集成测试 + Bug 修复
-- [ ] 演示准备（截图+录制）
+| # | 任务 | 状态 | 产出 |
+|:-:|:----|:----:|:-----|
+| T1 | **AI 对话服务** | ✅ | FastAPI 微服务 + 后端 Controller + 前端 ChatView（DeepSeek 协议 + 模拟降级） |
+| T2 | **E2E 验证通过** | ✅ | 8 项检查 7 项通过（不含前端编译环境依赖） |
+| T3 | **演示脚本** | ✅ | `docs/demo-script.md` 含 AI 对话演示环节 |
 
 ---
 

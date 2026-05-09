@@ -107,3 +107,27 @@ export interface AnalysisResult {
   summary: string
   analysisDate: string
 }
+
+// ── AI 对话 ──
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp?: number
+}
+
+export interface AIRequest {
+  message: string
+  stockCode?: string
+  history?: { role: string; content: string }[]
+}
+
+export interface AIResponse {
+  reply: string
+  status?: string
+}
+
+export interface AIStatus {
+  service: string
+  aiServiceUrl: string
+  status: string
+}
