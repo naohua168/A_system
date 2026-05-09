@@ -1,0 +1,109 @@
+// ============================================================
+// 类型定义
+// ============================================================
+
+export interface UserInfo {
+  id: number
+  username: string
+  email: string
+  avatar: string
+  role: number
+}
+
+export interface Stock {
+  id: number
+  stockCode: string
+  stockName: string
+  market: string
+  industry: string
+  listingDate: string
+  totalShares: number
+  circulatedShares: number
+}
+
+export interface StockDaily {
+  id: number
+  stockCode: string
+  tradeDate: string
+  openPrice: number
+  highPrice: number
+  lowPrice: number
+  closePrice: number
+  preClose: number
+  volume: number
+  amount: number
+  changePercent: number
+  turnoverRate: number
+}
+
+export interface Fund {
+  id: number
+  fundCode: string
+  fundName: string
+  fundType: string
+  company: string
+  manager: string
+  establishDate: string
+  nav: number
+  accumulatedNav: number
+}
+
+export interface FundNav {
+  id: number
+  fundCode: string
+  navDate: string
+  nav: number
+  accumulatedNav: number
+  dailyReturn: number
+}
+
+export interface WatchlistItem {
+  id: number
+  userId: number
+  assetType: number // 0-股票, 1-基金
+  assetCode: string
+  remark: string
+  sortOrder: number
+}
+
+export interface NewsItem {
+  id: string
+  title: string
+  summary: string
+  source: string
+  publishTime: string
+  url: string
+  tags: string[]
+}
+
+export interface SectorData {
+  name: string
+  value: number
+  changePercent: number
+  items?: SectorData[]
+}
+
+export interface MarketIndex {
+  name: string
+  code: string
+  price: number
+  changePercent: number
+  changePoints: number
+}
+
+export interface ChanlunPoint {
+  type: 'ding' | 'di' | 'bi' | 'xian' | 'zhongshu'
+  date: string
+  price: number
+  high?: number
+  low?: number
+}
+
+export interface AnalysisResult {
+  id: number
+  assetCode: string
+  analysisType: string
+  resultJson: string
+  summary: string
+  analysisDate: string
+}

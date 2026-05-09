@@ -1,0 +1,96 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteRecordRaw } from 'vue-router'
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: { title: '登录', noAuth: true },
+  },
+  {
+    path: '/',
+    component: () => import('@/components/common/AppLayout.vue'),
+    redirect: '/home',
+    children: [
+      {
+        path: 'home',
+        name: 'Home',
+        component: () => import('@/views/HomeView.vue'),
+        meta: { title: '首页' },
+      },
+      {
+        path: 'stocks',
+        name: 'StockList',
+        component: () => import('@/views/StockListView.vue'),
+        meta: { title: '股票' },
+      },
+      {
+        path: 'portfolio',
+        name: 'Portfolio',
+        component: () => import('@/views/PortfolioView.vue'),
+        meta: { title: '持有' },
+      },
+      {
+        path: 'watchlist',
+        name: 'Watchlist',
+        component: () => import('@/views/WatchlistView.vue'),
+        meta: { title: '自选' },
+      },
+      {
+        path: 'stock/:code',
+        name: 'StockDetail',
+        component: () => import('@/views/StockDetailView.vue'),
+        meta: { title: '股票详情' },
+      },
+      {
+        path: 'index/:code',
+        name: 'IndexDetail',
+        component: () => import('@/views/IndexDetailView.vue'),
+        meta: { title: '指数详情' },
+      },
+      {
+        path: 'sector/:name',
+        name: 'SectorDetail',
+        component: () => import('@/views/SectorDetailView.vue'),
+        meta: { title: '板块详情' },
+      },
+      {
+        path: 'chat',
+        name: 'Chat',
+        component: () => import('@/views/ChatView.vue'),
+        meta: { title: 'AI分析' },
+      },
+      {
+        path: 'news',
+        name: 'News',
+        component: () => import('@/views/NewsView.vue'),
+        meta: { title: '资讯' },
+      },
+      {
+        path: 'fund/:code',
+        name: 'FundDetail',
+        component: () => import('@/views/FundDetailView.vue'),
+        meta: { title: '基金详情' },
+      },
+    ],
+  },
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+})
+
+router.beforeEach((to, _from, next) => {
+  const token = localStorage.getItem('token')
+  if (to.meta.noAuth) {
+    next()
+  } else if (!token && to.name !== 'Login') {
+    next({ name: 'Login' })
+  } else {
+    next()
+  }
+})
+
+export default router

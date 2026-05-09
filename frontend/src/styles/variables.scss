@@ -1,0 +1,69 @@
+// ============================================================
+// Apple 风格设计系统 - 设计变量
+// 参考 apple/DESIGN.md
+// ============================================================
+
+// --- Colors ---
+$primary: #0066cc;
+$primary-focus: #0071e3;
+$primary-on-dark: #2997ff;
+$ink: #1d1d1f;
+$body: #1d1d1f;
+$body-on-dark: #ffffff;
+$body-muted: #cccccc;
+$ink-muted-80: #333333;
+$ink-muted-48: #7a7a7a;
+$divider-soft: #f0f0f0;
+$hairline: #e0e0e0;
+$canvas: #ffffff;
+$canvas-parchment: #f5f5f7;
+$surface-pearl: #fafafc;
+$surface-tile-1: #272729;
+$surface-tile-2: #2a2a2c;
+$surface-tile-3: #252527;
+$surface-black: #000000;
+$surface-chip: #d2d2d7;
+
+// 涨跌色
+$rise: #e74c3c;
+$rise-bg: #ffeeed;
+$fall: #27ae60;
+$fall-bg: #e8f8f0;
+$flat: #7a7a7a;
+
+// --- Typography ---
+$font-display: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+$font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+// --- Rounded ---
+$rounded-none: 0px;
+$rounded-xs: 5px;
+$rounded-sm: 8px;
+$rounded-md: 11px;
+$rounded-lg: 18px;
+$rounded-pill: 9999px;
+
+// --- Spacing ---
+$spacing-xxs: 4px;
+$spacing-xs: 8px;
+$spacing-sm: 12px;
+$spacing-md: 17px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-xxl: 48px;
+$spacing-section: 80px;
+
+// --- Shadows ---
+$shadow-product: 0 3px 30px rgba(0, 0, 0, 0.22);
+$shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+$shadow-elevated: 0 4px 20px rgba(0, 0, 0, 0.08);
+
+// --- Nav ---
+$nav-height: 48px;
+$nav-bg: $surface-black;
+
+// --- Breakpoints ---
+$bp-phone: 640px;
+$bp-tablet: 834px;
+$bp-desktop: 1068px;
+$bp-wide: 1440px;

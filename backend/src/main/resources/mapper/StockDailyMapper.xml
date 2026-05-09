@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.StockDailyMapper">
+
+    <!-- 查询某年第一个交易日 -->
+    <select id="selectFirstOfYear" resultType="com.stock.entity.StockDaily">
+        SELECT * FROM stock_daily
+        WHERE stock_code = #{stockCode}
+          AND YEAR(trade_date) = #{year}
+        ORDER BY trade_date ASC
+        LIMIT 1
+    </select>
+
+    <!-- 查询某年最后一个交易日 -->
+    <select id="selectLastOfYear" resultType="com.stock.entity.StockDaily">
+        SELECT * FROM stock_daily
+        WHERE stock_code = #{stockCode}
+          AND YEAR(trade_date) = #{year}
+        ORDER BY trade_date DESC
+        LIMIT 1
+    </select>
+
+    <!-- 按日期范围查询 -->
+    <select id="selectByDateRange" resultType="com.stock.entity.StockDaily">
+        SELECT * FROM stock_daily
+        WHERE stock_code = #{stockCode}
+          AND trade_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY trade_date ASC
+    </select>
+
+    <!-- 按条件筛选股票（join stock 获取名称和行业） -->
+    <select id="selectStocksByFilter" resultType="java.util.Map">
+        SELECT
+            d.stock_code AS stockCode,
+            s.stock_name AS stockName,
+            s.industry,
+            d.close_price AS price,
+            d.change_percent AS changePct,
+            d.volume
+        FROM stock_daily d
+        JOIN stock s ON d.stock_code = s.stock_code
+        WHERE d.trade_date = (
+            SELECT MAX(trade_date) FROM stock_daily
+        )
+        <if test="industry != null and industry != ''">
+            AND s.industry = #{industry}
+        </if>
+        <if test="minPrice != null">
+            AND d.close_price >= #{minPrice}
+        </if>
+        <if test="maxPrice != null">
+            AND d.close_price &lt;= #{maxPrice}
+        </if>
+        <if test="minChange != null">
+            AND d.change_percent >= #{minChange}
+        </if>
+        ORDER BY d.change_percent DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 行业涨跌排行 -->
+    <select id="selectSectorRanking" resultType="java.util.Map">
+        SELECT
+            s.industry,
+            COUNT(*) AS stockCount,
+            ROUND(AVG(d.change_percent), 2) AS avgChangePct,
+            SUM(CASE WHEN d.change_percent > 0 THEN 1 ELSE 0 END) AS upCount,
+            ROUND(SUM(CASE WHEN d.change_percent > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS upRatio
+        FROM stock_daily d
+        JOIN stock s ON d.stock_code = s.stock_code
+        WHERE d.trade_date = #{tradeDate}
+          AND s.industry IS NOT NULL
+          AND s.industry != ''
+        GROUP BY s.industry
+        ORDER BY avgChangePct DESC
+    </select>
+
+    <!-- 查询最近交易日 -->
+    <select id="selectMaxTradeDate" resultType="java.lang.String">
+        SELECT MAX(trade_date) FROM stock_daily
+    </select>
+
+    <!-- 查询带最新行情数据的股票列表 -->
+    <select id="selectStocksWithPrice" resultType="java.util.Map">
+        SELECT
+            s.stock_code AS stockCode,
+            s.stock_name AS stockName,
+            s.market,
+            s.industry,
+            d.close_price AS price,
+            d.change_percent AS changePct
+        FROM stock s
+        LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (s.stock_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR s.stock_code LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="industry != null and industry != ''">
+                AND s.industry = #{industry}
+            </if>
+        </where>
+        ORDER BY d.change_percent DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

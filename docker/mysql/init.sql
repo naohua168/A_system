@@ -182,3 +182,51 @@ INSERT INTO `fund` (`fund_code`, `fund_name`, `fund_type`, `company`) VALUES
 ('163402', '兴全趋势投资混合(LOF)', '混合型', '兴证全球基金管理有限公司'),
 ('260108', '景顺长城新兴成长混合', '混合型', '景顺长城基金管理有限公司'),
 ('519772', '交银新生活力灵活配置混合', '混合型', '交银施罗德基金管理有限公司');
+
+-- ========== 市场指数基础信息表 ==========
+CREATE TABLE IF NOT EXISTS `market_index` (
+    `id` BIGINT AUTO_INCREMENT COMMENT '主键ID',
+    `index_code` VARCHAR(20) NOT NULL COMMENT '指数代码',
+    `index_name` VARCHAR(50) NOT NULL COMMENT '指数名称',
+    `market` VARCHAR(10) DEFAULT NULL COMMENT '市场: SH/SZ/HK/US',
+    `category` VARCHAR(20) DEFAULT NULL COMMENT '分类: A/HK/US/global',
+    `source` VARCHAR(20) DEFAULT NULL COMMENT '数据源',
+    `status` TINYINT DEFAULT 1 COMMENT '状态',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_index_code` (`index_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='市场指数基础信息表';
+
+-- ========== 指数日K线数据表 ==========
+CREATE TABLE IF NOT EXISTS `index_daily` (
+    `id` BIGINT AUTO_INCREMENT COMMENT '主键ID',
+    `index_code` VARCHAR(20) NOT NULL COMMENT '指数代码',
+    `trade_date` DATE NOT NULL COMMENT '交易日期',
+    `open_point` DECIMAL(12,4) DEFAULT NULL COMMENT '开盘点位',
+    `high_point` DECIMAL(12,4) DEFAULT NULL COMMENT '最高点位',
+    `low_point` DECIMAL(12,4) DEFAULT NULL COMMENT '最低点位',
+    `close_point` DECIMAL(12,4) DEFAULT NULL COMMENT '收盘点位',
+    `pre_close` DECIMAL(12,4) DEFAULT NULL COMMENT '昨收点位',
+    `volume` BIGINT DEFAULT NULL COMMENT '成交量',
+    `amount` DECIMAL(20,2) DEFAULT NULL COMMENT '成交额',
+    `change_percent` DECIMAL(10,4) DEFAULT NULL COMMENT '涨跌幅(%)',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_index_date` (`index_code`, `trade_date`),
+    KEY `idx_trade_date` (`trade_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='指数日K线数据表';
+
+-- ========== 插入指数基础信息 ==========
+INSERT INTO `market_index` (`index_code`, `index_name`, `market`, `category`) VALUES
+('000001', '上证指数', 'SH', 'A'),
+('399001', '深证成指', 'SZ', 'A'),
+('399006', '创业板指', 'SZ', 'A'),
+('000688', '科创50', 'SH', 'A'),
+('000300', '沪深300', 'SH', 'A'),
+('000016', '上证50', 'SH', 'A'),
+('399905', '中证500', 'SZ', 'A'),
+('HSI', '恒生指数', 'HK', 'HK'),
+('DJI', '道琼斯', 'US', 'US'),
+('IXIC', '纳斯达克', 'US', 'US'),
+('SPX', '标普500', 'US', 'US');

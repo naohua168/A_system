@@ -1,0 +1,147 @@
+@use './variables.scss' as *;
+
+/* ============================================================
+   Apple 风格全局样式
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: $font-body;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  color: $ink;
+  background-color: $canvas;
+  overflow-x: hidden;
+}
+
+a {
+  color: $primary;
+  text-decoration: none;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+/* ---- Text Hierarchy ---- */
+h1, .h1 {
+  font-family: $font-display;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+h2, .h2 {
+  font-family: $font-display;
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+}
+
+h3, .h3 {
+  font-family: $font-display;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.14;
+  letter-spacing: 0.196px;
+}
+
+h4, .h4 {
+  font-family: $font-display;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.19;
+  letter-spacing: 0.231px;
+}
+
+.caption {
+  font-size: 14px;
+  line-height: 1.43;
+  letter-spacing: -0.224px;
+  color: $ink-muted-48;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: $hairline;
+  border-radius: $rounded-pill;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: $ink-muted-48;
+}
+
+/* ---- Selection ---- */
+::selection {
+  background: $primary;
+  color: white;
+}
+
+/* ---- Transitions ---- */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* ---- Utility Classes ---- */
+.text-rise { color: $rise; }
+.text-fall { color: $fall; }
+.text-flat { color: $flat; }
+.text-primary { color: $primary; }
+
+.bg-rise { background: $rise-bg; }
+.bg-fall { background: $fall-bg; }
+
+/* ---- Element Plus 覆盖 ---- */
+.el-button--primary {
+  --el-button-bg-color: #{$primary};
+  --el-button-border-color: #{$primary};
+  --el-button-hover-bg-color: #{$primary-focus};
+  --el-button-hover-border-color: #{$primary-focus};
+  border-radius: $rounded-pill;
+  font-family: $font-body;
+}
+
+.el-input__wrapper {
+  border-radius: $rounded-pill !important;
+}
