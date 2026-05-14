@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.WatchlistMapper">
+
+    <!-- 自选股详情JOIN查询（股票） -->
+    <select id="selectStockDetail" resultType="java.util.Map">
+        SELECT
+            w.id AS watchlistId,
+            w.user_id AS userId,
+            w.asset_type AS assetType,
+            w.asset_code AS assetCode,
+            w.remark,
+            w.sort_order AS sortOrder,
+            s.stock_name AS stockName,
+            s.industry,
+            s.market,
+            d.close_price AS price,
+            d.change_percent AS changePct,
+            d.high_price AS highPrice,
+            d.low_price AS lowPrice,
+            d.volume,
+            d.amount
+        FROM watchlist w
+        LEFT JOIN stock s ON w.asset_code = s.stock_code
+        LEFT JOIN stock_daily d ON w.asset_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        WHERE w.user_id = #{userId}
+          AND w.asset_type = 1
+        ORDER BY w.sort_order ASC, w.created_at ASC
+    </select>
+
+    <!-- 自选股详情JOIN查询（基金） -->
+    <select id="selectFundDetail" resultType="java.util.Map">
+        SELECT
+            w.id AS watchlistId,
+            w.user_id AS userId,
+            w.asset_type AS assetType,
+            w.asset_code AS assetCode,
+            w.remark,
+            w.sort_order AS sortOrder,
+            f.fund_name AS fundName,
+            f.fund_type AS fundType,
+            f.company,
+            fn.nav,
+            fn.accumulated_nav AS accumulatedNav,
+            fn.nav_date AS navDate,
+            fn.daily_return AS dailyReturn
+        FROM watchlist w
+        LEFT JOIN fund f ON w.asset_code = f.fund_code
+        LEFT JOIN (
+            SELECT fn1.*
+            FROM fund_nav fn1
+            WHERE fn1.nav_date = (
+                SELECT MAX(fn2.nav_date)
+                FROM fund_nav fn2
+                WHERE fn2.fund_code = fn1.fund_code
+            )
+        ) fn ON w.asset_code = fn.fund_code
+        WHERE w.user_id = #{userId}
+          AND w.asset_type = 2
+        ORDER BY w.sort_order ASC, w.created_at ASC
+    </select>
+
+    <!-- 自选股全部详情（包含股票和基金） -->
+    <select id="selectAllDetail" resultType="java.util.Map">
+        SELECT
+            w.id AS watchlistId,
+            w.user_id AS userId,
+            w.asset_type AS assetType,
+            w.asset_code AS assetCode,
+            w.remark,
+            w.sort_order AS sortOrder,
+            CASE w.asset_type
+                WHEN 1 THEN s.stock_name
+                WHEN 2 THEN f.fund_name
+            END AS assetName,
+            CASE w.asset_type
+                WHEN 1 THEN s.industry
+                ELSE f.fund_type
+            END AS assetCategory,
+            CASE w.asset_type
+                WHEN 1 THEN CAST(d.close_price AS CHAR)
+                ELSE CAST(fn.nav AS CHAR)
+            END AS currentPrice
+        FROM watchlist w
+        LEFT JOIN stock s ON w.asset_type = 1 AND w.asset_code = s.stock_code
+        LEFT JOIN fund f ON w.asset_type = 2 AND w.asset_code = f.fund_code
+        LEFT JOIN stock_daily d ON w.asset_type = 1 AND w.asset_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        LEFT JOIN (
+            SELECT fn1.*
+            FROM fund_nav fn1
+            WHERE fn1.nav_date = (
+                SELECT MAX(fn2.nav_date)
+                FROM fund_nav fn2
+                WHERE fn2.fund_code = fn1.fund_code
+            )
+        ) fn ON w.asset_type = 2 AND w.asset_code = fn.fund_code
+        WHERE w.user_id = #{userId}
+        ORDER BY w.asset_type ASC, w.sort_order ASC, w.created_at ASC
+    </select>
+
+</mapper>

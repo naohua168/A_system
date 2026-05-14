@@ -78,9 +78,13 @@ function renderChart() {
         if (!d || !d.name) return ''
         const sign = d.changePercent >= 0 ? '+' : ''
         const color = d.changePercent >= 0 ? '#e74c3c' : '#27ae60'
-        const vol = d.value ? `成交额: ${(d.value / 100).toFixed(2)}亿<br/>` : ''
+        // value > 1000 视为成交额(亿当量，前端格式化)，否则视为成分股数量
+        const isCount = d.value && d.value < 1000
+        const sub = isCount
+          ? `成分股: ${d.value}只<br/>`
+          : (d.value ? `成交额: ${(d.value / 100).toFixed(2)}亿<br/>` : '')
         return `<strong style="font-size:15px;">${d.name}</strong><br/>
-                ${vol}
+                ${sub}
                 <span style="color:${color};font-weight:600;">涨跌幅: ${sign}${(d.changePercent || 0).toFixed(2)}%</span>`
       },
     },
@@ -144,22 +148,18 @@ function renderChart() {
     }],
   }
 
+  // 仅在首次渲染后绑定点击事件，避免 watch 重绘时误触
+  if (!chart._clickBound) {
+    chart.off('click')
+    chart.on('click', (params: any) => {
+      if (params.data && params.data.name && !params.data.children) {
+        emit('click', params.data)
+      }
+    })
+    chart._clickBound = true
+  }
+
   chart.setOption(option, true)
-
-  // Bind click for all nodes
-  chart.off('click')
-  chart.on('click', (params: any) => {
-    if (params.data && params.data.name) {
-      emit('click', params.data)
-    }
-  })
-
-  // Restrict panning: on rendered event, clamp the position
-  chart.off('dataZoom')
-  chart.on('dataZoom', () => {
-    // ECharts treemap roam automatically handles bounds
-    // We just need to ensure we don't pan beyond the chart
-  })
 }
 
 function handleResize() {

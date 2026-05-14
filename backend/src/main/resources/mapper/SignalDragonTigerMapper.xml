@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.SignalDragonTigerMapper">
+
+    <!-- 席位分析：按日期范围查询龙虎榜，按净买入金额排序 -->
+    <select id="selectByDateRange" resultType="com.stock.entity.SignalDragonTiger">
+        SELECT *
+        FROM signal_dragon_tiger
+        WHERE trade_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY net_buy_wan DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 席位分析：统计各席位类型净买入金额 -->
+    <select id="selectSeatAnalysis" resultType="java.util.Map">
+        SELECT
+            reason AS seatType,
+            COUNT(*) AS totalCount,
+            ROUND(SUM(net_buy_wan), 2) AS totalNetBuyWan,
+            ROUND(AVG(net_buy_wan), 2) AS avgNetBuyWan,
+            ROUND(MAX(net_buy_wan), 2) AS maxNetBuyWan,
+            ROUND(SUM(CASE WHEN net_buy_wan > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS winRate
+        FROM signal_dragon_tiger
+        WHERE trade_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY reason
+        ORDER BY totalNetBuyWan DESC
+    </select>
+
+</mapper>

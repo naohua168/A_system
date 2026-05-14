@@ -1,0 +1,29 @@
+[
+  {
+    "id": "msg-1778664026940-4r3a07",
+    "from": "team-lead",
+    "to": "hive-mr",
+    "type": "message",
+    "content": "进度如何？创建了几个文件了？",
+    "timestamp": "2026-05-13T09:20:26.940Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664048896-r3ilyc",
+    "from": "team-lead",
+    "to": "hive-mr",
+    "type": "message",
+    "content": "还有多个文件没创建:\n1. hive/dml/analysis_correlation.sql (新)\n2. hive/dml/analysis_year_comparison.sql (新)\n3. hive/dml/analysis_technical.sql (新)\n4. hive/dml/analysis_signal_fusion.sql (新)\n5. batch/run_batch_pipeline.py\n6. mapreduce/src/.../mr/MonthlyReturnMR.java\n7. mapreduce/src/.../mr/IndustryStatsMR.java\n8. mapreduce/src/.../mr/TechnicalIndicatorMR.java\n请继续创建。",
+    "timestamp": "2026-05-13T09:20:48.896Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664073956-rvtfhv",
+    "from": "team-lead",
+    "to": "hive-mr",
+    "type": "message",
+    "content": "还有这些没创建:\n1. hive/dml/analysis_technical.sql \n2. hive/dml/analysis_signal_fusion.sql\n3. batch/run_batch_pipeline.py\n4. MonthlyReturnMR.java\n5. IndustryStatsMR.java\n6. TechnicalIndicatorMR.java\n请优先创建这些。",
+    "timestamp": "2026-05-13T09:21:13.956Z",
+    "read": true
+  }
+]

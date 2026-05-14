@@ -31,9 +31,11 @@ public class StockController {
     public ResponseEntity<?> list(@RequestParam(defaultValue = "1") int page,
                                    @RequestParam(defaultValue = "20") int size,
                                    @RequestParam(required = false) String keyword,
-                                   @RequestParam(required = false) String industry) {
+                                   @RequestParam(required = false) String industry,
+                                   @RequestParam(required = false) String sortField,
+                                   @RequestParam(required = false) String sortOrder) {
         int offset = (page - 1) * size;
-        List<Map<String, Object>> records = stockDailyMapper.selectStocksWithPrice(keyword, industry, size, offset);
+        List<Map<String, Object>> records = stockDailyMapper.selectStocksWithPrice(keyword, industry, size, offset, sortField, sortOrder);
         LambdaQueryWrapper<Stock> countWrapper = new LambdaQueryWrapper<>();
         if (keyword != null) {
             countWrapper.like(Stock::getStockName, keyword)
@@ -82,7 +84,36 @@ public class StockController {
         if (stock == null) {
             return ResponseEntity.status(404).body(Map.of("error", "股票不存在"));
         }
-        return ResponseEntity.ok(stock);
+        // 拼接最新行情数据
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("id", stock.getId());
+        result.put("stockCode", stock.getStockCode());
+        result.put("stockName", stock.getStockName());
+        result.put("market", stock.getMarket());
+        result.put("industry", stock.getIndustry());
+        result.put("listingDate", stock.getListingDate());
+        result.put("totalShares", stock.getTotalShares());
+        result.put("circulatedShares", stock.getCirculatedShares());
+        result.put("pe", stock.getPe());
+        result.put("pb", stock.getPb());
+        result.put("totalMarketCap", stock.getTotalMarketCap());
+        result.put("floatMarketCap", stock.getFloatMarketCap());
+
+        // 查询最新行情
+        List<StockDaily> latest = stockDailyService.getLatestDays(code, 1);
+        if (!latest.isEmpty()) {
+            StockDaily d = latest.get(0);
+            result.put("price", d.getClosePrice());
+            result.put("changePercent", d.getChangePercent());
+            result.put("open", d.getOpenPrice());
+            result.put("high", d.getHighPrice());
+            result.put("low", d.getLowPrice());
+            result.put("preClose", d.getPreClose());
+            result.put("volume", d.getVolume());
+            result.put("amount", d.getAmount());
+            result.put("turnoverRate", d.getTurnoverRate());
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/kline/{code}")

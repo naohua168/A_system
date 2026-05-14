@@ -27,6 +27,14 @@ public class Stock {
 
     private BigDecimal circulatedShares;
 
+    private BigDecimal pe;
+
+    private BigDecimal pb;
+
+    private BigDecimal totalMarketCap;
+
+    private BigDecimal floatMarketCap;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

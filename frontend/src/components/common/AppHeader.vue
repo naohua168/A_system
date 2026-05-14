@@ -24,6 +24,20 @@
         >
           <span class="nav-label">{{ item.label }}</span>
         </router-link>
+        <!-- 信号层下拉菜单 -->
+        <div class="nav-dropdown" @mouseenter="showSignalMenu = true" @mouseleave="showSignalMenu = false">
+          <router-link to="/hot-reason" class="nav-link" :class="{ active: signalItems.some(s => $route.path.startsWith(s.path)) }">
+            <span class="nav-label">信号</span>
+            <el-icon style="margin-left:2px;font-size:11px;"><CaretBottom /></el-icon>
+          </router-link>
+          <transition name="fade">
+            <div v-if="showSignalMenu" class="dropdown-menu">
+              <router-link v-for="item in signalItems" :key="item.path" :to="item.path" class="dropdown-item">
+                {{ item.label }}
+              </router-link>
+            </div>
+          </transition>
+        </div>
       </nav>
 
       <!-- Right Side -->
@@ -78,11 +92,23 @@ const userInitial = computed(() => {
 const navItems = [
   { path: '/home', label: '行情', icon: 'TrendCharts' },
   { path: '/stocks', label: '股票', icon: 'DataAnalysis' },
-  { path: '/portfolio', label: '持有', icon: 'Wallet' },
   { path: '/watchlist', label: '自选', icon: 'Star' },
   { path: '/news', label: '资讯', icon: 'Reading' },
   { path: '/chat', label: 'AI分析', icon: 'ChatLineSquare' },
 ]
+
+// 信号层页面（导航栏下拉子菜单用，或独立入口）
+const signalItems = [
+  { path: '/hot-reason', label: '题材热点' },
+  { path: '/northbound', label: '北向资金' },
+  { path: '/dragon-tiger', label: '龙虎榜' },
+  { path: '/industry-compare', label: '行业对比' },
+  { path: '/fund-flow', label: '资金流向' },
+  { path: '/lockup', label: '限售解禁' },
+  { path: '/consensus-eps', label: '一致预期' },
+]
+
+const showSignalMenu = ref(false)
 
 function handleLogout() {
   showUserMenu.value = false
@@ -251,6 +277,45 @@ const vClickOutside = {
   padding: $spacing-xs 0;
   min-width: 160px;
   z-index: 100;
+}
+
+/* 信号层下拉菜单 */
+.nav-dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: $rounded-md;
+  padding: 4px 0;
+  min-width: 140px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdown-item {
+  display: block;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  transition: all 0.15s;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+  }
+
+  &.router-link-active {
+    color: $primary;
+    background: rgba($primary, 0.1);
+  }
 }
 
 .menu-item {

@@ -15,12 +15,12 @@
             <el-button :icon="InfoFilled" circle size="small" />
           </template>
           <div class="tips-content">
-            <h4>💡 提问示例</h4>
+            <h4>提问示例</h4>
             <ul>
               <li @click="quickAsk('000001 这只股票怎么样？')">000001 这只股票怎么样？</li>
               <li @click="quickAsk('分析平安银行的缠论买卖点')">分析平安银行的缠论买卖点</li>
               <li @click="quickAsk('大盘今天走势如何？')">大盘今天走势如何？</li>
-              <li @click="quickAsk('XXXXXXXX 基金值得定投吗？')">XX基金值得定投吗？</li>
+              <li @click="quickAsk('110011 基金值得定投吗？')">110011 基金值得定投吗？</li>
               <li @click="quickAsk('MACD金叉了，可以买入吗？')">MACD金叉了，可以买入吗？</li>
               <li @click="quickAsk('当前市场有什么投资建议？')">当前市场有什么投资建议？</li>
             </ul>
@@ -103,7 +103,7 @@ import type { ChatMessage } from '@/types'
 const messages = ref<ChatMessage[]>([])
 const inputMessage = ref('')
 const loading = ref(false)
-const modeLabel = ref('模拟模式')
+const modeLabel = ref('加载中...')
 const messagesRef = ref<HTMLElement | null>(null)
 
 // 快速提问
@@ -150,7 +150,7 @@ async function sendMessage() {
   } catch {
     messages.value.push({
       role: 'assistant',
-      content: '❌ 服务暂时不可用，请稍后重试。如果问题持续，请检查后端和 AI 服务是否已启动。',
+      content: '服务暂时不可用，请稍后重试。如果问题持续，请检查后端和 AI 服务是否已启动。',
       timestamp: Date.now(),
     })
   } finally {

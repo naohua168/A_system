@@ -1,17 +1,11 @@
 """
 HDFS 上传脚本
-将 data-collector 采集的 CSV 文件上传到 HDFS 指定路径
+将 data-collector 采集的 CSV 文件上传到 HDFS 指定路径（支持6种新数据源）
 支持 WebHDFS (hdfs 库) 和命令行 hdfs dfs 两种模式
 
 用法:
     # 上传所有未上传的数据文件
     python upload_to_hdfs.py
-
-    # 上传指定文件
-    python upload_to_hdfs.py --file data/raw/kline_000001_daily_20260508.csv
-
-    # 上传指定目录下所有数据
-    python upload_to_hdfs.py --dir data/raw
 
     # 上传后触发 Hive MSCK REPAIR
     python upload_to_hdfs.py --repair
@@ -24,6 +18,7 @@ HDFS 上传脚本
 """
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
@@ -31,23 +26,37 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
 from config import DATA_DIR, HDFS as HDFS_CFG
 
 
 # ============================================================
-# 文件类型 → HDFS 路径映射规则
+# 文件类型 → HDFS 路径映射规则（支持6种新数据源）
 # 通过文件名前缀识别数据类别，路由到对应 HDFS 目录
 # ============================================================
 FILE_ROUTING_RULES = [
     # (文件名前缀匹配, 目标子路径, 是否跳过表头)
-    ("kline_",   "daily/",   True),   # 日K线 → /user/hadoop/stock_data/daily/
-    ("realtime_","daily/",   True),   # 实时行情 → 同上（合并存储）
-    ("stock_basic_", "basic/", True), # 股票基本信息 → /user/hadoop/stock_data/basic/
-    ("fund_nav_", "fund/nav/", True), # 基金净值 → /user/hadoop/stock_data/fund/nav/
-    ("fund_basic_", "fund/basic/", True), # 基金基本信息
-    ("dim_",      "dim/",    True),   # 维度数据 → /user/hadoop/stock_data/dim/
+
+    # ---------- 基础行情 ----------
+    ("kline_",      "daily/",           True),   # 日K线
+    ("realtime_",   "daily/",           True),   # 实时行情（合并存储）
+    ("stock_basic_","basic/",           True),   # 股票基本信息
+
+    # ---------- 基金 ----------
+    ("fund_nav_",   "fund/nav/",        True),   # 基金净值
+    ("fund_basic_", "fund/basic/",      True),   # 基金基本信息
+
+    # ---------- 信号层（a-stock-data 新增）----------
+    ("hot_reason_",     "signals/hot_reason/",    True),   # 题材归因
+    ("northbound_",     "signals/northbound/",    True),   # 北向资金
+    ("industry_compare_","signals/industry/",     True),   # 行业对比
+    ("signals_",        "signals/stock/",         True),   # 个股综合信号
+
+    # ---------- 维度 ----------
+    ("dim_",        "dim/",             True),   # 维度数据
 ]
 
 # 已上传文件记录（避免重复上传同一文件）
@@ -95,6 +104,7 @@ class HDFSUploader:
         for prefix, subpath, _ in FILE_ROUTING_RULES:
             if filename.startswith(prefix):
                 return f"{self.hdfs_base}/{subpath}{filename}"
+        logger.info("文件无匹配路由规则: %s", filename)
         return None
 
     def classify_file(self, filepath: str) -> Optional[dict]:
@@ -109,6 +119,7 @@ class HDFSUploader:
                     "hdfs_dir": f"{self.hdfs_base}/{subpath}",
                     "skip_header": skip_header,
                 }
+        logger.warning("无法识别文件类型: %s", filepath)
         return None
 
     # -----------------------------------------------------------
@@ -208,9 +219,17 @@ class HDFSUploader:
     def run_hive_repair(self, tables: List[str] = None):
         """触发 Hive MSCK REPAIR 刷新分区元数据"""
         if not tables:
-            tables = ["stock_analysis.stock_basic",
-                      "stock_analysis.stock_daily_staging",
-                      "stock_analysis.fund_nav"]
+            tables = [
+                "stock_analysis.stock_basic",
+                "stock_analysis.stock_daily_staging",
+                "stock_analysis.fund_nav",
+                "stock_analysis.fund_basic",
+                # 信号层表（a-stock-data 新增）
+                "stock_analysis.signal_hot_reason",
+                "stock_analysis.signal_northbound",
+                "stock_analysis.signal_industry",
+                "stock_analysis.signal_stock",
+            ]
 
         print(f"\n🔧 执行 Hive MSCK REPAIR: {', '.join(tables)}")
         for table in tables:

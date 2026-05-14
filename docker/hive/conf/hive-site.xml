@@ -1,16 +1,24 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <configuration>
-  <!-- Hive Metastore: 嵌入式 Derby 数据库 -->
+  <!-- Hive Metastore: MySQL（使用已有 mysql 容器） -->
   <property>
     <name>javax.jdo.option.ConnectionURL</name>
-    <value>jdbc:derby:/opt/hive/metastore_db;create=true</value>
-    <description>JDBC connect string for a JDBC metastore</description>
+    <value>jdbc:mysql://mysql:3306/hive_metastore?createDatabaseIfNotExist=true&amp;useSSL=false&amp;serverTimezone=Asia/Shanghai</value>
+    <description>JDBC connect string for MySQL metastore</description>
   </property>
   <property>
     <name>javax.jdo.option.ConnectionDriverName</name>
-    <value>org.apache.derby.jdbc.EmbeddedDriver</value>
-    <description>Driver class name for a JDBC metastore</description>
+    <value>com.mysql.cj.jdbc.Driver</value>
+    <description>Driver class name for MySQL JDBC</description>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionUserName</name>
+    <value>root</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionPassword</name>
+    <value>hadoop123</value>
   </property>
   <property>
     <name>datanucleus.autoCreateSchema</name>
@@ -23,10 +31,17 @@
   <property>
     <name>hive.metastore.warehouse.dir</name>
     <value>/user/hive/warehouse</value>
-    <description>location of default database for the warehouse</description>
   </property>
   <property>
     <name>hive.server2.enable.doAs</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.server2.authentication</name>
+    <value>NONE</value>
+  </property>
+  <property>
+    <name>hive.security.authorization.enabled</name>
     <value>false</value>
   </property>
   <property>

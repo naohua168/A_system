@@ -101,6 +101,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStockList, searchStocks, getIndustries } from '@/api/stock'
+import { formatVol } from '@/utils/format'
 
 const router = useRouter()
 const loading = ref(false)
@@ -112,13 +113,6 @@ const searchKeyword = ref('')
 const selectedIndustry = ref('')
 const sortField = ref('')
 const industries = ref<string[]>([])
-
-function formatVol(v: number) {
-  if (!v) return '-'
-  if (v >= 100000000) return (v / 100000000).toFixed(2) + '亿'
-  if (v >= 10000) return (v / 10000).toFixed(2) + '万'
-  return v.toLocaleString()
-}
 
 async function fetchData() {
   loading.value = true
@@ -155,9 +149,9 @@ async function fetchData() {
       total.value = res.length
     }
   } catch (_e) {
-    // 使用 mock 数据回退
-    stockList.value = generateMockStocks()
-    total.value = stockList.value.length
+    console.warn('[StockList] 加载股票列表失败:', _e)
+    stockList.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -172,40 +166,13 @@ function goToDetail(row: any) {
   router.push(`/stock/${row.code}`)
 }
 
-// Mock 数据（后端不可用时的回退）
-function generateMockStocks() {
-  const names = ['贵州茅台', '宁德时代', '中国平安', '招商银行', '五粮液',
-    '美的集团', '恒瑞医药', '隆基绿能', '比亚迪', '中信证券',
-    '紫金矿业', '药明康德', '迈瑞医疗', '海康威视', '长江电力']
-  const industries_list = ['白酒', '新能源', '金融', '银行', '白酒',
-    '家电', '医药', '光伏', '汽车', '证券',
-    '有色', '医药', '医疗器械', '安防', '电力']
-
-  return names.map((name, i) => {
-    const change_pct = (Math.random() - 0.5) * 6
-    const price = 20 + Math.random() * 200
-    return {
-      code: ['600519', '300750', '601318', '600036', '000858',
-             '000333', '600276', '601012', '002594', '600030',
-             '601899', '603259', '300760', '002415', '600900'][i],
-      name,
-      price: +price.toFixed(2),
-      change_pct: +change_pct.toFixed(2),
-      change: +(price * change_pct / 100).toFixed(2),
-      volume: Math.floor(Math.random() * 50000000),
-      industry: industries_list[i],
-      pe: +(15 + Math.random() * 40).toFixed(1),
-    }
-  }).sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct))
-}
-
 onMounted(() => {
   fetchData()
-  // 尝试获取行业列表
+  // 获取行业列表
   getIndustries().then((res: any) => {
     if (Array.isArray(res)) industries.value = res
   }).catch(() => {
-    industries.value = ['白酒', '新能源', '金融', '医药', '科技', '消费', '制造', '有色']
+    console.warn('[StockList] 加载行业列表失败')
   })
 })
 </script>

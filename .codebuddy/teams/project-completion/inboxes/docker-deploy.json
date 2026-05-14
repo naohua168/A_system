@@ -1,0 +1,29 @@
+[
+  {
+    "id": "msg-1778664028087-eis7tm",
+    "from": "team-lead",
+    "to": "docker-deploy",
+    "type": "message",
+    "content": "进度如何？创建了几个文件了？",
+    "timestamp": "2026-05-13T09:20:28.087Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664051704-oesrtg",
+    "from": "team-lead",
+    "to": "docker-deploy",
+    "type": "message",
+    "content": "Dockerfile和nginx.conf已创建，请继续更新 docker/docker-compose.yml，在末尾(在networks定义之前)新增ai-service/backend/frontend/redis 4个服务。",
+    "timestamp": "2026-05-13T09:20:51.704Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664076182-dfnzqz",
+    "from": "team-lead",
+    "to": "docker-deploy",
+    "type": "message",
+    "content": "Dockerfile 已创建好，还差:\n1. 更新 docker/docker-compose.yml，在末尾networks定义之前新增ai-service/backend/frontend/redis 4个服务\n请完成这个修改。",
+    "timestamp": "2026-05-13T09:21:16.182Z",
+    "read": true
+  }
+]

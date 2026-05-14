@@ -73,6 +73,49 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/FundDetailView.vue'),
         meta: { title: '基金详情' },
       },
+      // ====== 信号层页面（a-stock-data 新增）======
+      {
+        path: 'hot-reason',
+        name: 'HotReason',
+        component: () => import('@/views/HotReasonView.vue'),
+        meta: { title: '题材热点' },
+      },
+      {
+        path: 'northbound',
+        name: 'Northbound',
+        component: () => import('@/views/NorthboundView.vue'),
+        meta: { title: '北向资金' },
+      },
+      {
+        path: 'dragon-tiger',
+        name: 'DragonTiger',
+        component: () => import('@/views/DragonTigerView.vue'),
+        meta: { title: '龙虎榜' },
+      },
+      {
+        path: 'industry-compare',
+        name: 'IndustryCompare',
+        component: () => import('@/views/IndustryCompareView.vue'),
+        meta: { title: '行业对比' },
+      },
+      {
+        path: 'fund-flow',
+        name: 'FundFlow',
+        component: () => import('@/views/FundFlowView.vue'),
+        meta: { title: '资金流向' },
+      },
+      {
+        path: 'lockup',
+        name: 'Lockup',
+        component: () => import('@/views/LockupView.vue'),
+        meta: { title: '限售解禁' },
+      },
+      {
+        path: 'consensus-eps',
+        name: 'ConsensusEps',
+        component: () => import('@/views/ConsensusEpsView.vue'),
+        meta: { title: '一致预期' },
+      },
     ],
   },
 ]

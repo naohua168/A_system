@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.SignalNorthboundMapper">
+
+    <select id="selectSumByDateRange" resultType="java.util.Map">
+        SELECT trade_date,
+               ROUND(SUM(hgt_yi),2) AS totalHgt,
+               ROUND(SUM(sgt_yi),2) AS totalSgt,
+               ROUND(SUM(hgt_yi + sgt_yi),2) AS totalNetInflow
+        FROM signal_northbound
+        WHERE trade_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY trade_date
+        ORDER BY trade_date DESC
+    </select>
+
+    <select id="selectAvgDaily" resultType="java.util.Map">
+        SELECT ROUND(AVG(hgt_yi),2) AS avgHgt,
+               ROUND(AVG(sgt_yi),2) AS avgSgt,
+               ROUND(AVG(hgt_yi + sgt_yi),2) AS avgNetInflow,
+               COUNT(*) AS days
+        FROM signal_northbound
+        WHERE trade_date >= #{startDate}
+    </select>
+
+</mapper>

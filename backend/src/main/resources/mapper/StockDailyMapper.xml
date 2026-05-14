@@ -88,8 +88,13 @@
             s.stock_name AS stockName,
             s.market,
             s.industry,
+            s.pe AS pe,
             d.close_price AS price,
-            d.change_percent AS changePct
+            d.change_percent AS changePct,
+            ROUND(d.close_price - d.pre_close, 2) AS `change`,
+            d.volume,
+            d.high_price AS highPrice,
+            d.low_price AS lowPrice
         FROM stock s
         LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
             AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
@@ -102,7 +107,29 @@
                 AND s.industry = #{industry}
             </if>
         </where>
-        ORDER BY d.change_percent DESC
+        <choose>
+            <when test="sortField == 'price' and sortOrder == 'asc'">
+                ORDER BY d.close_price ASC
+            </when>
+            <when test="sortField == 'price'">
+                ORDER BY d.close_price DESC
+            </when>
+            <when test="sortField == 'change_pct' and sortOrder == 'asc'">
+                ORDER BY d.change_percent ASC
+            </when>
+            <when test="sortField == 'change_pct'">
+                ORDER BY d.change_percent DESC
+            </when>
+            <when test="sortField == 'volume' and sortOrder == 'asc'">
+                ORDER BY d.volume ASC
+            </when>
+            <when test="sortField == 'volume'">
+                ORDER BY d.volume DESC
+            </when>
+            <otherwise>
+                ORDER BY d.change_percent DESC
+            </otherwise>
+        </choose>
         LIMIT #{limit} OFFSET #{offset}
     </select>
 

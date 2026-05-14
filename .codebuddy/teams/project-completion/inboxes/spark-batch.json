@@ -1,0 +1,20 @@
+[
+  {
+    "id": "msg-1778664026372-dzzh34",
+    "from": "team-lead",
+    "to": "spark-batch",
+    "type": "message",
+    "content": "进度如何？创建了几个文件了？",
+    "timestamp": "2026-05-13T09:20:26.372Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664047589-0ymq97",
+    "from": "team-lead",
+    "to": "spark-batch",
+    "type": "message",
+    "content": "还有3个文件没创建: filter_stocks.py, sector_ranking.py, trend_judge.py。请继续创建。",
+    "timestamp": "2026-05-13T09:20:47.589Z",
+    "read": true
+  }
+]

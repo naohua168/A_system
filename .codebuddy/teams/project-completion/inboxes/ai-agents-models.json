@@ -1,0 +1,29 @@
+[
+  {
+    "id": "msg-1778664027314-3gxkek",
+    "from": "team-lead",
+    "to": "ai-agents-models",
+    "type": "message",
+    "content": "进度如何？创建了几个文件了？",
+    "timestamp": "2026-05-13T09:20:27.314Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664050785-opewg3",
+    "from": "team-lead",
+    "to": "ai-agents-models",
+    "type": "message",
+    "content": "还有多个文件没创建:\n1. ai-service/app/agents/base_agent.py\n2. ai-service/app/agents/fundamentals_analyst.py\n3. ai-service/app/agents/technical_analyst.py\n4. ai-service/app/agents/sentiment_analyst.py\n5. ai-service/app/agents/news_analyst.py\n6. ai-service/app/agents/researcher_team.py\n7. ai-service/app/agents/trader_agent.py\n8. ai-service/app/agents/risk_manager.py\n9. ai-service/app/models/model_registry.py\n10. ai-service/app/models/simulation.py\n11. ai-service/app/services/multi_agent_service.py\n12. ai-service/app/services/memory_service.py\n13. backend/src/main/java/com/stock/security/JwtUtil.java\n14. backend/src/main/java/com/stock/security/JwtFilter.java\n15. backend/src/main/java/com/stock/security/SecurityConfig.java\n请继续创建。",
+    "timestamp": "2026-05-13T09:20:50.785Z",
+    "read": true
+  },
+  {
+    "id": "msg-1778664075216-rfxn3g",
+    "from": "team-lead",
+    "to": "ai-agents-models",
+    "type": "message",
+    "content": "还有这些没创建:\n1. agents/sentiment_analyst.py\n2. agents/news_analyst.py\n3. agents/researcher_team.py\n4. agents/trader_agent.py\n5. agents/risk_manager.py\n6. models/model_registry.py\n7. models/simulation.py\n8. services/multi_agent_service.py\n9. services/memory_service.py\n10. security/JwtUtil.java\n11. security/JwtFilter.java\n12. security/SecurityConfig.java\n请继续创建。",
+    "timestamp": "2026-05-13T09:21:15.216Z",
+    "read": true
+  }
+]

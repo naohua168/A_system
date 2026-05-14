@@ -1,6 +1,8 @@
 package com.stock.service.impl;
 
+import com.stock.entity.AnalysisResult;
 import com.stock.entity.StockDaily;
+import com.stock.mapper.AnalysisResultMapper;
 import com.stock.mapper.StockDailyMapper;
 import com.stock.service.AnalysisService;
 import org.springframework.stereotype.Service;
@@ -16,9 +18,17 @@ import java.util.stream.Collectors;
 public class AnalysisServiceImpl implements AnalysisService {
 
     private final StockDailyMapper stockDailyMapper;
+    private final AnalysisResultMapper analysisResultMapper;
 
-    public AnalysisServiceImpl(StockDailyMapper stockDailyMapper) {
+    public AnalysisServiceImpl(StockDailyMapper stockDailyMapper,
+                               AnalysisResultMapper analysisResultMapper) {
         this.stockDailyMapper = stockDailyMapper;
+        this.analysisResultMapper = analysisResultMapper;
+    }
+
+    @Override
+    public boolean save(AnalysisResult result) {
+        return analysisResultMapper.insert(result) > 0;
     }
 
     @Override

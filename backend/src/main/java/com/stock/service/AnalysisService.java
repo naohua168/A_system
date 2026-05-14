@@ -1,8 +1,5 @@
 package com.stock.service;
 
-import com.baomidou.mybatisplus.extension.service.IService;
-import com.stock.entity.AnalysisResult;
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +8,9 @@ import java.util.Map;
  * 分析服务接口
  * 提供收益率计算、趋势分析、股票筛选等功能
  */
-public interface AnalysisService extends IService<AnalysisResult> {
+public interface AnalysisService {
+    /** 保存分析结果 */
+    boolean save(com.stock.entity.AnalysisResult result);
 
     /**
      * 获取股票年收益率

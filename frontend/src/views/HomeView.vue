@@ -1,5 +1,27 @@
 <template>
   <div class="home-view">
+    <!-- 市场概览 -->
+    <section class="section market-overview">
+      <div class="stats-bar">
+        <div class="stat-item">
+          <span class="stat-label">总股票数</span>
+          <span class="stat-value">{{ marketStats.total }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">上涨</span>
+          <span class="stat-value rise">{{ marketStats.up }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">下跌</span>
+          <span class="stat-value fall">{{ marketStats.down }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">平盘</span>
+          <span class="stat-value flat">{{ marketStats.flat }}</span>
+        </div>
+      </div>
+    </section>
+
     <!-- 大盘指数 - 东方财富风格 -->
     <section class="section">
       <div class="section-header">
@@ -68,6 +90,59 @@
       </div>
     </el-dialog>
 
+    <!-- 信号层快捷卡片 -->
+    <section class="section signal-cards">
+      <div class="signal-grid">
+        <div class="signal-card signal-card-nb" @click="$router.push('/northbound')">
+          <el-icon class="card-icon" :size="24"><TrendCharts /></el-icon>
+          <div class="card-body">
+            <div class="card-title">北向资金</div>
+            <div class="card-value" :class="nbTotal >= 0 ? 'text-rise' : 'text-fall'">
+              {{ nbTotal >= 0 ? '+' : '' }}{{ nbTotal }}<small>亿</small>
+            </div>
+            <div class="card-detail">
+              沪 {{ nbHgt }} 深 {{ nbSgt }}
+            </div>
+          </div>
+        </div>
+        <div class="signal-card signal-card-hot" @click="$router.push('/hot-reason')">
+          <el-icon class="card-icon" :size="24"><DataAnalysis /></el-icon>
+          <div class="card-body">
+            <div class="card-title">题材热点</div>
+            <div class="card-tags" v-if="hotReasons.length">
+              <el-tag v-for="r in hotReasons.slice(0,3)" :key="r.stockCode" size="small" class="hot-tag"
+                @click.stop="$router.push(`/stock/${r.stockCode}`)">
+                {{ r.stockName }}
+              </el-tag>
+            </div>
+            <div class="card-detail">{{ hotReasons.length }} 只个股今日强势</div>
+          </div>
+        </div>
+        <div class="signal-card signal-card-ind" @click="$router.push('/industry-compare')">
+          <el-icon class="card-icon" :size="24"><Histogram /></el-icon>
+          <div class="card-body">
+            <div class="card-title">行业排行</div>
+            <div class="card-ind-list" v-if="industryTop.length">
+              <div v-for="ind in industryTop.slice(0,3)" :key="ind.industryName" class="ind-row">
+                <span class="ind-name">{{ ind.industryName }}</span>
+                <span :class="ind.changePct >= 0 ? 'text-rise' : 'text-fall'">
+                  {{ ind.changePct >= 0 ? '+' : '' }}{{ ind.changePct }}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="signal-card signal-card-dt" @click="$router.push('/dragon-tiger')">
+          <el-icon class="card-icon" :size="24"><Aim /></el-icon>
+          <div class="card-body">
+            <div class="card-title">龙虎榜</div>
+            <div class="card-value">{{ dtCount }}</div>
+            <div class="card-detail">只个股今日上榜</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 板块涨跌云图 -->
     <section class="section map-section">
       <div class="section-header">
@@ -116,15 +191,51 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, ArrowLeft, Setting, Pointer, Plus, Close } from '@element-plus/icons-vue'
+import { ArrowRight, ArrowLeft, Setting, Pointer, Plus, Close, TrendCharts, DataAnalysis, Histogram, Aim } from '@element-plus/icons-vue'
 import TreemapChart from '@/components/chart/TreemapChart.vue'
 import { getStockList, getIndustries } from '@/api/stock'
 import { getIndexList } from '@/api/index'
+import { getSectorRanking } from '@/api/analysis'
+import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare } from '@/api/signal'
+import { formatPrice, formatPercent, formatPoints, getChangeClass } from '@/utils/format'
 
 const router = useRouter()
 const scrollRef = ref<HTMLElement>()
 const scrollPos = ref(0)
 const showIndexManager = ref(false)
+
+// ======== 信号层数据 ========
+const nbHgt = ref(0)
+const nbSgt = ref(0)
+const nbTotal = computed(() => Number((nbHgt.value + nbSgt.value).toFixed(2)))
+const hotReasons = ref<any[]>([])
+const industryTop = ref<any[]>([])
+const dtCount = ref(0)
+
+async function loadSignalData() {
+  try {
+    const [nbRes, hotRes, indRes, dtRes] = await Promise.allSettled([
+      getNorthboundLatest(1),
+      getHotReason(),
+      getIndustryCompare(),
+      getDragonTigerDaily(),
+    ])
+    if (nbRes.status === 'fulfilled' && nbRes.value.data?.length) {
+      nbHgt.value = nbRes.value.data[0].hgtYi || 0
+      nbSgt.value = nbRes.value.data[0].sgtYi || 0
+    }
+    if (hotRes.status === 'fulfilled') {
+      hotReasons.value = hotRes.value.data.records || []
+    }
+    if (indRes.status === 'fulfilled') {
+      const all = indRes.value.data.records || []
+      industryTop.value = all.sort((a: any, b: any) => b.changePct - a.changePct).slice(0, 5)
+    }
+    if (dtRes.status === 'fulfilled') {
+      dtCount.value = dtRes.value.data.total || 0
+    }
+  } catch { /* silent */ }
+}
 
 // ======== 大盘指数 - 从后端API实时加载 ========
 interface IndexCard {
@@ -164,14 +275,7 @@ async function loadIndices() {
       visibleIndices.value = defaults.length ? defaults : allIndexData.value.slice(0, 4)
     }
   } catch (_e) {
-    // API不可用时，使用静态备降数据
-    allIndexData.value = [
-      { code: '000001', name: '上证指数', price: 3356, changePercent: 0.68, changePoints: 22.45, isCustom: false },
-      { code: '399001', name: '深证成指', price: 11245, changePercent: 1.12, changePoints: 124.56, isCustom: false },
-      { code: '399006', name: '创业板指', price: 2234, changePercent: -0.35, changePoints: -7.89, isCustom: false },
-      { code: '000688', name: '科创50',   price: 987,   changePercent: 1.56,  changePoints: 15.23,  isCustom: false },
-    ]
-    visibleIndices.value = allIndexData.value.slice(0, 4)
+    console.warn('[Home] 加载指数数据失败:', _e)
   }
 }
 
@@ -211,56 +315,13 @@ function goToIndex(code: string) {
 }
 
 // ======== 板块数据 ========
-const sectorData = ref([
-  { name: '金融', value: 3500, changePercent: 1.2, items: [
-    { name: '银行', value: 1800, changePercent: 0.8 },
-    { name: '证券', value: 1200, changePercent: 1.5 },
-    { name: '保险', value: 500, changePercent: 2.1 },
-  ]},
-  { name: '科技', value: 4200, changePercent: -0.5, items: [
-    { name: '半导体', value: 1500, changePercent: -1.2 },
-    { name: '消费电子', value: 1200, changePercent: 0.3 },
-    { name: '软件服务', value: 800, changePercent: -0.8 },
-    { name: '通信设备', value: 700, changePercent: 0.5 },
-  ]},
-  { name: '消费', value: 2800, changePercent: 0.6, items: [
-    { name: '食品饮料', value: 1000, changePercent: 1.1 },
-    { name: '家电', value: 800, changePercent: -0.2 },
-    { name: '汽车', value: 600, changePercent: 0.8 },
-    { name: '医药', value: 400, changePercent: 0.3 },
-  ]},
-  { name: '制造', value: 2200, changePercent: -0.8, items: [
-    { name: '新能源', value: 1200, changePercent: -1.5 },
-    { name: '军工', value: 600, changePercent: 0.2 },
-    { name: '机械', value: 400, changePercent: -0.1 },
-  ]},
-  { name: '周期', value: 1800, changePercent: 0.2, items: [
-    { name: '有色', value: 800, changePercent: 0.5 },
-    { name: '钢铁', value: 500, changePercent: -0.3 },
-    { name: '化工', value: 500, changePercent: 0.4 },
-  ]},
-  { name: '地产建筑', value: 1500, changePercent: -1.8, items: [
-    { name: '房地产', value: 900, changePercent: -2.5 },
-    { name: '建筑', value: 600, changePercent: -0.8 },
-  ]},
-  { name: '公用事业', value: 1000, changePercent: 0.15, items: [
-    { name: '电力', value: 600, changePercent: 0.3 },
-    { name: '水务', value: 400, changePercent: 0.0 },
-  ]},
-])
+const sectorData = ref<SectorNode[]>([])
 
-const hotStocks = ref([
-  { code: '600519', name: '贵州茅台', price: 1685.00, changePercent: 1.25 },
-  { code: '300750', name: '宁德时代', price: 198.56, changePercent: -0.85 },
-  { code: '000858', name: '五粮液', price: 156.78, changePercent: 2.15 },
-  { code: '601318', name: '中国平安', price: 45.23, changePercent: 0.56 },
-  { code: '600036', name: '招商银行', price: 36.89, changePercent: -0.32 },
-  { code: '000333', name: '美的集团', price: 68.45, changePercent: 1.08 },
-])
+const hotStocks = ref<any[]>([])
 
 async function loadHotStocks() {
   try {
-    const res: any = await getStockList({ page: 1, size: 6 })
+    const res: any = await getStockList({ page: 1, size: 12 })
     if (res?.records?.length) {
       hotStocks.value = res.records.map((r: any) => ({
         code: r.stockCode,
@@ -269,47 +330,48 @@ async function loadHotStocks() {
         changePercent: r.changePct || 0,
       }))
     }
-  } catch (_e) { /* 保留 mock 数据 */ }
+  } catch (_e) { console.warn('[Home] 加载热门股票失败:', _e) }
+}
+
+/** 计算市场整体涨跌家数 */
+const marketStats = ref({ total: 0, up: 0, down: 0, flat: 0 })
+async function loadMarketStats() {
+  try {
+    const res: any = await getStockList({ page: 1, size: 1 })
+    if (res?.total > 0) {
+      // 获取全量股票涨跌幅统计
+      const all: any = await getStockList({ page: 1, size: res.total })
+      if (all?.records?.length) {
+        let up = 0, down = 0, flat = 0
+        all.records.forEach((r: any) => {
+          const pct = Number(r.changePct) || 0
+          if (pct > 0) up++
+          else if (pct < 0) down++
+          else flat++
+        })
+        marketStats.value = { total: all.records.length, up, down, flat }
+      }
+    }
+  } catch (_e) { /* 市场统计为非关键数据，静默降级 */ }
 }
 
 async function loadSectorData() {
-  // 板块云图暂时保留mock数据，可供后续实现
+  try {
+    const data: any = await getSectorRanking()
+    if (Array.isArray(data) && data.length > 0) {
+      // 将后端行业排行数据映射为矩形树图格式（直接展示各行业，不使用"全部板块"包裹）
+      sectorData.value = data.map((d: any) => ({
+        name: d.industry || '其他',
+        value: Number(d.stockCount) || 1,
+        changePercent: Number(d.avgChangePct) || 0,
+      }))
+      return
+    }
+  } catch (_e) { console.warn('[Home] 加载板块云图失败:', _e) }
 }
 
-function getChangeClass(pct: number) {
-  const n = Number(pct)
-  if (isNaN(n)) return 'flat'
-  if (n > 0) return 'rise'
-  if (n < 0) return 'fall'
-  return 'flat'
-}
-
-function safeNum(v: any, decimals = 2): string {
-  const n = Number(v)
-  return isNaN(n) ? '-' : n.toFixed(decimals)
-}
-
-function formatPrice(p: number) {
-  const n = Number(p)
-  return isNaN(n) ? '-' : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function formatPercent(p: number) {
-  const n = Number(p)
-  if (isNaN(n)) return '-'
-  const sign = n > 0 ? '+' : ''
-  return `${sign}${n.toFixed(2)}%`
-}
-
-function formatPoints(p: number) {
-  const n = Number(p)
-  if (isNaN(n)) return '-'
-  const sign = n > 0 ? '+' : ''
-  return `${sign}${n.toFixed(2)}`
-}
-
-function onSectorClick(data: any) {
-  const name = data.name || ''
+function onSectorClick(data: { name?: string }) {
+  const name = data?.name || ''
   router.push({ path: `/sector/${encodeURIComponent(name)}` })
 }
 
@@ -317,6 +379,8 @@ onMounted(() => {
   loadIndices()
   loadHotStocks()
   loadSectorData()
+  loadMarketStats()
+  loadSignalData()
 })
 </script>
 
@@ -328,6 +392,27 @@ onMounted(() => {
 }
 
 .section { margin-bottom: $spacing-xl; }
+
+/* ======== 市场概览 ======== */
+.market-overview { margin-bottom: $spacing-lg; }
+.stats-bar {
+  display: flex;
+  gap: $spacing-lg;
+  background: $canvas-parchment;
+  border-radius: $rounded-lg;
+  padding: $spacing-md $spacing-lg;
+}
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  .stat-label { font-size: 12px; color: $ink-muted-48; }
+  .stat-value { font-family: $font-display; font-size: 20px; font-weight: 700; }
+  .stat-value.rise { color: $rise; }
+  .stat-value.fall { color: $fall; }
+  .stat-value.flat { color: $flat; }
+}
 
 .section-header {
   display: flex;
@@ -503,7 +588,7 @@ onMounted(() => {
 /* ======== 热门股票 ======== */
 .stock-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: $spacing-md;
 }
 
@@ -535,4 +620,27 @@ onMounted(() => {
   &.rise { .stock-price, .stock-change { color: $rise; } }
   &.fall { .stock-price, .stock-change { color: $fall; } }
 }
+
+/* 信号层快捷卡片 */
+.signal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.signal-card {
+  cursor: pointer; border-radius: 12px; padding: 16px; display: flex; gap: 12px; align-items: flex-start;
+  transition: all 0.2s; border: 1px solid rgba(255,255,255,0.06);
+  &:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .card-icon { font-size: 24px; flex-shrink: 0; }
+  .card-body { flex: 1; min-width: 0; }
+  .card-title { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 6px; font-weight: 500; }
+  .card-value { font-size: 22px; font-weight: 700; margin-bottom: 4px;
+    small { font-size: 12px; font-weight: 400; opacity: 0.4; margin-left: 2px; } }
+  .card-detail { font-size: 12px; color: rgba(255,255,255,0.3); }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .card-ind-list { .ind-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0;
+    .ind-name { color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } } }
+}
+.signal-card-nb { background: linear-gradient(135deg, rgba(41,151,255,0.08), rgba(41,151,255,0.02)); }
+.signal-card-hot { background: linear-gradient(135deg, rgba(236,77,76,0.08), rgba(236,77,76,0.02)); }
+.signal-card-ind { background: linear-gradient(135deg, rgba(82,196,26,0.08), rgba(82,196,26,0.02)); }
+.signal-card-dt { background: linear-gradient(135deg, rgba(255,140,0,0.08), rgba(255,140,0,0.02)); }
+.hot-tag { background: rgba(236,77,76,0.12); color: #ec4d4c; border: 1px solid rgba(236,77,76,0.2);
+  cursor: pointer; &:hover { background: rgba(236,77,76,0.2); } }
 </style>

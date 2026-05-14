@@ -19,6 +19,25 @@ export interface Stock {
   listingDate: string
   totalShares: number
   circulatedShares: number
+  pe?: number
+  pb?: number
+  totalMarketCap?: number
+  floatMarketCap?: number
+}
+
+/** 股票列表项（含最新行情） */
+export interface StockListItem {
+  stockCode: string
+  stockName: string
+  market: string
+  industry: string
+  price: number
+  changePct: number
+  change?: number
+  volume?: number
+  highPrice?: number
+  lowPrice?: number
+  pe?: number
 }
 
 export interface StockDaily {
@@ -46,6 +65,18 @@ export interface Fund {
   establishDate: string
   nav: number
   accumulatedNav: number
+  scale?: number
+}
+
+/** 基金持仓 */
+export interface FundHolding {
+  id: number
+  fundCode: string
+  stockCode: string
+  stockName: string
+  ratio: number
+  rankNum: number
+  reportDate: string
 }
 
 export interface FundNav {

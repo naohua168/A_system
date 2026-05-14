@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.SignalLockupMapper">
+
+    <!-- 即将解禁查询（未来指定天数内） -->
+    <select id="selectUpcomingByDateRange" resultType="com.stock.entity.SignalLockup">
+        SELECT *
+        FROM signal_lockup
+        WHERE lockup_date BETWEEN #{startDate} AND #{endDate}
+          AND is_upcoming = 1
+        ORDER BY lockup_date ASC
+    </select>
+
+    <!-- 解禁规模排行 -->
+    <select id="selectByScaleRanking" resultType="java.util.Map">
+        SELECT
+            sl.stock_code AS stockCode,
+            s.stock_name AS stockName,
+            sl.lockup_date AS lockupDate,
+            sl.lockup_type AS lockupType,
+            sl.shares,
+            sl.float_ratio AS floatRatio,
+            ROUND(sl.shares * d.close_price, 2) AS estimatedAmount
+        FROM signal_lockup sl
+        LEFT JOIN stock s ON sl.stock_code = s.stock_code
+        LEFT JOIN stock_daily d ON sl.stock_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        WHERE sl.lockup_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY sl.shares DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+</mapper>

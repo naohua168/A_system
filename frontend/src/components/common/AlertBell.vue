@@ -66,14 +66,7 @@ interface AlertItem {
 
 const showPanel = ref(false)
 
-// Mock alerts — later come from backend/websocket
-const alerts = ref<AlertItem[]>([
-  { id: 'a1', type: 'price', title: '贵州茅台 放量拉升', desc: '5分钟涨幅超3%，成交额突破20亿', time: '14:32', change: 3.56, read: false, code: '600519' },
-  { id: 'a2', type: 'drop', title: '宁德时代 快速下跌', desc: '5分钟跌幅超2%，跌破30日均线', time: '14:15', change: -2.18, read: false, code: '300750' },
-  { id: 'a3', type: 'tech', title: '招商银行 MACD金叉', desc: '日线级别MACD零轴上方金叉，看多信号', time: '13:50', change: 1.25, read: false, code: '600036' },
-  { id: 'a4', type: 'price', title: '东方财富 涨停', desc: '收盘前封涨停板，券商板块领涨', time: '11:28', change: 10.01, read: true, code: '300059' },
-  { id: 'a5', type: 'drop', title: '药明康德 放量下跌', desc: '跌幅超5%，成交量是昨日的2倍', time: '10:45', change: -5.32, read: true, code: '603259' },
-])
+const alerts = ref<AlertItem[]>([])
 
 const unreadCount = computed(() => alerts.value.filter(a => !a.read).length)
 

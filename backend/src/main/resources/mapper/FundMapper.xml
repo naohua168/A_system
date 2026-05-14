@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.FundMapper">
+
+    <!-- 基金列表查询（带类型筛选和其他条件） -->
+    <select id="selectByFilter" resultType="java.util.Map">
+        SELECT
+            f.fund_code AS fundCode,
+            f.fund_name AS fundName,
+            f.fund_type AS fundType,
+            f.company,
+            f.manager,
+            f.establish_date AS establishDate,
+            f.nav,
+            f.accumulated_nav AS accumulatedNav,
+            f.scale,
+            ROUND((f.accumulated_nav - f.nav), 4) AS navGap
+        FROM fund f
+        <where>
+            <if test="fundType != null and fundType != ''">
+                AND f.fund_type = #{fundType}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (f.fund_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR f.fund_code LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="company != null and company != ''">
+                AND f.company = #{company}
+            </if>
+            <if test="minScale != null">
+                AND f.scale >= #{minScale}
+            </if>
+            <if test="maxScale != null">
+                AND f.scale &lt;= #{maxScale}
+            </if>
+        </where>
+        <choose>
+            <when test="sortField == 'nav' and sortOrder == 'asc'">
+                ORDER BY f.nav ASC
+            </when>
+            <when test="sortField == 'nav'">
+                ORDER BY f.nav DESC
+            </when>
+            <when test="sortField == 'scale' and sortOrder == 'asc'">
+                ORDER BY f.scale ASC
+            </when>
+            <when test="sortField == 'scale'">
+                ORDER BY f.scale DESC
+            </when>
+            <otherwise>
+                ORDER BY f.scale DESC
+            </otherwise>
+        </choose>
+        <if test="limit != null">
+            LIMIT #{limit} OFFSET #{offset}
+        </if>
+    </select>
+
+    <!-- 基金类型列表 -->
+    <select id="selectFundTypes" resultType="java.lang.String">
+        SELECT DISTINCT fund_type
+        FROM fund
+        WHERE fund_type IS NOT NULL AND fund_type != ''
+        ORDER BY fund_type
+    </select>
+
+</mapper>

@@ -8,6 +8,8 @@ services:
       - "9000:9000"   # HDFS RPC
     volumes:
       - ../data/hadoop/namenode:/hadoop/dfs/name
+      # 挂载 data-collector 原始数据，便于 hdfs dfs -put 上传
+      - ../data-collector/data:/data/collector_output
     environment:
       - CLUSTER_NAME=stock_cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
@@ -93,14 +95,14 @@ services:
     image: mysql:8.0
     container_name: mysql
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - ../data/mysql:/var/lib/mysql
       - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
       MYSQL_ROOT_PASSWORD: hadoop123
       MYSQL_DATABASE: stock_analysis
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --character-set-client-handshake=FALSE
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-phadoop123"]
       interval: 30s
@@ -110,12 +112,13 @@ services:
     networks:
       - bigdata-net
 
-  # ====== Hive (数据仓库 - 嵌入式 Derby Metastore) ======
+  # ====== Hive (数据仓库 - MySQL Metastore) ======
   hive-server:
     image: bde2020/hive:2.3.2-postgresql-metastore
     container_name: hive-server
     depends_on:
       - namenode
+      - mysql
     ports:
       - "10000:10000" # Hive Server2 (Thrift JDBC)
       - "10002:10002" # Hive Web UI
@@ -124,6 +127,7 @@ services:
     volumes:
       - ./hive/conf/hive-site.xml:/opt/hive/conf/hive-site.xml
       - ./hive/entrypoint-wrapper.sh:/usr/local/bin/startup.sh
+      - ./hive/lib/mysql-connector-j-8.0.33.jar:/opt/hive/lib/mysql-connector-j-8.0.33.jar
     healthcheck:
       test: ["CMD", "bash", "-c", "/opt/hive/bin/beeline -u jdbc:hive2://localhost:10000 -e 'SHOW DATABASES;' >/dev/null 2>&1"]
       interval: 30s
@@ -181,6 +185,72 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== AI 服务 ======
+  ai-service:
+    build:
+      context: ../ai-service
+      dockerfile: ../docker/ai-service/Dockerfile
+    container_name: ai-service
+    depends_on:
+      - mysql
+    ports:
+      - "8000:8000"
+    environment:
+      - DEEPSEEK_API_KEY=
+      - BACKEND_API_URL=http://backend:8082/api
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== Spring Boot 后端 ======
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend/Dockerfile
+    container_name: backend
+    depends_on:
+      - mysql
+      - ai-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=hadoop123
+      - AI_SERVICE_URL=http://ai-service:8000
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== Nginx 前端 ======
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend/Dockerfile
+    container_name: frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+
+  # ====== Redis (缓存) ======
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     restart: unless-stopped
     networks:
       - bigdata-net

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.SignalHotReasonMapper">
+
+    <select id="selectByDateRange" resultType="com.stock.entity.SignalHotReason">
+        SELECT * FROM signal_hot_reason
+        WHERE trade_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY change_pct DESC
+    </select>
+
+    <select id="selectTopByDate" resultType="com.stock.entity.SignalHotReason">
+        SELECT * FROM signal_hot_reason
+        WHERE trade_date = #{date}
+        ORDER BY change_pct DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

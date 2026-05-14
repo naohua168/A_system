@@ -43,7 +43,7 @@
           <span class="col-low">{{ formatPrice(s.low) }}</span>
           <span class="col-vol caption">{{ formatVolume(s.volume) }}</span>
           <span class="col-action">
-            <el-button text type="primary" size="small" @click.stop="removeWatchlist(s.code, 'stock')">
+            <el-button text type="primary" size="small" @click.stop="removeWatchlistItem(s.code, 'stock')">
               <el-icon><Delete /></el-icon>
             </el-button>
           </span>
@@ -64,7 +64,7 @@
         >
           <div class="fund-header">
             <h4>{{ f.name }}</h4>
-            <el-button text type="primary" size="small" @click.stop="removeWatchlist(f.code, 'fund')">
+            <el-button text type="primary" size="small" @click.stop="removeWatchlistItem(f.code, 'fund')">
               <el-icon><Delete /></el-icon>
             </el-button>
           </div>
@@ -103,7 +103,11 @@ import { ref, onMounted } from 'vue'
 import { Star, Coin, Delete } from '@element-plus/icons-vue'
 import { getStockList } from '@/api/stock'
 import { getFundList, getFundNav } from '@/api/fund'
+import { getWatchlist, removeWatchlist as apiRemoveWatchlist } from '@/api/watchlist'
+import { useUserStore } from '@/stores/user'
+import { formatPrice, getChangeClass } from '@/utils/format'
 
+const userStore = useUserStore()
 const activeTab = ref('stock')
 
 interface WatchStock {
@@ -115,38 +119,51 @@ const stockWatchlist = ref<WatchStock[]>([])
 const fundWatchlist = ref<{ code: string; name: string; type: string; nav: number; accNav: number; dailyReturn: number }[]>([])
 
 async function loadStocks() {
+  if (!userStore.isLoggedIn) return
   try {
-    const res: any = await getStockList({ page: 1, size: 10 })
-    if (res?.records?.length) {
-      stockWatchlist.value = res.records.map((r: any) => ({
-        code: r.stockCode,
-        name: r.stockName,
-        price: r.price || 0,
-        changePercent: r.changePct || 0,
-        high: r.highPrice || r.price || 0,
-        low: r.lowPrice || r.price || 0,
-        volume: r.volume || 0,
-      }))
+    // 1. 获取用户的自选列表
+    const watchlistItems: any = await getWatchlist(userStore.userInfo!.id, 0)
+    if (!Array.isArray(watchlistItems) || watchlistItems.length === 0) {
+      stockWatchlist.value = []
       return
     }
-  } catch (_e) { /* fallback to mock */ }
-  // Mock fallback
-  stockWatchlist.value = [
-    { code: '600519', name: '贵州茅台', price: 1685.00, changePercent: 1.25, high: 1698.00, low: 1672.00, volume: 1250000 },
-    { code: '300750', name: '宁德时代', price: 198.56, changePercent: -0.85, high: 202.30, low: 197.50, volume: 35600000 },
-    { code: '000333', name: '美的集团', price: 68.45, changePercent: 1.08, high: 69.12, low: 67.80, volume: 8900000 },
-  ]
+    // 2. 批量查询股票行情（通过搜索接口批量获取）
+    const stockCodes = watchlistItems.map((w: any) => w.assetCode)
+    const res: any = await getStockList({ page: 1, size: 50 })
+    if (res?.records?.length) {
+      stockWatchlist.value = res.records
+        .filter((r: any) => stockCodes.includes(r.stockCode))
+        .map((r: any) => ({
+          code: r.stockCode,
+          name: r.stockName,
+          price: r.price || 0,
+          changePercent: r.changePct || 0,
+          high: r.highPrice || r.price || 0,
+          low: r.lowPrice || r.price || 0,
+          volume: r.volume || 0,
+        }))
+    }
+  } catch (_e) {
+    console.warn('[Watchlist] 加载自选股票失败:', _e)
+  }
 }
 
 async function loadFunds() {
+  if (!userStore.isLoggedIn) return
   try {
-    const res: any = await getFundList({ page: 1, size: 6 })
-    if (res?.records?.length) {
-      const items: any[] = []
-      for (const f of res.records.slice(0, 3)) {
-        const code = f.fundCode || f.code || ''
-        let nav = Number(f.nav) || 1
-        let accNav = Number(f.accumulatedNav) || nav
+    const watchlistItems: any = await getWatchlist(userStore.userInfo!.id, 1)
+    if (!Array.isArray(watchlistItems) || watchlistItems.length === 0) {
+      fundWatchlist.value = []
+      return
+    }
+    const items: any[] = []
+    for (const w of watchlistItems.slice(0, 6)) {
+      const code = w.assetCode
+      try {
+        const info: any = await getFundList({ page: 1, size: 10 })
+        const fundInfo = Array.isArray(info?.records) ? info.records.find((r: any) => (r.fundCode || r.code) === code) : null
+        let nav = fundInfo ? Number(fundInfo.nav) : 1
+        let accNav = fundInfo ? Number(fundInfo.accumulatedNav) : nav
         let dailyReturn = 0
         try {
           const navData: any = await getFundNav(code, { days: 2 })
@@ -157,35 +174,39 @@ async function loadFunds() {
             accNav = Number(last.accumulatedNav) || accNav
             dailyReturn = (Number(last.nav) - Number(prev.nav)) / Number(prev.nav)
           }
-        } catch (_) { /* use defaults */ }
+        } catch (_) { console.warn('[Watchlist] 加载基金净值失败:', _) }
         items.push({
           code,
-          name: f.fundName || f.name || code,
-          type: f.fundType || '',
+          name: fundInfo?.fundName || fundInfo?.name || code,
+          type: fundInfo?.fundType || '',
           nav, accNav, dailyReturn,
         })
-      }
-      fundWatchlist.value = items
-      return
+      } catch (_) { console.warn('[Watchlist] 跳过基金:', _) }
     }
-  } catch (_e) { /* fallback */ }
-  // Mock fallback
-  fundWatchlist.value = [
-    { code: '005827', name: '易方达蓝筹精选', type: '混合型', nav: 1.6850, accNav: 2.1350, dailyReturn: 0.0125 },
-    { code: '161725', name: '招商中证白酒', type: '股票型', nav: 0.9560, accNav: 1.8560, dailyReturn: -0.0085 },
-  ]
+    fundWatchlist.value = items
+  } catch (_e) { console.warn('[Watchlist] 加载基金自选失败:', _e) }
 }
 
-onMounted(() => { loadStocks(); loadFunds() })
-
-function getChangeClass(pct: number) {
-  return pct > 0 ? 'rise' : pct < 0 ? 'fall' : 'flat'
+async function removeWatchlistItem(code: string, type: 'stock' | 'fund') {
+  if (!userStore.isLoggedIn) return
+  try {
+    await apiRemoveWatchlist(userStore.userInfo!.id, code, type === 'stock' ? 0 : 1)
+    if (type === 'stock') {
+      stockWatchlist.value = stockWatchlist.value.filter(s => s.code !== code)
+    } else {
+      fundWatchlist.value = fundWatchlist.value.filter(f => f.code !== code)
+    }
+  } catch (_e) { console.warn('[Watchlist] 移除自选失败:', _e) }
 }
 
-function formatPrice(p: number) { return p.toFixed(2) }
-function formatVolume(v: number) {
-  return v > 100000000 ? `${(v / 100000000).toFixed(2)}亿` : `${(v / 10000).toFixed(0)}万`
-}
+onMounted(() => {
+  if (userStore.isLoggedIn) {
+    loadStocks()
+    loadFunds()
+  }
+})
+
+
 
 function removeWatchlist(code: string, type: string) {
   if (type === 'stock') {

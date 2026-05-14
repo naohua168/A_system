@@ -125,7 +125,7 @@ import { useRoute } from 'vue-router'
 import { Star } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getFundInfo, getFundNav, getFundHoldings } from '@/api/fund'
-import type { FundNav } from '@/types'
+import type { FundNav, FundHolding } from '@/types'
 
 const route = useRoute()
 const isWatched = ref(false)
@@ -198,17 +198,17 @@ async function loadFundData() {
         fund.value.dailyReturn = (Number(last.nav) - Number(prev.nav)) / Number(prev.nav)
       }
     }
-    // 3. 加载持仓（暂空）
-    const holdings: any = await getFundHoldings(code)
+    // 3. 加载持仓
+    const holdings: FundHolding[] = await getFundHoldings(code) as FundHolding[]
     if (Array.isArray(holdings) && holdings.length > 0) {
-      fund.value.topHoldings = holdings.map((h: any) => ({
-        name: h.stockName || h.name || '',
-        code: h.stockCode || h.code || '',
+      fund.value.topHoldings = holdings.map((h: FundHolding) => ({
+        name: h.stockName || '',
+        code: h.stockCode || '',
         ratio: Number(h.ratio) || 0,
       }))
     }
   } catch (_e) {
-    // API不可用时保留默认空数据
+    console.warn('[Fund] 加载基金数据失败:', _e)
   } finally {
     loading.value = false
   }

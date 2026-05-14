@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.AnalysisResultMapper">
+
+    <!-- 按类型查询 -->
+    <select id="selectByType" resultType="com.stock.entity.AnalysisResult">
+        SELECT *
+        FROM analysis_result
+        WHERE analysis_type = #{analysisType}
+        ORDER BY created_at DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 按时间范围查询 -->
+    <select id="selectByTimeRange" resultType="com.stock.entity.AnalysisResult">
+        SELECT *
+        FROM analysis_result
+        WHERE analysis_date BETWEEN #{startDate} AND #{endDate}
+        <if test="analysisType != null and analysisType != ''">
+            AND analysis_type = #{analysisType}
+        </if>
+        <if test="assetType != null">
+            AND asset_type = #{assetType}
+        </if>
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 按资产编码查询最新结果 -->
+    <select id="selectLatestByAsset" resultType="com.stock.entity.AnalysisResult">
+        SELECT *
+        FROM analysis_result
+        WHERE asset_code = #{assetCode}
+          AND analysis_type = #{analysisType}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+</mapper>

@@ -64,6 +64,10 @@ const categories = [
   { key: 'stock', label: '股市' },
   { key: 'fund', label: '基金' },
   { key: 'industry', label: '行业' },
+  { key: 'company', label: '公司' },
+  { key: 'policy', label: '政策' },
+  { key: 'capital', label: '资金' },
+  { key: 'global', label: '全球' },
 ]
 
 interface NewsItem {
@@ -77,15 +81,19 @@ const newsData: NewsItem[] = [
   { id: '3', title: '北向资金今日净买入超80亿元', summary: '北向资金今日大幅净买入82.56亿元，其中沪股通净买入45.23亿元，深股通净买入37.33亿元。贵州茅台、宁德时代获净买入居前。', source: 'Wind', time: '15:30', tags: ['股市', '资金'], url: '#' },
   { id: '4', title: '多家基金公司宣布自购旗下权益基金', summary: '包括易方达、华夏、南方在内的多家头部基金公司宣布自购旗下权益类基金，合计自购金额超过10亿元，释放积极信号。', source: '中国基金报', time: '14:20', tags: ['基金'], url: '#' },
   { id: '5', title: '新能源板块持续活跃 光伏产业链领涨', summary: '新能源板块今日表现强势，光伏产业链集体走强，隆基绿能涨超5%，通威股份涨超4%。消息面上，多部门发布支持新能源发展的相关政策。', source: '证券时报', time: '11:45', tags: ['行业', '新能源'], url: '#' },
-  { id: '6', title: '美联储维持利率不变 符合市场预期', summary: '美联储最新议息会议决定维持联邦基金利率目标区间不变，并表示将继续关注通胀数据。市场普遍预计年内可能降息1-2次。', source: '新华社', time: '08:15', tags: ['宏观', '海外'], url: '#' },
+  { id: '6', title: '美联储维持利率不变 符合市场预期', summary: '美联储最新议息会议决定维持联邦基金利率目标区间不变，并表示将继续关注通胀数据。市场普遍预计年内可能降息1-2次。', source: '新华社', time: '08:15', tags: ['宏观', '全球'], url: '#' },
   { id: '7', title: '半导体行业景气度回升 存储芯片价格反弹', summary: '据行业研究机构数据，存储芯片价格连续两个月环比上涨，DRAM和NAND Flash涨幅分别达到5%和3%，行业复苏信号明显。', source: '集微网', time: '09:30', tags: ['行业', '半导体'], url: '#' },
   { id: '8', title: '2026年Q1公募基金持仓分析：加仓科技减仓消费', summary: '2026年一季度公募基金持仓数据出炉，前十大重仓股中科技股占比提升至35%，消费股占比下降至22%，新能源、半导体获显著加仓。', source: '天天基金网', time: '13:00', tags: ['基金', '分析'], url: '#' },
+  { id: '9', title: '国务院发布促进人工智能产业发展指导意见', summary: '国务院印发《关于促进人工智能产业高质量发展的指导意见》，提出到2030年AI核心产业规模超万亿，重点支持芯片、算法、应用三大领域。', source: '新华社', time: '19:00', tags: ['政策', '行业'], url: '#' },
+  { id: '10', title: '宁德时代发布第三代钠离子电池 能量密度提升30%', summary: '宁德时代在发布会上宣布第三代钠离子电池能量密度达到200Wh/kg，计划2027年实现量产，将大幅降低储能和电动车成本。', source: '证券日报', time: '14:50', tags: ['公司', '新能源'], url: '#' },
+  { id: '11', title: '全球央行黄金储备连续18个月增加 中国央行增持最多', summary: '世界黄金协会数据显示，全球央行一季度净购金量达286吨，中国央行连续18个月增持黄金储备，累计增加约316吨。', source: 'Wind', time: '09:15', tags: ['全球', '宏观'], url: '#' },
+  { id: '12', title: '中芯国际14nm制程良率突破95% 产能利用率满载', summary: '中芯国际公布最新运营数据，14nm FinFET制程良率突破95%，产能利用率连续三个季度保持满载，Q1营收同比增长22%。', source: '集微网', time: '11:20', tags: ['公司', '半导体'], url: '#' },
 ]
 
 const groupedData = [
-  { date: '今天 5月8日', items: newsData.slice(0, 4) },
-  { date: '昨天 5月7日', items: newsData.slice(4, 6) },
-  { date: '5月6日', items: newsData.slice(6, 8) },
+  { date: '今天 5月8日', items: newsData.slice(0, 5) },
+  { date: '昨天 5月7日', items: newsData.slice(5, 8) },
+  { date: '5月6日', items: newsData.slice(8, 12) },
 ]
 
 const filteredNews = computed(() => {
@@ -107,6 +115,8 @@ function tagType(tag: string) {
     '宏观': 'danger', '政策': 'danger',
     '股市': 'primary', '资金': 'primary',
     '基金': 'success', '行业': 'warning',
+    '公司': 'primary', '全球': 'info',
+    '半导体': 'warning', '新能源': 'success',
     '分析': 'info',
   }
   return map[tag] || 'info'

@@ -1,0 +1,38 @@
+{
+  "name": "project-completion",
+  "leadAgentId": "69d965f472204ed4a24c0ea6cf4d1304",
+  "workspacePath": "f:/bs/A_system",
+  "createdAt": "2026-05-13T09:19:24.504Z",
+  "options": {
+    "workspacePath": "f:/bs/A_system",
+    "isAutoTeam": false
+  },
+  "members": [
+    {
+      "memberId": "team-lead@project-completion",
+      "name": "team-lead",
+      "role": "Team Lead - coordinates the team and interacts with the user"
+    },
+    {
+      "memberId": "spark-batch@project-completion",
+      "name": "spark-batch",
+      "role": "创建7个Spark批处理作业"
+    },
+    {
+      "memberId": "hive-mr@project-completion",
+      "name": "hive-mr",
+      "role": "创建Hive+调度器+MapReduce文件"
+    },
+    {
+      "memberId": "ai-agents-models@project-completion",
+      "name": "ai-agents-models",
+      "role": "创建AI Agent和模型文件"
+    },
+    {
+      "memberId": "docker-deploy@project-completion",
+      "name": "docker-deploy",
+      "role": "创建Dockerfile和更新编排"
+    }
+  ],
+  "isAutoTeam": false
+}

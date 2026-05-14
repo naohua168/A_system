@@ -42,5 +42,7 @@ public interface StockDailyMapper extends BaseMapper<StockDaily> {
     List<Map<String, Object>> selectStocksWithPrice(@Param("keyword") String keyword,
                                                      @Param("industry") String industry,
                                                      @Param("limit") int limit,
-                                                     @Param("offset") int offset);
+                                                     @Param("offset") int offset,
+                                                     @Param("sortField") String sortField,
+                                                     @Param("sortOrder") String sortOrder);
 }

@@ -243,18 +243,21 @@ import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Star, Setting } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import { getStockList } from '@/api/stock'
+import { getSectorRanking } from '@/api/analysis'
 
 const route = useRoute()
 const sectorName = decodeURIComponent(route.params.name as string)
 const activePeriod = ref('day')
 const showChanlun = ref(false)
 
-// 缓存K线数据，避免每次切换都重新生成导致K线图跳动
+// 缓存K线数据（仅由后续逻辑填充，当前无API）
 let cachedKlineData: number[][] | null = null
 function getKlineData() {
-  if (!cachedKlineData) cachedKlineData = generateMockKlineData()
-  return cachedKlineData
+  return cachedKlineData || []
 }
+
+const loading = ref(true)
 
 const chartRef = ref<HTMLElement>()
 const klineChartRef = ref<HTMLElement>()
@@ -316,106 +319,82 @@ function applyParams() {
   renderChart()
 }
 
-// Mock sector data
+// 真实板块数据（从 API 加载）
 const sector = reactive({
-  code: `BK${Math.abs(sectorName.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 1000)}`,
+  code: sectorName,
   name: sectorName,
-  price: 2856.45,
-  changePercent: 1.25,
-  upCount: 32,
-  downCount: 8,
-  amount: '356.8亿',
-  leader: '招商银行 +3.25%',
-  totalMarketCap: '12.5万亿',
+  price: 0,
+  changePercent: 0,
+  upCount: 0,
+  downCount: 0,
+  amount: '0',
+  leader: '',
+  totalMarketCap: '0',
+  stockCount: 0,
 })
 
 const chanlunStats = reactive({
-  dingCount: 4, diCount: 5, biCount: 7, zhongshuCount: 2,
-  trendType: '中枢盘整',
-  level: '日线级别',
-  currentBi: '向上笔延续',
-  zhongshuInfo: [
-    { zg: 2892.50, zd: 2830.30, name: '中枢A' },
-  ],
-  pricePosition: '中枢内部',
-  lastDingFeng: { price: 2895.00, date: '04/28' },
-  lastDiFeng: { price: 2832.50, date: '04/15' },
-  buyPoints: [
-    { type: '三买', price: 2832.50, desc: '中枢上沿三买' },
-  ],
-  sellPoints: [],
-  beichi: '底背驰',
-  signals: [
-    { type: 'buy', text: '三买成立 建议关注' },
-    { type: 'hold', text: '中枢震荡 等待突破' },
-  ],
+  dingCount: 0, diCount: 0, biCount: 0, zhongshuCount: 0,
+  trendType: '', level: '', currentBi: '',
+  zhongshuInfo: [] as { zg: number; zd: number; name: string }[],
+  pricePosition: '',
+  lastDingFeng: { price: 0, date: '' },
+  lastDiFeng: { price: 0, date: '' },
+  buyPoints: [] as { type: string; price: number; desc: string }[],
+  sellPoints: [] as { type: string; price: number; desc: string }[],
+  beichi: '',
+  signals: [] as { type: string; text: string }[],
 })
 
 const quant = reactive({
-  ma5: 2836.50, ma20: 2798.20,
-  macd: 12.3456, rsi: 62.5,
-  kdjK: 68.3, kdjD: 55.6,
+  ma5: null as number | null, ma20: null as number | null,
+  macd: null as number | null, rsi: null as number | null,
+  kdjK: null as number | null, kdjD: null as number | null,
 })
 
-const constituents = ref([
-  { code: '600036', name: '招商银行', price: 36.89, changePercent: 1.56, change: 0.56 },
-  { code: '601398', name: '工商银行', price: 5.67, changePercent: 0.35, change: 0.02 },
-  { code: '601939', name: '建设银行', price: 7.23, changePercent: -0.55, change: -0.04 },
-  { code: '601288', name: '农业银行', price: 4.12, changePercent: 0.24, change: 0.01 },
-  { code: '000001', name: '平安银行', price: 12.56, changePercent: 2.15, change: 0.26 },
-  { code: '600016', name: '民生银行', price: 3.89, changePercent: -0.26, change: -0.01 },
-  { code: '601166', name: '兴业银行', price: 18.34, changePercent: 1.82, change: 0.33 },
-  { code: '600000', name: '浦发银行', price: 8.56, changePercent: 0.71, change: 0.06 },
-  { code: '601009', name: '南京银行', price: 9.23, changePercent: 1.23, change: 0.11 },
-  { code: '600015', name: '华夏银行', price: 6.45, changePercent: -0.31, change: -0.02 },
-])
+const constituents = ref<{ code: string; name: string; price: number; changePercent: number; change: number }[]>([])
 
-// --- Mock K-line data ---
-function generateMockKlineData(count: number = 120) {
-  const data: number[][] = []
-  let price = sector.price
-  const startDate = new Date('2026-01-05')
-
-  for (let i = 0; i < count; i++) {
-    const date = new Date(startDate)
-    date.setDate(date.getDate() + i)
-    if (date.getDay() === 0 || date.getDay() === 6) continue
-
-    const changePct = (Math.random() - 0.48) * 2.5
-    const open = price
-    const close = open * (1 + changePct / 100)
-    const high = Math.max(open, close) * (1 + Math.random() * 0.008)
-    const low = Math.min(open, close) * (1 - Math.random() * 0.008)
-    const volume = Math.floor(Math.random() * 80000000) + 10000000
-
-    data.push([date.getTime(), open, close, low, high, volume])
-    price = close
-  }
-  return data
+// 从 API 加载板块数据
+async function loadSectorData() {
+  loading.value = true
+  try {
+    // 1. 获取行业排行数据
+    const ranking: any = await getSectorRanking()
+    if (Array.isArray(ranking)) {
+      const mySector = ranking.find((s: any) => s.industry === sectorName)
+      if (mySector) {
+        Object.assign(sector, {
+          code: sectorName,
+          name: sectorName,
+          stockCount: Number(mySector.stockCount) || 0,
+          upCount: Number(mySector.upCount) || 0,
+          downCount: (Number(mySector.stockCount) || 0) - (Number(mySector.upCount) || 0),
+          changePercent: Number(mySector.avgChangePct) || 0,
+        })
+      }
+    }
+    // 2. 获取该行业的成分股
+    const stockRes: any = await getStockList({ industry: sectorName, page: 1, size: 50 })
+    if (stockRes?.records?.length) {
+      constituents.value = stockRes.records.map((r: any) => ({
+        code: r.stockCode,
+        name: r.stockName,
+        price: Number(r.price) || 0,
+        changePercent: Number(r.changePct) || 0,
+        change: Number(r.change) || 0,
+      }))
+      // 用成分股的平均价作为板块指数价格
+      if (constituents.value.length > 0) {
+        sector.price = constituents.value.reduce((s, c) => s + c.price, 0) / constituents.value.length
+      }
+    }
+  } catch (_e) { console.warn('[Sector] 加载板块数据失败:', _e) }
+  finally { loading.value = false }
 }
 
-// Mock 缠论 data
-function generateMockChanlunData(klineData: number[][]) {
-  if (klineData.length < 20) return { bi: [], zhongshu: [], fengxing: [] }
-  // 使用索引(index)而非时间戳，因为xAxis是category类型
-  return {
-    bi: [
-      { x0: 5, y0: klineData[5][2], x1: 12, y1: klineData[12][1] },
-      { x0: 12, y0: klineData[12][1], x1: 25, y1: klineData[25][2] },
-      { x0: 25, y0: klineData[25][2], x1: 35, y1: klineData[35][1] },
-      { x0: 35, y0: klineData[35][1], x1: 48, y1: klineData[48][2] },
-    ],
-    zhongshu: [
-      { startX: 12, endX: 35, high: Math.max(klineData[12][1], klineData[25][1], klineData[35][1]), low: Math.min(klineData[12][2], klineData[25][2], klineData[35][2]) },
-    ],
-    fengxing: [
-      { x: 8, price: klineData[8][1], type: 'ding' },
-      { x: 15, price: klineData[15][2], type: 'di' },
-      { x: 22, price: klineData[22][1], type: 'ding' },
-      { x: 30, price: klineData[30][2], type: 'di' },
-      { x: 38, price: klineData[38][1], type: 'ding' },
-    ],
-  }
+// 缠论数据（当前无后端API，仅保留空结构供前端占位）
+function getEmptyChanlunData() {
+  return { bi: [] as any[], zhongshu: [] as any[], fengxing: [] as any[] }
 }
 
 // --- Technical Indicator Calculations (same as StockDetailView) ---
@@ -487,8 +466,8 @@ function calcRSI(data: number[][], period = 14) {
 
 function renderChart() {
   if (!klineChartRef.value) return
-
   const klineData = getKlineData()
+  if (klineData.length === 0) return
   const dates = klineData.map(d => new Date(d[0]).toLocaleDateString('zh-CN'))
   const volumes = klineData.map(d => d[5])
 
@@ -529,7 +508,7 @@ function renderChart() {
 
   // 缠论 (TradingView风格)
   if (showChanlun.value) {
-    const clData = generateMockChanlunData(klineData)
+    const clData = getEmptyChanlunData()
     // 中枢 - 半透明框 + 虚线边框
     clData.zhongshu.forEach(zs => {
       series.push({
@@ -667,7 +646,8 @@ function renderChart() {
 
 function handleResize() { klineChart?.resize(); bottomChart?.resize() }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadSectorData()
   nextTick(renderChart)
   window.addEventListener('resize', handleResize)
 })

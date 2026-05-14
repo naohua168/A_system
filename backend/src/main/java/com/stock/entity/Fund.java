@@ -29,6 +29,8 @@ public class Fund {
 
     private BigDecimal accumulatedNav;
 
+    private BigDecimal scale;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

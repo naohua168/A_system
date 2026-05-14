@@ -34,6 +34,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
 import { getIndexInfo, getIndexKline } from '@/api/index'
+import { formatVol } from '@/utils/format'
 
 const route = useRoute()
 const code = route.params.code as string
@@ -49,15 +50,9 @@ const info = reactive({
   volume: 0, amount: 0,
 })
 
-function safeNum(v: any, decimals = 2): string {
+function safeNum(v: unknown, decimals = 2): string {
   const n = Number(v)
   return isNaN(n) || n === 0 ? '-' : n.toLocaleString('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-}
-function formatVol(v: number) {
-  const n = Number(v)
-  if (n >= 100000000) return `¥${(n / 100000000).toFixed(2)}亿`
-  if (n >= 10000) return `¥${(n / 10000).toFixed(2)}万`
-  return n > 0 ? n.toLocaleString() : '-'
 }
 
 async function loadData() {
@@ -99,7 +94,7 @@ async function loadData() {
       nextTick(() => renderChart(dates, points, volumes))
     }
   } catch (_e) {
-    info.name = code
+    console.warn('[Index] 加载指数数据失败:', _e)
   } finally {
     loading.value = false
   }

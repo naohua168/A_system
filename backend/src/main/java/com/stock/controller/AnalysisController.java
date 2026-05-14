@@ -108,9 +108,6 @@ public class AnalysisController {
     @GetMapping("/sector-ranking")
     public ResponseEntity<List<Map<String, Object>>> getSectorRanking(
             @RequestParam(required = false) String tradeDate) {
-        if (tradeDate == null) {
-            tradeDate = java.time.LocalDate.now().toString();
-        }
         return ResponseEntity.ok(analysisService.getSectorRanking(tradeDate));
     }
 }

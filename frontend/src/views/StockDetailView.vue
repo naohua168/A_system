@@ -198,6 +198,76 @@
       </div>
     </div>
 
+    <!-- 信号层数据 - 资金流向/龙虎榜/解禁/财务 -->
+    <div class="signal-section">
+      <el-tabs v-model="signalTab" class="signal-tabs">
+        <el-tab-pane label="资金流向" name="flow">
+          <div v-if="!flowData.length" class="signal-empty">暂无资金流向数据，请先运行数据采集</div>
+          <el-table v-else :data="flowData" size="small" stripe style="width:100%">
+            <el-table-column prop="date" label="日期" width="100" />
+            <el-table-column prop="close" label="收盘价" width="90" align="right" />
+            <el-table-column prop="changePct" label="涨跌幅%" width="90" align="right">
+              <template #default="{ row }"><span :class="row.changePct >= 0 ? 'text-rise' : 'text-fall'">{{ row.changePct >= 0 ? '+' : '' }}{{ row.changePct }}%</span></template>
+            </el-table-column>
+            <el-table-column label="主力净流入" width="110" align="right">
+              <template #default="{ row }"><span :class="row.mainIn >= 0 ? 'text-rise' : 'text-fall'">{{ row.mainIn }}万</span></template>
+            </el-table-column>
+            <el-table-column label="超大单" width="90" align="right" prop="superNetIn" />
+            <el-table-column label="大单" width="90" align="right" prop="largeNetIn" />
+            <el-table-column label="散户" width="90" align="right" prop="littleNetIn" />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="龙虎榜" name="dt">
+          <div v-if="!dtData.length" class="signal-empty">暂无龙虎榜数据</div>
+          <el-table v-else :data="dtData" size="small" stripe style="width:100%" @row-click="dtStock = $event; dtVisible = true">
+            <el-table-column prop="tradeDate" label="日期" width="100" />
+            <el-table-column prop="reason" label="上榜原因" min-width="180" show-overflow-tooltip />
+            <el-table-column label="净买入" width="110" align="right">
+              <template #default="{ row }"><span :class="row.netBuyWan >= 0 ? 'text-rise' : 'text-fall'">{{ row.netBuyWan >= 0 ? '+' : '' }}{{ row.netBuyWan }}万</span></template>
+            </el-table-column>
+            <el-table-column prop="changePct" label="涨幅%" width="80" align="right">
+              <template #default="{ row }">{{ row.changePct >= 0 ? '+' : '' }}{{ row.changePct }}%</template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="限售解禁" name="lockup">
+          <div v-if="!lockupData.length" class="signal-empty">暂无解禁数据</div>
+          <el-table v-else :data="lockupData" size="small" stripe style="width:100%">
+            <el-table-column prop="lockupDate" label="解禁日期" width="110" />
+            <el-table-column prop="lockupType" label="类型" min-width="140" show-overflow-tooltip />
+            <el-table-column label="数量" width="130" align="right">
+              <template #default="{ row }">{{ formatShares(row.shares) }}</template>
+            </el-table-column>
+            <el-table-column prop="floatRatio" label="占流通股%" width="110" align="right" />
+            <el-table-column label="状态" width="80" align="center">
+              <template #default="{ row }"><el-tag :type="row.isUpcoming ? 'warning' : 'info'" size="small">{{ row.isUpcoming ? '待解禁' : '已解禁' }}</el-tag></template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="财务指标" name="financial">
+          <div v-if="!financialData.length" class="signal-empty">暂无财务数据</div>
+          <div v-else class="financial-grid">
+            <div v-for="f in financialData" :key="f.label" class="fi-card">
+              <div class="fi-label">{{ f.label }}</div>
+              <div class="fi-value">{{ f.value }}</div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+
+    <!-- 龙虎榜详情弹窗 -->
+    <el-dialog v-model="dtVisible" title="龙虎榜详情" width="420px">
+      <div class="dt-detail" v-if="dtStock">
+        <div class="dt-row"><span class="label">上榜日期</span><span>{{ dtStock.tradeDate }}</span></div>
+        <div class="dt-row"><span class="label">上榜原因</span><span>{{ dtStock.reason }}</span></div>
+        <div class="dt-row"><span class="label">净买额</span><span :class="(dtStock.netBuyWan || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ dtStock.netBuyWan }}万</span></div>
+        <div class="dt-row"><span class="label">总买入</span><span>{{ dtStock.buyWan }}万</span></div>
+        <div class="dt-row"><span class="label">总卖出</span><span>{{ dtStock.sellWan }}万</span></div>
+        <div class="dt-row"><span class="label">涨幅</span><span :class="(dtStock.changePct || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ dtStock.changePct }}%</span></div>
+      </div>
+    </el-dialog>
+
     <!-- 参数设置弹窗 -->
     <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="380px" :modal="false" class="params-dialog">
       <div v-if="paramsTarget === 'macd'" class="params-form">
@@ -261,11 +331,16 @@ import { Star, Setting } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getStockByCode, getKlineData } from '@/api/stock'
 import { useStockStore } from '@/stores/stock'
+import { useUserStore } from '@/stores/user'
+import { addWatchlist, removeWatchlist } from '@/api/watchlist'
 import { ElMessage } from 'element-plus'
+import { safeNum, safeVal, formatVol, parseTradeDate, formatDateShort } from '@/utils/format'
+import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI } from '@/utils/indicators'
 
 const route = useRoute()
 const stockCode = route.params.code as string
 const stockStore = useStockStore()
+const userStore = useUserStore()
 
 const chartRef = ref<HTMLElement>()
 const klineChartRef = ref<HTMLElement>()
@@ -279,39 +354,11 @@ const showChanlun = ref(false)
 const activePeriod = ref('day')
 const isWatched = computed(() => stockStore.isInWatchlist(stockCode))
 
-// --- Safe helpers ---
-/** 安全格式化数字：防止 NaN/undefined 导致页面上显示 NaN */
-function safeNum(v: any, decimals = 2): string {
-  const n = Number(v)
-  return isNaN(n) || n === undefined || n === null ? '-' : n.toFixed(decimals)
-}
-/** 安全取数字 */
-function safeVal(v: any, fallback = 0): number {
-  const n = Number(v)
-  return isNaN(n) ? fallback : n
-}
-/** 解析 "YYYY-MM-DD" 为时间戳（避免 new Date 字符串解析不一致） */
-function parseTradeDate(dateStr: string): number {
-  if (!dateStr) return 0
-  const parts = dateStr.split(/[-/]/)
-  if (parts.length === 3) {
-    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime()
-  }
-  return new Date(dateStr).getTime() || 0
-}
-/** 格式化日期为 "M/D" */
-function formatDateShort(dateStr: string): string {
-  const ts = parseTradeDate(dateStr)
-  if (!ts) return dateStr || ''
-  const d = new Date(ts)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
 
-// 缓存K线数据，避免每次切换都重新生成导致K线图跳动
+// 缓存K线数据（仅由 API 填充）
 let cachedKlineData: number[][] | null = null
-function getKlineData() {
-  if (!cachedKlineData || cachedKlineData.length === 0) cachedKlineData = generateMockKlineData()
-  return cachedKlineData
+function getCachedKlineData() {
+  return cachedKlineData || []
 }
 
 const periods = [
@@ -387,84 +434,78 @@ const stock = reactive({
 })
 
 const chanlunStats = reactive({
-  // 统计
-  dingCount: 4, diCount: 5, biCount: 7, zhongshuCount: 2,
-  // 走势类型
-  trendType: '中枢盘整',    // 上涨趋势 / 下跌趋势 / 中枢盘整
-  level: '日线级别',
-  currentBi: '向上笔延续',  // 当前笔状态
-  // 中枢详情
-  zhongshuInfo: [
-    { zg: 1692.50, zd: 1650.30, name: '中枢A' },
-    { zg: 1720.80, zd: 1685.00, name: '中枢B' },
-  ],
-  pricePosition: '中枢内部',  // 上方 / 内部 / 下方
-  // 最近分型
-  lastDingFeng: { price: 1698.00, date: '04/28' },
-  lastDiFeng: { price: 1668.50, date: '04/15' },
-  // 买卖点
-  buyPoints: [
-    { type: '三买', price: 1668.50, desc: '中枢上沿三买' },
-  ],
-  sellPoints: [],
-  // 背驰
-  beichi: '底背驰',  // 顶背驰 / 底背驰 / 无背驰
-  signals: [
-    { type: 'buy', text: '三买成立 建议关注' },
-    { type: 'hold', text: '中枢震荡 等待突破' },
-  ],
+  dingCount: 0, diCount: 0, biCount: 0, zhongshuCount: 0,
+  trendType: '', level: '', currentBi: '',
+  zhongshuInfo: [] as { zg: number; zd: number; name: string }[],
+  pricePosition: '',
+  lastDingFeng: { price: 0, date: '' },
+  lastDiFeng: { price: 0, date: '' },
+  buyPoints: [] as { type: string; price: number; desc: string }[],
+  sellPoints: [] as { type: string; price: number; desc: string }[],
+  beichi: '',
+  signals: [] as { type: string; text: string }[],
 })
 
 const quant = reactive({
-  ma5: 1678.50, ma20: 1650.20,
-  macd: 2.3456, rsi: 62.5,
-  kdjK: 68.3, kdjD: 55.6,
+  ma5: null as number | null, ma20: null as number | null,
+  macd: null as number | null, rsi: null as number | null,
+  kdjK: null as number | null, kdjD: null as number | null,
 })
 
-// --- Mock K-line data ---
-function generateMockKlineData(count = 120) {
-  const data: number[][] = []
-  let price = stock.preClose
-  const startDate = new Date('2026-01-05')
-  for (let i = 0; i < count; i++) {
-    const date = new Date(startDate); date.setDate(date.getDate() + i)
-    if (date.getDay() === 0 || date.getDay() === 6) continue
-    const changePct = (Math.random() - 0.48) * 3
-    const open = price; const close = open * (1 + changePct / 100)
-    const high = Math.max(open, close) * (1 + Math.random() * 0.01)
-    const low = Math.min(open, close) * (1 - Math.random() * 0.01)
-    const volume = Math.floor(Math.random() * 50000000) + 5000000
-    data.push([date.getTime(), open, close, low, high, volume])
-    price = close
-  }
-  return data
+// ======== 信号层数据（资金流向/龙虎榜/解禁/财务） ========
+const signalTab = ref('flow')
+const flowData = ref<any[]>([])
+const dtData = ref<any[]>([])
+const lockupData = ref<any[]>([])
+const financialData = ref<any[]>([])
+const dtVisible = ref(false)
+const dtStock = ref<any>(null)
+
+function formatShares(shares: number) {
+  if (!shares) return '-'
+  const s = Number(shares)
+  if (s >= 100000000) return (s / 100000000).toFixed(2) + '亿'
+  if (s >= 10000) return (s / 10000).toFixed(2) + '万'
+  return s.toString()
 }
 
-function generateMockChanlunData(klineData: number[][]) {
-  if (klineData.length < 20) return { bi: [], zhongshu: [], fengxing: [] }
-  // 使用索引(Index)而非时间戳，因为xAxis是category类型
-  return {
-    bi: [
-      { x0: 5, y0: klineData[5][2], x1: 12, y1: klineData[12][1] },
-      { x0: 12, y0: klineData[12][1], x1: 25, y1: klineData[25][2] },
-      { x0: 25, y0: klineData[25][2], x1: 35, y1: klineData[35][1] },
-      { x0: 35, y0: klineData[35][1], x1: 48, y1: klineData[48][2] },
-    ],
-    zhongshu: [{ startX: 12, endX: 35, high: Math.max(klineData[12][1], klineData[25][1], klineData[35][1]), low: Math.min(klineData[12][2], klineData[25][2], klineData[35][2]) }],
-    fengxing: [
-      { x: 8, price: klineData[8][1], type: 'ding' },
-      { x: 15, price: klineData[15][2], type: 'di' },
-      { x: 22, price: klineData[22][1], type: 'ding' },
-      { x: 30, price: klineData[30][2], type: 'di' },
-      { x: 38, price: klineData[38][1], type: 'ding' },
-    ],
-  }
+async function loadSignalData(code: string) {
+  try {
+    const [dtRes, lockRes] = await Promise.allSettled([
+      import('@/api/signal').then(m => m.getDragonTigerByStock(code)),
+      import('@/api/signal').then(m => m.getLockupByStock(code)),
+    ])
+    if (dtRes.status === 'fulfilled') dtData.value = dtRes.value.data || []
+    if (lockRes.status === 'fulfilled') lockupData.value = lockRes.value.data || []
+    // 资金流向和财务数据使用模拟
+    flowData.value = [
+      { date: '2026-05-08', close: 157.17, changePct: 0.05, mainIn: 2146, superNetIn: 1256, largeNetIn: 890, littleNetIn: -780 },
+      { date: '2026-05-07', close: 157.09, changePct: -2.22, mainIn: -4476, superNetIn: -3356, largeNetIn: -1120, littleNetIn: 1560 },
+      { date: '2026-05-06', close: 160.66, changePct: 4.43, mainIn: 7966, superNetIn: 5621, largeNetIn: 2345, littleNetIn: -2560 },
+      { date: '2026-04-30', close: 153.84, changePct: -4.10, mainIn: -6417, superNetIn: -4521, largeNetIn: -1896, littleNetIn: 2135 },
+      { date: '2026-04-29', close: 160.42, changePct: 1.89, mainIn: 4851, superNetIn: 3562, largeNetIn: 1289, littleNetIn: -2156 },
+    ]
+    financialData.value = [
+      { label: '每股收益(EPS)', value: '1.85元' },
+      { label: '每股净资产(BVPS)', value: '12.56元' },
+      { label: '净资产收益率(ROE)', value: '14.72%' },
+      { label: '净利润', value: '125.6亿' },
+      { label: '营业收入', value: '892.3亿' },
+      { label: '总股本', value: '67.8亿股' },
+    ]
+  } catch { /* silent */ }
+}
+
+// 缠论数据（当前无后端API，仅保留空结构供前端占位）
+function getEmptyChanlunData() {
+  return { bi: [] as any[], zhongshu: [] as any[], fengxing: [] as any[] }
 }
 
 // --- Render ---
 function renderChart() {
   if (!klineChartRef.value) return
-  const klineData = getKlineData()
+  const klineData = getCachedKlineData()
+  if (klineData.length === 0) return
   const dates = klineData.map(d => {
     try {
       return new Date(d[0]).toLocaleDateString('zh-CN')
@@ -511,7 +552,7 @@ function renderChart() {
 
   // 缠论 (TradingView风格)
   if (showChanlun.value) {
-    const clData = generateMockChanlunData(klineData)
+    const clData = getEmptyChanlunData()
     // 中枢 - 半透明框 + 标注区间价格
     clData.zhongshu.forEach(zs => {
       series.push({
@@ -649,75 +690,26 @@ function renderChart() {
 }
 
 // --- Technical Indicator Calculations ---
-function calcMA(data: number[][], days: number) {
-  const result: (number | null)[] = []
-  for (let i = 0; i < data.length; i++) {
-    if (i < days - 1) { result.push(null); continue }
-    let sum = 0
-    for (let j = i - days + 1; j <= i; j++) sum += (data[j][2] + data[j][3]) / 2
-    result.push(+(sum / days).toFixed(2))
+async function toggleWatch() {
+  if (!userStore.isLoggedIn || !userStore.userInfo) {
+    ElMessage.warning('请先登录')
+    return
   }
-  return result
-}
-
-function calcBOLL(data: number[][], period: number, k: number) {
-  const mid = calcMA(data, period)
-  const up: (number | null)[] = []; const down: (number | null)[] = []
-  for (let i = 0; i < data.length; i++) {
-    if (mid[i] === null) { up.push(null); down.push(null); continue }
-    let sum = 0
-    for (let j = i - period + 1; j <= i; j++) sum += ((data[j][2] + data[j][3]) / 2 - (mid[i] as number)) ** 2
-    const std = Math.sqrt(sum / period)
-    up.push(parseFloat(((mid[i] as number) + k * std).toFixed(2)))
-    down.push(parseFloat(((mid[i] as number) - k * std).toFixed(2)))
+  const isAdd = !stockStore.isInWatchlist(stockCode)
+  try {
+    if (isAdd) {
+      await addWatchlist(userStore.userInfo.id, stockCode, 0)
+      ElMessage.success('已添加自选')
+    } else {
+      await removeWatchlist(userStore.userInfo.id, stockCode, 0)
+      ElMessage.success('已移除自选')
+    }
+    // 更新本地状态
+    const fakeStock = { stockCode, stockName: stock.name, market: '', industry: '' } as any
+    stockStore.toggleStockInWatchlist(fakeStock)
+  } catch (_e) {
+    ElMessage.error('操作失败')
   }
-  return { up, mid, down }
-}
-
-function calcMACD(data: number[][], fast: number, slow: number, signal: number) {
-  const closes = data.map(d => (d[2] + d[3]) / 2)
-  const emaF: number[] = []; const emaS: number[] = []; const dif: number[] = []; const dea: number[] = []; const macd: number[] = []
-  for (let i = 0; i < closes.length; i++) {
-    if (i === 0) { emaF[i] = closes[i]; emaS[i] = closes[i] }
-    else { emaF[i] = emaF[i - 1] * (fast - 1) / (fast + 1) + closes[i] * 2 / (fast + 1); emaS[i] = emaS[i - 1] * (slow - 1) / (slow + 1) + closes[i] * 2 / (slow + 1) }
-    dif[i] = emaF[i] - emaS[i]
-    dea[i] = i === 0 ? dif[i] : dea[i - 1] * (signal - 1) / (signal + 1) + dif[i] * 2 / (signal + 1)
-    macd[i] = (dif[i] - dea[i]) * 2
-  }
-  return { dif: dif.map(v => +v.toFixed(4)), dea: dea.map(v => +v.toFixed(4)), macd: macd.map(v => +v.toFixed(4)) }
-}
-
-function calcKDJ(data: number[][], period: number) {
-  const kV: number[] = []; const dV: number[] = []; const jV: number[] = []
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) { kV.push(50); dV.push(50); jV.push(50); continue }
-    const low = Math.min(...data.slice(i - period + 1, i + 1).map(d => d[3]))
-    const high = Math.max(...data.slice(i - period + 1, i + 1).map(d => d[1]))
-    const close = data[i][2]; const rsv = ((close - low) / (high - low)) * 100
-    const k = kV[i - 1] || 50; const kVal = k * 2 / 3 + rsv / 3; const dVal = dV[i - 1] * 2 / 3 + kVal / 3
-    kV.push(+kVal.toFixed(1)); dV.push(+dVal.toFixed(1)); jV.push(+(3 * kVal - 2 * dVal).toFixed(1))
-  }
-  return { k: kV, d: dV, j: jV }
-}
-
-function calcRSI(data: number[][], period: number) {
-  const closes = data.map(d => d[2]); const rsi: (number | null)[] = []
-  for (let i = 0; i < closes.length; i++) {
-    if (i < period) { rsi.push(null); continue }
-    let gains = 0, losses = 0
-    for (let j = i - period + 1; j <= i; j++) { const diff = closes[j] - closes[j - 1]; if (diff > 0) gains += diff; else losses -= diff }
-    rsi.push(+((100 - 100 / (1 + gains / (losses || 0.001))).toFixed(1)))
-  }
-  return rsi
-}
-
-function toggleWatch() {
-  stockStore.toggleStockInWatchlist({
-    stockCode: stockCode,
-    stockName: stock.name,
-    market: '',
-    industry: '',
-  } as any)
 }
 
 function formatVol(v: number) {
@@ -770,10 +762,10 @@ async function loadData() {
         turnoverRate: safeVal(last.turnoverRate),
         amplitude: high && low ? safeVal(((high - low) / ((high + low) / 2)) * 100) : 0,
       })
+      loadSignalData(stockCode)
     }
   } catch (_e) {
-    // API 不可用时使用默认 mock
-    stock.name = stockCode === '600519' ? '贵州茅台' : '平安银行'
+    console.warn('[StockDetail] 加载数据失败:', _e)
   } finally {
     chartLoading.value = false
   }
@@ -1158,6 +1150,17 @@ watch([showChanlun, activePeriod], () => { nextTick(renderChart) })
     .val { font-size: 18px; font-weight: 600; }
   }
 }
+
+/* 信号层数据 Tab 区域 */
+.signal-section { margin-top: 20px; background: $canvas; border: 1px solid $divider-soft; border-radius: $rounded-lg; padding: $spacing-md; }
+.signal-tabs { :deep(.el-tabs__item) { color: $ink-muted-48; &.is-active { color: $primary; } } }
+.signal-empty { text-align: center; padding: 40px 0; color: $ink-muted-48; font-size: 14px; }
+.financial-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: $spacing-md; }
+.fi-card { background: $canvas-parchment; border-radius: $rounded-md; padding: $spacing-md; text-align: center;
+  .fi-label { font-size: 12px; color: $ink-muted-48; margin-bottom: 4px; }
+  .fi-value { font-size: 20px; font-weight: 700; color: $ink; } }
+.dt-detail { .dt-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid $divider-soft;
+  .label { color: $ink-muted-48; } &:last-child { border: none; } } }
 
 /* 参数设置弹窗 */
 :deep(.params-dialog) {

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.StockMapper">
+
+    <!-- 查询股票列表（含最新行情） -->
+    <select id="selectStockList" resultType="java.util.Map">
+        SELECT s.stock_code AS stockCode, s.stock_name AS stockName, s.market,
+               s.industry, s.pe, s.pb, s.total_market_cap AS totalMarketCap,
+               d.close_price AS price, d.change_percent AS changePct,
+               d.volume, d.trade_date AS tradeDate
+        FROM stock s
+        LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        <where>
+            <if test="keyword != null">AND (s.stock_name LIKE CONCAT('%',#{keyword},'%') OR s.stock_code LIKE CONCAT('%',#{keyword},'%'))</if>
+            <if test="industry != null">AND s.industry = #{industry}</if>
+        </where>
+        ORDER BY d.change_percent DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 按行业统计 -->
+    <select id="selectIndustryStats" resultType="java.util.Map">
+        SELECT s.industry, COUNT(*) AS stockCount,
+               ROUND(AVG(d.change_percent),2) AS avgChangePct,
+               ROUND(AVG(s.pe),2) AS avgPe
+        FROM stock s
+        LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        WHERE s.industry IS NOT NULL AND s.industry != ''
+        GROUP BY s.industry
+        ORDER BY stockCount DESC
+    </select>
+
+    <!-- 查询股票详情 -->
+    <select id="selectStockDetail" resultType="java.util.Map">
+        SELECT s.*, d.close_price AS price, d.change_percent AS changePct,
+               d.volume, d.high_price AS highPrice, d.low_price AS lowPrice,
+               d.open_price AS openPrice, d.pre_close AS preClose
+        FROM stock s
+        LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
+            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+        WHERE s.stock_code = #{code}
+    </select>
+
+</mapper>

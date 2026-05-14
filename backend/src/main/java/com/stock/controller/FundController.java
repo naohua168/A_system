@@ -1,7 +1,9 @@
 package com.stock.controller;
 
 import com.stock.entity.Fund;
+import com.stock.entity.FundHolding;
 import com.stock.entity.FundNav;
+import com.stock.mapper.FundHoldingMapper;
 import com.stock.mapper.FundNavMapper;
 import com.stock.service.FundService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +21,9 @@ public class FundController {
 
     @Autowired
     private FundNavMapper fundNavMapper;
+
+    @Autowired
+    private FundHoldingMapper fundHoldingMapper;
 
     @GetMapping("/list")
     public ResponseEntity<?> list(@RequestParam(defaultValue = "1") int page,
@@ -73,7 +78,12 @@ public class FundController {
 
     @GetMapping("/{code}/holdings")
     public ResponseEntity<?> getHoldings(@PathVariable String code) {
-        // 返回示例持仓数据（无持仓表时返回空列表）
-        return ResponseEntity.ok(Collections.emptyList());
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<FundHolding> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        wrapper.eq(FundHolding::getFundCode, code);
+        wrapper.orderByAsc(FundHolding::getRankNum);
+        wrapper.last("LIMIT 10");
+        List<FundHolding> holdings = fundHoldingMapper.selectList(wrapper);
+        return ResponseEntity.ok(holdings);
     }
 }

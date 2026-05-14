@@ -109,6 +109,7 @@ import { ref, onMounted } from 'vue'
 import { Wallet, Coin } from '@element-plus/icons-vue'
 import { getStockList } from '@/api/stock'
 import { getFundList } from '@/api/fund'
+import { formatMoney, formatPrice } from '@/utils/format'
 
 const totalAssets = ref(0)
 const dailyPnL = ref(0)
@@ -140,9 +141,8 @@ async function loadData() {
       dailyPnL.value = stockHoldings.value.reduce((s, h) => s + h.pnl, 0)
     }
   } catch (_e) {
-    stockHoldings.value = [
-      { code: '600519', name: '贵州茅台', shares: 100, price: 1685, cost: 1550, pnl: 13500, returnRate: 8.71 },
-    ]
+    console.warn('[Portfolio] 加载股票失败:', _e)
+    stockHoldings.value = []
   }
   try {
     const res: any = await getFundList({ page: 1, size: 5 })
@@ -152,17 +152,10 @@ async function loadData() {
         return { code: r.fundCode || r.code, name: r.fundName || r.name || '', shares, nav, pnl: (nav - cost) * shares, returnRate: ((nav - cost) / cost) * 100 }
       })
     }
-  } catch (_e) { /* keep empty */ }
+  } catch (_e) { console.warn('[Portfolio] 加载基金失败:', _e) }
 }
 
 onMounted(loadData)
-
-function formatMoney(v: number) {
-  return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-function formatPrice(v: number) {
-  return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 </script>
 
 <style scoped lang="scss">
