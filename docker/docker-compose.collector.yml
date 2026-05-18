@@ -1,0 +1,181 @@
+# ============================================================
+# 数据采集层 Docker Compose
+# ============================================================
+# 独立网络 collector-net，与大数据层完全隔离
+# 通过 Kafka 双网卡 + 共享数据卷实现跨层数据流转
+#
+# 数据流:
+#   外部数据源 → data-collector → Kafka (双网桥接大数据层)
+#                               → HDFS (挂载 data/raw 共享卷)
+#
+# 用法:
+#   # 启动采集层
+#   docker compose -f docker-compose.collector.yml up -d
+#
+#   # 同时启动大数据层（两套独立栈，通过 Kafka 桥接）
+#   docker compose -f docker-compose.yml up -d
+#
+#   # 停止采集层
+#   docker compose -f docker-compose.collector.yml down
+# ============================================================
+
+name: stock-collector
+
+services:
+  # ====== Zookeeper (Kafka 依赖) ======
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: collector-zookeeper
+    hostname: collector-zookeeper
+    restart: unless-stopped
+    networks:
+      - collector-net
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: ruok,stat,srvr,cons,mntr
+      ZOOKEEPER_ADMIN_ENABLE_SERVER: "false"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/2181; echo -e 'srvr' >&3; grep -q 'Zookeeper version' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # ====== Kafka (消息队列 — 采集层→大数据层 唯一通道) ======
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: collector-kafka
+    hostname: collector-kafka
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:9092:9092"    # 仅供宿主机调试
+    networks:
+      - collector-net             # 采集层内网（数据接收）
+      - bigdata-net               # 大数据层内网（数据消费）— 双网卡桥接
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: collector-zookeeper:2181
+      # 三监听器: 采集层内网 + 大数据层内网 + 宿主机
+      KAFKA_ADVERTISED_LISTENERS: >
+        COLLECTOR://collector-kafka:29092,
+        BIGDATA://collector-kafka:39092,
+        HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >
+        COLLECTOR:PLAINTEXT,
+        BIGDATA:PLAINTEXT,
+        HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: COLLECTOR
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3                # 默认分区数（支持并行消费）
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MESSAGE_MAX_BYTES: 20971520      # 20MB 最大消息
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 20971520
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 512M
+
+  # ====== Data Collector (Python 数据采集器) ======
+  data-collector:
+    build:
+      context: ../data-collector
+      dockerfile: ../docker/collector/Dockerfile
+    image: stock-data-collector:latest
+    container_name: data-collector
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - collector-net    # 仅连接采集层网络，无法访问大数据层
+    environment:
+      # 采集配置
+      - LOG_LEVEL=INFO
+      - COLLECTOR_MODE=continuous
+      # Kafka 连接（采集层内网地址）
+      - KAFKA_BOOTSTRAP_SERVERS=collector-kafka:29092
+      # MySQL 配置（通过共享卷间接同步，不直连）
+      - MYSQL_DISABLED=true
+      # 输出配置
+      - OUTPUT_CSV_DIR=/data/raw
+      - OUTPUT_HDFS_DISABLED=true
+    volumes:
+      # 共享数据卷: 采集原始 CSV 通过共享卷桥接至大数据层
+      - collector-data:/data/raw
+      # 日志持久化
+      - collector-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import http.client; http.client.HTTPConnection('localhost', 8000).request('GET', '/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+# ============================================================
+# 命名卷
+# ============================================================
+volumes:
+  kafka-data:
+    name: stock-collector-kafka-data
+    driver: local
+  collector-data:
+    name: stock-collector-data
+    driver: local
+  collector-logs:
+    name: stock-collector-logs
+    driver: local
+
+# ============================================================
+# 网络
+# ============================================================
+networks:
+  # 采集层专用网络（隔离）
+  collector-net:
+    driver: bridge
+    name: collector-net
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+    # 采集层容器无法访问 bigdata-net 内网
+
+  # 大数据层网络（外部引用，由 docker-compose.yml 创建）
+  bigdata-net:
+    external: true
+    name: bigdata-net

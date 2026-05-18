@@ -3,30 +3,20 @@
 使用 NTILE(2) 将数据分成前后两段，比较两段均值判断趋势方向（上涨/下跌/震荡）
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        trend_judge.py
-
-    支持自定义窗口:
+    spark-submit --master local[2] trend_judge.py
     spark-submit ... trend_judge.py --window 30 --min-records 15
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("TrendJudge") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def judge_trend(spark, window_days=20, min_records=10):
@@ -125,11 +115,7 @@ def judge_trend(spark, window_days=20, min_records=10):
 
 def save_results(df):
     """结果写入 HDFS Parquet"""
-    output_path = "/user/hadoop/stock_data/analysis/spark/trend_judge/"
-    df.write.mode("overwrite") \
-        .option("compression", "snappy") \
-        .parquet(output_path)
-    print(f"已保存到 {output_path}")
+    save_dataframe(df, OUTPUT_PATHS["trend_judge"])
 
 
 def main():
@@ -140,7 +126,7 @@ def main():
                         help="最少交易记录数，默认 10")
     args = parser.parse_args()
 
-    spark = create_spark_with_hive()
+    spark = create_spark_session("TrendJudge")
     try:
         spark.sql("USE stock_analysis")
         print("开始判断趋势...")

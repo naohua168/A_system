@@ -1,14 +1,24 @@
 package com.stock.controller;
 
+import com.stock.dto.ApiResponse;
 import com.stock.entity.AnalysisResult;
 import com.stock.service.AnalysisService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 分析层控制器 — 技术指标 + 缠论 + 量化策略 + 排名筛选
+ *
+ * 新架构:
+ *   本地: analysis-algorithms/analysis_orchestrator.py (Pandas 计算)
+ *   预计算: Spark Streaming → MySQL precomputed_* 表
+ *   后端: 优先读预计算结果，无则提示
+ *
+ * 路由前缀: /api/analysis
+ */
 @RestController
 @RequestMapping("/api/analysis")
 public class AnalysisController {
@@ -16,12 +26,10 @@ public class AnalysisController {
     @Autowired
     private AnalysisService analysisService;
 
-    // ============================================================
-    // 基础 CRUD（保存分析结果）
-    // ============================================================
+    // ==================== 分析结果 CRUD ====================
 
     @GetMapping("/{assetCode}")
-    public ResponseEntity<List<AnalysisResult>> getAnalysis(
+    public ApiResponse getAnalysis(
             @PathVariable String assetCode,
             @RequestParam(required = false) String type) {
         com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AnalysisResult> wrapper =
@@ -31,83 +39,72 @@ public class AnalysisController {
             wrapper.eq(AnalysisResult::getAnalysisType, type);
         }
         wrapper.orderByDesc(AnalysisResult::getAnalysisDate);
-        return ResponseEntity.ok(analysisService.list(wrapper));
+        List<AnalysisResult> list = analysisService.list(wrapper);
+        return ApiResponse.ok(list);
     }
 
     @PostMapping("/save")
-    public ResponseEntity<Boolean> saveAnalysis(@RequestBody AnalysisResult result) {
-        return ResponseEntity.ok(analysisService.save(result));
+    public ApiResponse saveAnalysis(@RequestBody AnalysisResult result) {
+        boolean saved = analysisService.save(result);
+        return saved ? ApiResponse.created(result) : ApiResponse.error("保存失败");
     }
 
-    // ============================================================
-    // 收益率
-    // ============================================================
+    // ==================== 收益率 ====================
 
-    /** 年收益率 */
     @GetMapping("/{stockCode}/yearly-return")
-    public ResponseEntity<List<Map<String, Object>>> getYearlyReturn(
+    public ApiResponse getYearlyReturn(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "3") int years) {
-        return ResponseEntity.ok(analysisService.getYearlyReturn(stockCode, years));
+        return ApiResponse.ok(analysisService.getYearlyReturn(stockCode, years));
     }
 
-    /** 月收益率 */
     @GetMapping("/{stockCode}/monthly-return")
-    public ResponseEntity<List<Map<String, Object>>> getMonthlyReturn(
+    public ApiResponse getMonthlyReturn(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "12") int months) {
-        return ResponseEntity.ok(analysisService.getMonthlyReturn(stockCode, months));
+        return ApiResponse.ok(analysisService.getMonthlyReturn(stockCode, months));
     }
 
-    // ============================================================
-    // 趋势
-    // ============================================================
+    // ==================== 趋势分析 ====================
 
-    /** 趋势分析 */
     @GetMapping("/{stockCode}/trend")
-    public ResponseEntity<Map<String, Object>> getTrend(
+    public ApiResponse getTrend(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "30") int days) {
-        return ResponseEntity.ok(analysisService.getTrendAnalysis(stockCode, days));
+        // 修复: 增加 null 判断，避免 trend.isEmpty() 触发 NullPointerException
+        Map<String, Object> trend = analysisService.getTrendAnalysis(stockCode, days);
+        if (trend == null || trend.isEmpty()) {
+            return ApiResponse.error("无数据");
+        }
+        return ApiResponse.ok(trend);
     }
 
-    // ============================================================
-    // 筛选
-    // ============================================================
+    // ==================== 筛选 ====================
 
-    /** 综合筛选 */
     @PostMapping("/filter")
-    public ResponseEntity<List<Map<String, Object>>> filterStocks(
-            @RequestBody Map<String, Object> conditions) {
-        return ResponseEntity.ok(analysisService.filterStocks(conditions));
+    public ApiResponse filterStocks(@RequestBody Map<String, Object> conditions) {
+        List<Map<String, Object>> result = analysisService.filterStocks(conditions);
+        return ApiResponse.ok(result);
     }
 
-    // ============================================================
-    // 相关性
-    // ============================================================
+    // ==================== 相关性 ====================
 
-    /** 相关性分析 */
     @GetMapping("/correlation")
-    public ResponseEntity<Map<String, Object>> getCorrelation(
+    public ApiResponse getCorrelation(
             @RequestParam String codeA,
             @RequestParam String codeB,
             @RequestParam(defaultValue = "60") int days) {
-        Map<String, Object> result = Map.of(
+        return ApiResponse.ok(Map.of(
                 "codeA", codeA,
                 "codeB", codeB,
                 "correlation", analysisService.getCorrelation(codeA, codeB, days)
-        );
-        return ResponseEntity.ok(result);
+        ));
     }
 
-    // ============================================================
-    // 行业排行
-    // ============================================================
+    // ==================== 行业排行 ====================
 
-    /** 行业涨跌排行 */
     @GetMapping("/sector-ranking")
-    public ResponseEntity<List<Map<String, Object>>> getSectorRanking(
-            @RequestParam(required = false) String tradeDate) {
-        return ResponseEntity.ok(analysisService.getSectorRanking(tradeDate));
+    public ApiResponse getSectorRanking(@RequestParam(required = false) String tradeDate) {
+        return ApiResponse.ok(analysisService.getSectorRanking(tradeDate));
     }
 }

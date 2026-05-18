@@ -3,29 +3,22 @@ Spark SQL 查询 Hive 数据仓库
 直接从 Hive 表读取数据进行分析，结果写回 HDFS/MySQL
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        hive_query.py
+    spark-submit --master local[2] hive_query.py
 
     或在 PySpark shell 中:
     spark.sql("USE stock_analysis").show()
     spark.sql("SELECT * FROM stock_daily LIMIT 10").show()
 """
 
+import sys
+from pathlib import Path
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("StockHiveQuery") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def query_top_gainers(spark, trade_date="2026-05-08", top_n=20):
@@ -87,7 +80,7 @@ def query_monthly_summary(spark, year=2026, month=5):
 
 
 def main():
-    spark = create_spark_with_hive()
+    spark = create_spark_session("StockHiveQuery")
 
     try:
         print("🔍 查询 Hive 数据仓库 (stock_analysis)")
@@ -104,10 +97,7 @@ def main():
 
         # 3. 结果写入 HDFS Parquet
         df = query_top_gainers(spark, top_n=100)
-        df.write.mode("overwrite") \
-            .option("compression", "snappy") \
-            .parquet("/user/hadoop/stock_data/analysis/spark/top_gainers/")
-        print("💾 已保存到 HDFS")
+        save_dataframe(df, OUTPUT_PATHS["top_gainers"])
 
     finally:
         spark.stop()

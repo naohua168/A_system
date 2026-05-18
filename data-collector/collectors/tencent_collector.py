@@ -37,8 +37,8 @@ class TencentCollector(BaseCollector):
         req.add_header("User-Agent", "Mozilla/5.0")
 
         try:
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = resp.read().decode("gbk")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read().decode("gbk")
         except Exception as e:
             raise RuntimeError(f"腾讯财经请求失败: {e}")
 

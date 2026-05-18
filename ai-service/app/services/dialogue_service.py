@@ -1,4 +1,6 @@
 """对话业务服务 — 接入后端实时数据"""
+import asyncio
+import re
 import httpx
 from loguru import logger
 
@@ -9,60 +11,69 @@ from app.models.deepseek_client import client as ai_client
 class DialogueService:
 
     async def chat(self, message: str, stock_code: str = "", history: list[dict] | None = None) -> dict:
-        """处理用户对话，注入实时股票数据到上下文"""
-        # 构建含实时数据的上下文
-        context = await self._build_context(stock_code)
+        """处理用户对话，注入实时股票数据到上下文
 
-        # 构建消息列表
-        messages = []
-        if context:
-            messages.append({"role": "system", "content": context})
-        if history:
-            for msg in history[-10:]:
-                messages.append(msg)
-        messages.append({"role": "user", "content": message})
+        Args:
+            message: 用户消息（已被上层校验非空且≤2000字）
+            stock_code: 股票代码（可选，空字符串时不构建上下文）
+            history: 历史消息记录（已被上层校验格式并限制≤20条）
+        Returns:
+            {"reply": "AI回复内容"}
+        """
+        try:
+            # 构建含实时数据的上下文
+            context = await self._build_context(stock_code)
 
-        # 调用 AI
-        reply = await ai_client.chat(messages)
+            # 构建消息列表
+            messages = []
+            if context:
+                messages.append({"role": "system", "content": context})
+            if history:
+                for msg in history[-10:]:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    messages.append({"role": role, "content": content})
+            messages.append({"role": "user", "content": message})
 
-        return {"reply": reply}
+            # 调用 AI
+            reply = await ai_client.chat(messages)
+            return {"reply": reply}
+        except Exception as e:
+            logger.error(f"对话处理失败: {e}")
+            return {"reply": "抱歉，AI 服务暂时不可用，请稍后重试。"}
 
     async def _build_context(self, stock_code: str) -> str:
         """构建含实时数据的股票上下文 — 调用后端API获取真实数据"""
-        if not stock_code:
+        code = stock_code.strip()
+        if not code or not re.match(r"^\d{6}$", code):
             return ""
 
         base_url = settings.backend_api_url.rstrip("/")
 
-        # 并行获取实时行情 + 技术指标 + 信号数据
         async with httpx.AsyncClient(timeout=5.0) as client:
-            stock_data = {}
-            analysis_data = {}
-            signal_data = {}
 
-            try:
-                resp = await client.get(f"{base_url}/api/stock/{stock_code}")
-                if resp.status_code == 200:
-                    stock_data = resp.json()
-            except Exception as e:
-                logger.warning(f"获取行情数据失败: {e}")
+            async def _fetch(path: str) -> dict:
+                try:
+                    resp = await client.get(f"{base_url}{path}")
+                    return resp.json() if resp.status_code == 200 else {}
+                except Exception as e:
+                    logger.warning(f"获取 {path} 失败: {e}")
+                    return {}
 
-            try:
-                resp = await client.get(f"{base_url}/api/analysis/technical/{stock_code}")
-                if resp.status_code == 200:
-                    analysis_data = resp.json()
-            except Exception as e:
-                logger.warning(f"获取技术指标失败: {e}")
-
-            try:
-                resp = await client.get(f"{base_url}/api/signal/overview/{stock_code}")
-                if resp.status_code == 200:
-                    signal_data = resp.json()
-            except Exception as e:
-                logger.warning(f"获取信号数据失败: {e}")
+            stock_task = _fetch(f"/stock/{code}")
+            analysis_task = _fetch(f"/analysis/technical/{code}")
+            signal_task = _fetch(f"/signal/overview/{code}")
+            results = await asyncio.gather(
+                stock_task, analysis_task, signal_task,
+                return_exceptions=True,
+            )
+            # 处理可能的异常返回值
+            stock_data = results[0] if not isinstance(results[0], BaseException) else {}
+            analysis_data = results[1] if not isinstance(results[1], BaseException) else {}
+            signal_data = results[2] if not isinstance(results[2], BaseException) else {}
 
         # 构建上下文
-        parts = [f"当前查询标的: {stock_code}"]
+        parts = [f"当前查询标的: {code}"]
 
         if stock_data:
             name = stock_data.get("stockName", stock_data.get("name", ""))

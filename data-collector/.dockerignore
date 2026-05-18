@@ -1,0 +1,50 @@
+# ============================================================
+# Data Collector — .dockerignore
+# 排除 pycache、数据文件、虚拟环境
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+env/
+venv/
+.venv/
+pip-log.txt
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- 采集数据 (太大，不应进镜像) ---
+data/
+*.csv
+*.json
+*.parquet
+
+# --- 日志 ---
+logs/
+*.log
+
+# --- 测试 ---
+.pytest_cache/
+.coverage
+
+# --- 配置 (使用环境变量) ---
+.env
+config_local.py
+
+# --- Git ---
+.git/
+.gitignore
+
+# --- Docker ---
+Dockerfile

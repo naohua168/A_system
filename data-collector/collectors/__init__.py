@@ -8,3 +8,8 @@
 #   ths_northbound — 同花顺北向: 北向资金实时分钟流向+自缓存历史
 #   baidu        — 百度股市通: 概念板块归属+个股资金流向
 #   akshare_ext  — akshare扩展: 龙虎榜/解禁/行业/研报/新闻/公告
+#   information  — 资讯层: 研报+新闻+公告（从 a-stock-data 迁移合并）
+
+from .data_source_factory import DataSourceFactory
+
+__all__ = ["DataSourceFactory"]

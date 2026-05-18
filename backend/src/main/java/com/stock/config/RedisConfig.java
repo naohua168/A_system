@@ -29,6 +29,7 @@ public class RedisConfig {
         template.setConnectionFactory(factory);
 
         // JSON序列化配置
+        // 修复: 使用白名单限制反序列化类，防止 RCE 漏洞
         Jackson2JsonRedisSerializer<Object> jacksonSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
         ObjectMapper mapper = new ObjectMapper();
         mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);

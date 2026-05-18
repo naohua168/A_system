@@ -1,0 +1,44 @@
+# ============================================================
+# Backend — .dockerignore
+# 排除日志、本地构建产物、IDE 配置
+# ============================================================
+
+# --- Maven ---
+target/
+*.jar
+*.war
+*.class
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- 日志 ---
+logs/
+*.log
+*.gz
+
+# --- 本地配置 (容器内使用环境变量覆盖) ---
+src/main/resources/application-local.yml
+src/main/resources/application-dev.yml
+src/main/resources/application-prod.yml
+
+# --- Git ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Docker ---
+Dockerfile
+Dockerfile.dev

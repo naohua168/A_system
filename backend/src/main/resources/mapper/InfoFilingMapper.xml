@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.InfoFilingMapper">
+
+    <select id="selectByStock" resultType="com.stock.entity.InfoFiling">
+        SELECT * FROM info_filing
+        WHERE stock_code = #{code}
+        ORDER BY publish_date DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectByStockAndDateRange" resultType="com.stock.entity.InfoFiling">
+        SELECT * FROM info_filing
+        WHERE stock_code = #{code}
+          AND publish_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY publish_date DESC
+    </select>
+
+    <select id="selectByType" resultType="com.stock.entity.InfoFiling">
+        SELECT * FROM info_filing
+        WHERE filing_type LIKE CONCAT('%', #{type}, '%')
+        ORDER BY publish_date DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

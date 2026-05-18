@@ -98,6 +98,14 @@ import { ref, nextTick, computed } from 'vue'
 import { ChatLineSquare, InfoFilled, Delete, Promotion } from '@element-plus/icons-vue'
 import { chatAI, getAIStatus } from '@/api/ai'
 import type { ChatMessage } from '@/types'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+
+// 配置 marked
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
 
 // ── 状态 ──
 const messages = ref<ChatMessage[]>([])
@@ -159,21 +167,10 @@ async function sendMessage() {
   }
 }
 
-// ── 渲染 markdown 样式的文本 ──
+// ── 渲染 Markdown ──
 function renderedContent(content: string): string {
-  return content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // 标题
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // 换行
-    .replace(/\n/g, '<br>')
-    // 列表
-    .replace(/•/g, '&bull;')
-    // 数字列表
-    .replace(/(\d+)\. /g, '<br>$1. ')
+  const raw = marked.parse(content) as string
+  return DOMPurify.sanitize(raw)
 }
 
 // ── 清空 ──

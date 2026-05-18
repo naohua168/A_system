@@ -3,30 +3,20 @@
 使用 Spark corr() 函数按行业分组批量计算股票间相关系数
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        correlation.py
-
-    支持指定行业:
+    spark-submit --master local[2] correlation.py
     spark-submit ... correlation.py --industry 银行
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("StockCorrelation") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def compute_correlation(spark, industry=None):
@@ -118,11 +108,7 @@ def compute_industry_avg_correlation(spark, industry=None):
 
 def save_results(df):
     """结果写入 HDFS Parquet"""
-    output_path = "/user/hadoop/stock_data/analysis/spark/correlation/"
-    df.write.mode("overwrite") \
-        .option("compression", "snappy") \
-        .parquet(output_path)
-    print(f"已保存到 {output_path}")
+    save_dataframe(df, OUTPUT_PATHS["correlation"])
 
 
 def main():
@@ -130,7 +116,7 @@ def main():
     parser.add_argument("--industry", default=None, help="指定行业，如 银行")
     args = parser.parse_args()
 
-    spark = create_spark_with_hive()
+    spark = create_spark_session("StockCorrelation")
     try:
         spark.sql("USE stock_analysis")
         print("开始计算相关系数矩阵...")

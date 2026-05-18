@@ -1,37 +1,25 @@
 """
-Spark Streaming 实时指标计算模板
+Spark 实时技术指标计算
 从 HDFS 读取日K线数据 → 计算技术指标 (MA, MACD, RSI) → 输出到 HDFS/MySQL
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --name StockRealTimeIndicator \
-        realtime_indicator.py \
+    spark-submit --master local[2] realtime_indicator.py \
         --input /user/hadoop/stock_data/staging/daily/ \
         --output /user/hadoop/stock_data/analysis/indicators/
-
-    或使用 PySpark 交互:
-    from pyspark.sql import SparkSession
-    spark = SparkSession.builder.appName("StockAnalysis").getOrCreate()
 """
 
 import argparse
-import json
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, IntegerType, TimestampType
 
-
-def create_spark_session(app_name="StockRealTimeIndicator"):
-    """创建 Spark 会话"""
-    return SparkSession.builder \
-        .appName(app_name) \
-        .config("spark.sql.adaptive.enabled", "true") \
-        .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
-        .config("spark.sql.parquet.compression.codec", "snappy") \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def load_stock_daily(spark, data_path: str):
@@ -179,24 +167,21 @@ def calculate_rsi(df, stock_code: str, period: int = 14):
 
 def save_to_hdfs(df, output_path: str, mode: str = "overwrite"):
     """保存计算结果到 HDFS Parquet"""
-    df.write \
-        .mode(mode) \
-        .option("compression", "snappy") \
-        .parquet(output_path)
-    print(f"💾 已保存 {df.count()} 条到: {output_path}")
+    save_dataframe(df, output_path, mode)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Spark 实时技术指标计算")
     parser.add_argument("--input", required=True, help="日K线数据 HDFS 路径")
-    parser.add_argument("--output", required=True, help="指标结果 HDFS 输出路径")
+    parser.add_argument("--output", default=OUTPUT_PATHS["realtime_indicator"],
+                        help="指标结果 HDFS 输出路径")
     parser.add_argument("--code", default="000001", help="股票代码")
     parser.add_argument("--indicators", nargs="+",
                         default=["ma", "macd", "rsi"],
                         help="要计算的指标: ma macd rsi")
     args = parser.parse_args()
 
-    spark = create_spark_session()
+    spark = create_spark_session("StockRealTimeIndicator", with_hive=False)
     try:
         print(f"📥 加载数据: {args.input}")
         df = load_stock_daily(spark, args.input)

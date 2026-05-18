@@ -1,0 +1,278 @@
+# ============================================================
+# Docker 生产环境覆盖配置
+#
+# 用途: 与 docker-compose.yml 配合使用，叠加生产环境优化
+#       （资源限制、日志限制、安全配置等）
+#
+# 使用方法:
+#   # 部署生产环境
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+#   # 滚动更新
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --build backend
+#
+#   # 查看状态
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+# ============================================================
+
+services:
+  # ====== Spring Boot 后端 ======
+  backend:
+    image: stock-backend:${APP_VERSION:-latest}
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # 日志限制（防止日志撑满磁盘）
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # 生产密钥无需暴露到宿主机
+    ports:
+      - "127.0.0.1:8082:8082"    # 仅本地回环，通过 Nginx 代理
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER:-root}
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:8000
+    # 安全：只读根文件系统
+    read_only: true
+    # 安全：禁止提升权限
+    security_opt:
+      - no-new-privileges:true
+    # 健康检查（覆盖父文件，更严格）
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/api/stock/list?page=1&size=1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ====== Nginx 前端 ======
+  frontend:
+    image: stock-frontend:${APP_VERSION:-latest}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "80:80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ====== AI 服务 ======
+  ai-service:
+    image: stock-ai-service:${APP_VERSION:-latest}
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "127.0.0.1:8000:8000"    # 仅本地回环
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - AI_API_KEY=${AI_API_KEY}
+      - BACKEND_API_URL=http://backend:8082/api
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - LOG_LEVEL=INFO
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ====== MySQL ======
+  mysql:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "127.0.0.1:3306:3306"    # 仅本地回环，不对外暴露
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=stock_analysis
+    # 生产：启用二进制日志（用于数据恢复）
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --character-set-client-handshake=FALSE
+      --log-bin=mysql-bin
+      --sync-binlog=1
+      --innodb-flush-log-at-trx-commit=1
+
+  # ====== Redis ======
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "127.0.0.1:6379:6379"    # 仅本地回环
+    # 生产：启用密码认证
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+
+  # ====== Hadoop/Spark/Hive 大数据服务 ======
+  namenode:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  datanode1:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  datanode2:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  resourcemanager:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nodemanager1:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  spark-master:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  spark-worker:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  hive-server:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

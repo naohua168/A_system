@@ -40,7 +40,8 @@ class FundamentalsAnalyst(BaseAgent):
         logger.info(f"[基本面分析师] 开始分析 {stock_code}")
 
         # 调用后端 API 获取基本面数据
-        stock_data = await self._fetch_backend_data(f"/api/stock/{stock_code}")
+        # 修复: settings.backend_api_url 已包含 /api 前缀，endpoint 不再重复加 /api/
+        stock_data = await self._fetch_backend_data(f"/stock/{stock_code}")
 
         # 如果 API 返回为空，使用模拟数据
         if not stock_data:

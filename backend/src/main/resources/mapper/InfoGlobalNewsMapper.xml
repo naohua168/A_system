@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stock.mapper.InfoGlobalNewsMapper">
+
+    <select id="selectLatest" resultType="com.stock.entity.InfoGlobalNews">
+        SELECT * FROM info_global_news
+        ORDER BY publish_time DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

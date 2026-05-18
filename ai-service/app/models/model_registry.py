@@ -59,15 +59,19 @@ class ModelRegistry:
         return status
 
     @classmethod
-    def auto_fallback(cls, primary: str, fallbacks: list[str], messages: list) -> str:
-        """自动故障转移：主模型失败后依次尝试备用模型"""
+    async def auto_fallback(cls, primary: str, fallbacks: list[str], messages: list) -> str:
+        """自动故障转移：主模型失败后依次尝试备用模型
+
+        修复: 改为 async def 并在 client.chat() 前加 await。
+        chat() 是异步方法 (async def)，若不加 await 会返回协程对象而非字符串。
+        """
         errors = []
         models_to_try = [primary] + fallbacks
 
         for model_name in models_to_try:
             try:
                 client = cls.get_client(model_name)
-                return client.chat(messages)
+                return await client.chat(messages)
             except Exception as e:
                 errors.append(f"[{model_name}] {e}")
                 logger.warning(f"模型 {model_name} 失败: {e}")

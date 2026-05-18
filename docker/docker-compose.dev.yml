@@ -1,0 +1,215 @@
+# ============================================================
+# Docker 开发环境覆盖配置
+#
+# 用途: 与 docker-compose.yml 配合使用，将生产应用服务替换为
+#       带热重载的开发调试版本
+#
+# 使用方法:
+#   # 完整启动（基础设施 + 开发服务）
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+#   # 仅启动应用服务（配合已运行的基础设施）
+#   docker compose -f docker-compose.dev.yml up -d backend frontend ai-service
+#
+#   # 停止
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+#
+#   # 查看日志
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f backend
+# ============================================================
+
+version: "3.8"
+
+# ====== 共享配置锚点 ======
+
+x-source-mounts: &source-mounts
+  type: bind
+  source: ..
+  target: /workspace
+
+x-node-image: &node-image node:20-alpine
+
+# ================================================================
+# Services — 只覆盖应用服务，基础设施服务复用 docker-compose.yml
+# ================================================================
+services:
+
+  # ====== AI 服务 (开发模式) ======
+  ai-service:
+    build:
+      context: ../ai-service
+      dockerfile: ../docker/ai-service/Dockerfile.dev
+    container_name: ai-service-dev
+    image: stock-ai-service-dev:latest
+    ports:
+      - "${AI_SERVICE_PORT:-8000}:8000"
+    volumes:
+      # [核心] 绑定挂载源代码 — 宿主机改代码 → 容器内实时同步
+      - type: bind
+        source: ../ai-service
+        target: /app
+      # 排除 venv 和 __pycache__（使用匿名卷覆盖避免冲突）
+      - /app/venv
+      - /app/__pycache__
+      - /app/.venv
+      - /app/.pytest_cache
+    environment:
+      - AI_SERVICE_HOST=0.0.0.0
+      - AI_SERVICE_PORT=8000
+      - BACKEND_API_URL=http://backend:8082/api
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      redis:       # AI 服务依赖 Redis 做会话缓存
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    # 健康检查 (uvicorn --reload 在启动初期可能短暂无响应)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+    # 开发专用标签，不影响生产
+    labels:
+      dev.env: "true"
+      dev.hot-reload: "uvicorn --reload (watchfiles)"
+
+  # ====== Spring Boot 后端 (开发模式) ======
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend/Dockerfile.dev
+    container_name: backend-dev
+    image: stock-backend-dev:latest
+    ports:
+      - "${BACKEND_PORT:-8082}:8082"
+      - "5005:5005"         # JDWP 远程调试端口
+    volumes:
+      # [核心] 绑定挂载源代码 — 修改后 spring-devtools 自动重启
+      - type: bind
+        source: ../backend/src
+        target: /app/src
+      # [核心] 绑定挂载 pom.xml — 新增依赖可实时生效
+      - type: bind
+        source: ../backend/pom.xml
+        target: /app/pom.xml
+      # [加速] Maven 本地仓库持久化 (避免每次重启重复下载)
+      - maven-repo:/root/.m2
+      # [加速] Maven target 缓存 (避免每次重启全量编译)
+      - maven-target:/app/target
+    environment:
+      # Spring Boot 配置
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD:-hadoop123}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:8000
+      # Devtools 配置
+      - SPRING_DEVTOOLS_RESTART_ENABLED=true
+      - SPRING_DEVTOOLS_RESTART_POLL_INTERVAL=2s
+      - SPRING_DEVTOOLS_RESTART_QUIET_PERIOD=1s
+      # JVM 调试 (JDWP)
+      - JAVA_TOOL_OPTIONS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      # 日志级别
+      - LOGGING_LEVEL_COM_STOCK=DEBUG
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/api/stock/list?page=1&size=1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s     # 首次启动 Maven 下载依赖 + 编译较慢
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+    labels:
+      dev.env: "true"
+      dev.hot-reload: "spring-devtools (poll:2s)"
+
+  # ====== Vue 3 前端 (开发模式) ======
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend/Dockerfile.dev
+    container_name: frontend-dev
+    image: stock-frontend-dev:latest
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      # [核心] 绑定挂载整个前端项目 — Vite HMR 监听变更
+      - type: bind
+        source: ../frontend
+        target: /app
+      # 排除 node_modules（容器内已安装，宿主机可能不同架构）
+      - /app/node_modules
+    environment:
+      # Vite HMR 配置
+      - CHOKIDAR_USEPOLLING=1           # Docker bind mount 下用轮询模式
+      - WATCHPACK_POLLING=true           # Webpack 兼容（某些间接依赖）
+      # 前端 API 代理 — Vite 代理到后端 (Docker 内网)
+      - VITE_API_BASE_URL=/api
+      # 开发模式标志
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - bigdata-net
+    labels:
+      dev.env: "true"
+      dev.hot-reload: "Vite HMR (WebSocket)"
+
+  # ====== Redis (缓存) ======
+  # 覆盖父文件，增加 dev 特定的配置
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    # 开发模式无需持久化重启风险，但保留 healthcheck
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ====== MySQL (覆盖父文件中的端口映射) ======
+  mysql:
+    ports:
+      - "${MYSQL_LOCAL_PORT:-3307}:3306"
+
+# ================================================================
+# 命名卷 — 持久化 Maven 缓存加速构建
+# ================================================================
+volumes:
+  maven-repo:
+    name: stock-maven-repo
+  maven-target:
+    name: stock-maven-target
+
+# ================================================================
+# 网络 — 复用生产环境的 bigdata-net
+# ================================================================
+networks:
+  bigdata-net:
+    external: false
+    name: bigdata-net
+    driver: bridge

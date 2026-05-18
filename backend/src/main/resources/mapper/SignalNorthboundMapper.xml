@@ -3,7 +3,8 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.stock.mapper.SignalNorthboundMapper">
 
-    <select id="selectSumByDateRange" resultType="java.util.Map">
+    <!-- 修复: XML id 与 Java 接口方法名保持一致 -->
+    <select id="selectPeriodSummary" resultType="java.util.Map">
         SELECT trade_date,
                ROUND(SUM(hgt_yi),2) AS totalHgt,
                ROUND(SUM(sgt_yi),2) AS totalSgt,
@@ -14,7 +15,7 @@
         ORDER BY trade_date DESC
     </select>
 
-    <select id="selectAvgDaily" resultType="java.util.Map">
+    <select id="selectMonthlyAvgInflow" resultType="java.util.Map">
         SELECT ROUND(AVG(hgt_yi),2) AS avgHgt,
                ROUND(AVG(sgt_yi),2) AS avgSgt,
                ROUND(AVG(hgt_yi + sgt_yi),2) AS avgNetInflow,

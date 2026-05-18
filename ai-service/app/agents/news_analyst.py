@@ -35,7 +35,8 @@ class NewsAnalyst(BaseAgent):
         logger.info(f"[新闻分析师] 开始分析 {stock_code}")
 
         # 调用后端新闻 API
-        news_data = await self._fetch_backend_data(f"/api/news/{stock_code}")
+        # 修复: settings.backend_api_url 已包含 /api，endpoint 不再重复加 /api/
+        news_data = await self._fetch_backend_data(f"/news/{stock_code}")
 
         if not news_data:
             news_data = self._mock_news_data(stock_code)
@@ -82,7 +83,7 @@ class NewsAnalyst(BaseAgent):
             "stock_code": code,
             "articles": [
                 {
-                    "title": "行业利好政策出台，XXX板块迎发展机遇",
+                    "title": "行业利好政策出台，科技板块迎发展机遇",
                     "source": "证券时报",
                     "time": "2026-05-13 09:30",
                     "sentiment": "正面",

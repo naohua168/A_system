@@ -3,31 +3,21 @@
 JOIN stock_basic 计算各行业涨跌幅均值及周/月排名
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        sector_ranking.py
-
-    支持批量回溯历史:
+    spark-submit --master local[2] sector_ranking.py
     spark-submit ... sector_ranking.py --days 5
 """
 
 import argparse
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("SectorRanking") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def compute_sector_daily_ranking(spark, trade_date=None):
@@ -86,11 +76,7 @@ def compute_sector_weekly_period(spark, start_date, end_date):
 
 def save_results(df, label="latest"):
     """结果写入 HDFS Parquet"""
-    output_path = f"/user/hadoop/stock_data/analysis/spark/sector_ranking/{label}/"
-    df.write.mode("overwrite") \
-        .option("compression", "snappy") \
-        .parquet(output_path)
-    print(f"已保存到 {output_path}")
+    save_dataframe(df, f"{OUTPUT_PATHS['sector_ranking']}/{label}/")
 
 
 def main():
@@ -100,7 +86,7 @@ def main():
                         help="回溯天数，用于计算累计排行，默认 5 天")
     args = parser.parse_args()
 
-    spark = create_spark_with_hive()
+    spark = create_spark_session("SectorRanking")
     try:
         spark.sql("USE stock_analysis")
         print("开始计算行业排行...")

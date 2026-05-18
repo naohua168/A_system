@@ -34,10 +34,14 @@ class SentimentAnalyst(BaseAgent):
         stock_code = context.get("stock_code", "")
         logger.info(f"[情绪分析师] 开始分析 {stock_code}")
 
-        # 获取题材数据
-        industry_data = await self._fetch_backend_data(f"/api/signal/industry")
-        dragon_tiger = await self._fetch_backend_data(f"/api/signal/dragon-tiger/{stock_code}")
-        northbound = await self._fetch_backend_data(f"/api/signal/northbound")
+        # 修复: 并行发起3个后端调用，总耗时降至最慢的一个; 同时修复双 /api/ 路径
+        import asyncio
+        industry_task = self._fetch_backend_data(f"/signal/industry")
+        dragon_tiger_task = self._fetch_backend_data(f"/signal/dragon-tiger/{stock_code}")
+        northbound_task = self._fetch_backend_data(f"/signal/northbound")
+        industry_data, dragon_tiger, northbound = await asyncio.gather(
+            industry_task, dragon_tiger_task, northbound_task
+        )
 
         if not any([industry_data, dragon_tiger, northbound]):
             industry_data = self._mock_industry_data()

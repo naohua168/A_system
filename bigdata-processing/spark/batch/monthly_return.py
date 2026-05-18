@@ -3,31 +3,21 @@
 使用 FIRST_VALUE / LAST_VALUE 窗口函数计算各月收益率
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        monthly_return.py
-
-    支持指定年月:
+    spark-submit --master local[2] monthly_return.py
     spark-submit ... monthly_return.py --year 2026 --month 5
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("MonthlyReturn") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def compute_monthly_return(spark, year=None, month=None):
@@ -91,16 +81,13 @@ def compute_monthly_return(spark, year=None, month=None):
 def save_results(df, year=None, month=None):
     """结果写入 HDFS Parquet"""
     if year and month:
-        path_suffix = f"monthly_return/year={year}/month={month}"
+        path_suffix = f"year={year}/month={month}"
     elif year:
-        path_suffix = f"monthly_return/year={year}"
+        path_suffix = f"year={year}"
     else:
-        path_suffix = "monthly_return/all"
-    output_path = f"/user/hadoop/stock_data/analysis/spark/{path_suffix}"
-    df.write.mode("overwrite") \
-        .option("compression", "snappy") \
-        .parquet(output_path)
-    print(f"已保存到 {output_path}")
+        path_suffix = "all"
+    output_path = f"{OUTPUT_PATHS['monthly_return']}/{path_suffix}"
+    save_dataframe(df, output_path)
 
 
 def main():
@@ -109,7 +96,7 @@ def main():
     parser.add_argument("--month", type=int, default=None, help="指定月份，如 5")
     args = parser.parse_args()
 
-    spark = create_spark_with_hive()
+    spark = create_spark_session("MonthlyReturn")
     try:
         spark.sql("USE stock_analysis")
         print("开始计算月收益率...")

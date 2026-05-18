@@ -1,0 +1,69 @@
+# Prometheus 配置 — 基金股票智能分析系统
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alertmanager（暂不配置）
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# 规则文件（支持告警规则）
+rule_files: []
+
+# 采集目标
+scrape_configs:
+  # Prometheus 自身指标
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: "prometheus"
+          tier: "monitoring"
+
+  # Spring Boot 后端（actuator 端点）
+  - job_name: "stock-backend"
+    metrics_path: "/actuator/prometheus"
+    static_configs:
+      - targets: ["backend:8082"]
+        labels:
+          service: "backend"
+          tier: "application"
+    # 如果 actuator 未启用，设为可选
+    # scheme: http
+
+  # AI 服务（FastAPI metrics 端点）
+  - job_name: "ai-service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["ai-service:8000"]
+        labels:
+          service: "ai-service"
+          tier: "application"
+
+  # Redis
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis:6379"]
+        labels:
+          service: "redis"
+          tier: "storage"
+
+  # MySQL
+  - job_name: "mysql"
+    static_configs:
+      - targets: ["mysql:3306"]
+        labels:
+          service: "mysql"
+          tier: "storage"
+
+  # Spark
+  - job_name: "spark-master"
+    metrics_path: "/metrics/master"
+    static_configs:
+      - targets: ["spark-master:8080"]
+        labels:
+          service: "spark-master"
+          tier: "computation"

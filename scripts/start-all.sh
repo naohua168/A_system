@@ -1,50 +1,92 @@
 #!/bin/bash
 # ============================================================
-# 一键启动所有服务 (Mac/Linux)
+# 一键启动所有服务 (优化版 — 双层架构)
 # ============================================================
+# 先启动大数据层（HDFS/Hive/Spark/MySQL/Redis）
+# 可选: 使用 docker-compose.collector.yml 启动采集层
+#
+# 用法:
+#   ./start-all.sh              # 仅大数据层
+#   ./start-all.sh --full       # 全量（含采集层）
+#   ./start-all.sh --collector-only  # 仅采集层
+#   ./start-all.sh --bigdata-only    # 仅大数据层
+# ============================================================
+
 set -e
-
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DOCKER_DIR="$ROOT_DIR/docker"
 
-echo "🚀 启动基金股票智能分析系统..."
-echo "================================"
+MODE="${1:-bigdata-only}"
 
-# 1. 启动 Docker 大数据环境
+echo "============================================================"
+echo "🚀 基金股票智能分析系统 — 分层部署"
+echo "============================================================"
+
+start_collector() {
+    echo ""
+    echo "📡 [采集层] 启动数据采集服务..."
+    cd "$DOCKER_DIR"
+    docker compose -f docker-compose.collector.yml up -d
+    echo "   ✅ Zookeeper + Kafka + DataCollector"
+}
+
+start_bigdata() {
+    echo ""
+    echo "📦 [大数据层] 启动大数据服务..."
+    cd "$DOCKER_DIR"
+
+    # 尝试叠加 prod.yml（如果存在）
+    COMPOSE_FILES="-f docker-compose.yml"
+    if [ -f docker-compose.prod.yml ]; then
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.prod.yml"
+        echo "   📋 叠加生产配置"
+    fi
+
+    docker compose $COMPOSE_FILES up -d
+    echo "   ✅ HDFS + YARN + Hive + Spark + MySQL + Redis + App"
+}
+
+case "$MODE" in
+    --collector-only|collector)
+        start_collector
+        ;;
+    --bigdata-only|bigdata)
+        start_bigdata
+        ;;
+    --full|full|--all|all)
+        # 采集层先启动（Kafka需先就绪，大数据层Spark消费）
+        start_collector
+        echo ""
+        echo "⏳ 等待 Kafka 就绪..."
+        sleep 10
+        start_bigdata
+        ;;
+    *)
+        echo "用法: $0 [--full|--collector-only|--bigdata-only]"
+        echo "  默认: --bigdata-only"
+        exit 1
+        ;;
+esac
+
 echo ""
-echo "📦 [1/4] 启动 Docker 环境..."
-cd "$ROOT_DIR/docker"
-docker-compose up -d 2>/dev/null || docker compose up -d
-echo "   ✅ Docker 启动中 (hadoop/hive/mysql)"
-
-# 2. 启动后端
+echo "============================================================"
+echo "✅ 部署完成!"
+echo "============================================================"
 echo ""
-echo "🔙 [2/4] 启动 Spring Boot 后端..."
-cd "$ROOT_DIR/backend"
-mvn spring-boot:run -q &
-BACKEND_PID=$!
-echo "   ✅ 后端启动中 (PID: $BACKEND_PID)"
-
-# 3. 启动前端
+echo "Web UI:"
+echo "  前端:       http://localhost:80"
+echo "  HDFS:       http://localhost:9870"
+echo "  YARN:       http://localhost:8088"
+echo "  Hive:       http://localhost:10002"
+echo "  Spark:      http://localhost:8080"
 echo ""
-echo "🎨 [3/4] 启动 Vue 前端..."
-cd "$ROOT_DIR/frontend"
-npm run dev &
-FRONTEND_PID=$!
-echo "   ✅ 前端启动中 (PID: $FRONTEND_PID)"
-
-# 4. 验证
+echo "服务端口:"
+echo "  后端 API:   http://localhost:8082"
+echo "  AI 服务:    http://localhost:8000"
+echo "  MySQL:      localhost:3306"
+echo "  Redis:      localhost:6379"
 echo ""
-echo "⏳ [4/4] 等待服务就绪..."
-sleep 10
-echo ""
-echo "================================"
-echo "✅ 系统启动完成!"
-echo "   前端: http://localhost:5173"
-echo "   后端: http://localhost:8080"
-echo "   HDFS: http://localhost:9870"
-echo "   Hive: jdbc:hive2://localhost:10000"
-echo "================================"
-
-# 保存 PID 以便 stop-all 使用
-echo "$BACKEND_PID" > /tmp/stock-backend.pid
-echo "$FRONTEND_PID" > /tmp/stock-frontend.pid
+echo "数据流:"
+echo "  采集层 → Kafka(collector-kafka:29092) → 大数据层(Streaming)"
+echo "  采集层 → 共享卷(/data/collector_output) → HDFS"
+echo "============================================================"

@@ -8,8 +8,8 @@ spring:
     active: dev
   datasource:
     url: jdbc:mysql://localhost:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 123456
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
   redis:
     host: localhost

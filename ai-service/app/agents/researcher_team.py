@@ -58,25 +58,47 @@ class ResearcherTeam(BaseAgent):
 
         debate_log = []
         for i in range(rounds):
-            bullish_arg = await self.bullish.chat([
+            # 修复: 并行发起看涨和看跌分析，每轮辩论时间减半
+            bullish_task = self.bullish.chat([
                 {"role": "user", "content": f"第{i+1}轮辩论，为{stock_code}做看涨分析"}
             ])
-            bearish_arg = await self.bearish.chat([
+            bearish_task = self.bearish.chat([
                 {"role": "user", "content": f"第{i+1}轮辩论，回应看涨观点，做看跌分析"}
             ])
+            results = await asyncio.gather(bullish_task, bearish_task, return_exceptions=True)
+            bullish_arg = self._format_debate_result(results[0], "bullish")
+            bearish_arg = self._format_debate_result(results[1], "bearish")
             debate_log.append({"round": i + 1, "bullish": bullish_arg, "bearish": bearish_arg})
 
         conclusion = await self._synthesize(debate_log, stock_code)
         return {"debate_rounds": rounds, "debate_log": debate_log, "conclusion": conclusion}
 
     async def _synthesize(self, debate_log: list, stock_code: str) -> str:
+        """修复: 基于真实辩论内容生成结论，而非返回硬编码字符串"""
+        if not debate_log:
+            return f"**{stock_code}**: 辩论未产生有效内容。"
+
+        # 提取最后一轮辩论的关键论点
+        last_round = debate_log[-1]
+        bullish_short = last_round.get("bullish", "")[:200]
+        bearish_short = last_round.get("bearish", "")[:200]
+
         return (
-            f"**{stock_code} 辩论结论**：\n\n"
-            "经过多轮辩论，综合来看：\n"
-            "看涨方：短期均线多头，有资金支撑\n"
-            "看跌方：中期压力位，估值偏高\n\n"
-            "**综合建议**：谨慎看多。可小仓位参与，严格设置止损。"
+            f"**{stock_code} 辩论结论**（{len(debate_log)}轮）\n\n"
+            f"看涨要点: {bullish_short}\n\n"
+            f"看跌要点: {bearish_short}\n\n"
+            "**综合建议**：请结合技术面和基本面综合判断。"
         )
+
+    @staticmethod
+    def _format_debate_result(result, role: str) -> str:
+        """格式化辩论结果，处理异常返回"""
+        if isinstance(result, BaseException):
+            logger.warning(f"{role} 辩论发生异常: {result}")
+            return f"{role}论点获取失败" if role == "bullish" else f"{role}论点获取失败"
+        if isinstance(result, str):
+            return result
+        return str(result) if result else f"{role}未提供论点"
 
     def _mock_reply(self, messages) -> str:
         return "模拟辩论完成，综合建议：谨慎看多，设好止损位。"

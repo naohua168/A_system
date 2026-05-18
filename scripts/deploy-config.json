@@ -1,0 +1,73 @@
+{
+    "project_name": "A_system",
+    "project_root": "f:/bs/A_system",
+    "docker_compose_dir": "f:/bs/A_system/docker",
+    "allowed_deploy_modes": ["full", "collector-only", "bigdata-only", "app-only", "infra-only", "rollback"],
+    "layers": {
+        "collector": {
+            "name": "数据采集层",
+            "network": "collector-net",
+            "compose_file": "docker-compose.collector.yml",
+            "order": ["zookeeper", "kafka", "data-collector"],
+            "health_timeout_sec": 120
+        },
+        "bigdata": {
+            "name": "大数据层",
+            "network": "bigdata-net",
+            "compose_file": "docker-compose.yml",
+            "tiers": {
+                "storage": {
+                    "name": "基础设施存储",
+                    "order": ["namenode", "datanode1", "datanode2", "mysql", "redis"]
+                },
+                "computation": {
+                    "name": "大数据计算引擎",
+                    "order": ["resourcemanager", "nodemanager1", "hive-server", "spark-master", "spark-worker"]
+                },
+                "application": {
+                    "name": "应用服务层",
+                    "order": ["ai-service", "backend", "frontend"],
+                    "dependencies": {
+                        "ai-service": ["redis", "mysql"],
+                        "backend": ["mysql", "redis", "ai-service"],
+                        "frontend": ["backend"]
+                    }
+                }
+            },
+            "health_timeout_sec": 180
+        }
+    },
+    "database": {
+        "migration_sql_dirs": [
+            "docker/mysql",
+            "data-collector/sql"
+        ],
+        "migration_file_pattern": "*.sql",
+        "migration_tracking_table": "schema_migrations",
+        "max_retries": 3
+    },
+    "health_checks": {
+        "endpoints": {
+            "frontend": "http://localhost:80",
+            "backend": "http://localhost:8082/api/stock/list?page=1&size=1",
+            "ai-service": "http://localhost:8000/health",
+            "mysql": "mysqladmin ping -h localhost -u root",
+            "redis": "redis-cli ping",
+            "namenode": "http://localhost:9870/",
+            "datanode1": "http://localhost:9864/",
+            "resourcemanager": "http://localhost:8088/",
+            "spark-master": "http://localhost:8080/",
+            "hive-server": "http://localhost:10002/",
+            "kafka": "kafka-topics --bootstrap-server localhost:9092 --list"
+        }
+    },
+    "rollback": {
+        "keep_previous_images": 3,
+        "image_backup_dir": "f:/bs/A_system/.deploy/backups",
+        "state_file": "f:/bs/A_system/.deploy/last_deploy.json"
+    },
+    "notifications": {
+        "enabled": false,
+        "type": "console"
+    }
+}

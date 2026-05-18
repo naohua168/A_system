@@ -8,12 +8,16 @@ import com.stock.mapper.MarketIndexMapper;
 import com.stock.service.IndexService;
 import org.springframework.stereotype.Service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 public class IndexServiceImpl implements IndexService {
+
+    private static final Logger log = LoggerFactory.getLogger(IndexServiceImpl.class);
 
     private final MarketIndexMapper marketIndexMapper;
     private final IndexDailyMapper indexDailyMapper;
@@ -25,11 +29,13 @@ public class IndexServiceImpl implements IndexService {
 
     @Override
     public List<Map<String, Object>> getIndexList() {
-        // 先试试关联查询带最新行情
+        // 先试试关联查询带最新行情（失败时静默回退到手动关联）
         try {
             List<Map<String, Object>> ranking = indexDailyMapper.selectIndexRanking();
             if (ranking != null && !ranking.isEmpty()) return ranking;
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("索引关联查询失败，回退到手动关联: {}", e.getMessage());
+        }
 
         // 回退：手动关联
         List<MarketIndex> indices = marketIndexMapper.selectList(null);

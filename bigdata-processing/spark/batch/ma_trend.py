@@ -3,31 +3,21 @@
 使用 AVG() OVER 滑动窗口计算 MA5/10/20/60，判断金叉/死叉
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        ma_trend.py
-
-    支持指定日期范围:
+    spark-submit --master local[2] ma_trend.py
     spark-submit ... ma_trend.py --start-date 2026-01-01 --end-date 2026-05-08
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("MATrend") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, count_and_show, OUTPUT_PATHS
 
 
 def compute_ma_trend(spark, start_date=None, end_date=None):
@@ -145,10 +135,7 @@ def compute_ma_trend(spark, start_date=None, end_date=None):
 
 def save_results(df):
     """结果写入 HDFS Parquet"""
-    df.write.mode("overwrite") \
-        .option("compression", "snappy") \
-        .parquet("/user/hadoop/stock_data/analysis/spark/ma_trend/")
-    print("已保存到 HDFS")
+    save_dataframe(df, OUTPUT_PATHS["ma_trend"])
 
 
 def main():
@@ -157,7 +144,7 @@ def main():
     parser.add_argument("--end-date", default=None, help="结束日期，如 2026-05-08")
     args = parser.parse_args()
 
-    spark = create_spark_with_hive()
+    spark = create_spark_session("MATrend")
     try:
         spark.sql("USE stock_analysis")
         print("开始计算均线趋势...")

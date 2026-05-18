@@ -30,15 +30,17 @@
 
 | 层 | 技术 | 版本 |
 |:---|:-----|:----:|
-| **数据采集** | Python HTTP/TCP 直连 | 3.11 |
+| **数据采集** | Python HTTP/TCP 直连 (容器化) | 3.11 |
 | **大数据存储** | HDFS / Hive / MySQL 8.0 | Hadoop 3.2.1 / Hive 2.3.2 |
-| **大数据计算** | PySpark 3.x / MapReduce | Spark 3.5.0 |
+| **大数据计算** | PySpark 3.x / MapReduce (共享配置模块) | Spark 3.5.0 |
 | **算法分析** | Python 原生实现 | 3.11 |
 | **后端 API** | Java / Spring Boot 3 / MyBatis-Plus | Java 17 / SB 2.7.18 |
 | **前端** | Vue 3 / TypeScript / ECharts / Element Plus | Vue 3.4 |
 | **AI 服务** | Python FastAPI / DeepSeek / 多智能体架构 | FastAPI |
-| **部署** | Docker Compose | 20+ |
+| **部署** | Docker Compose (双层隔离架构) | 20+ |
 | **缓存** | Redis | 7-alpine |
+| **消息队列** | Kafka + Zookeeper (跨层桥接) | 7.5.0 |
+| **监控** | Prometheus + Grafana | 2.51 / 10.4 |
 
 ---
 
@@ -53,53 +55,63 @@
                              │ HTTP :80
                              ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│               Nginx 反向代理 (端口 80)                                   │
-│                                                                         │
-│  / ────────→ Vue 3 前端静态资源 (dist/)                                 │
-│  /api/ ────→ 后端 Spring Boot :8082                                     │
-│  /ai/ ─────→ AI 服务 FastAPI :8000                                      │
+│  Layer 2: 大数据层 (bigdata-net — 172.19.0.x)                           │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │  Nginx 反向代理 (端口 80)                                            │ │
+│ │  / → Vue 3 SPA  /api/ → Backend :8082  /ai/ → AI Service :8000     │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+│        │                            │                           │      │
+│        ▼                            ▼                           ▼      │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │  应用服务层 (Tier 3)                                                  │ │
+│ │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │ │
+│ │  │  Vue 3 前端      │  │ Spring Boot 后端 │  │ FastAPI AI 服务  │  │ │
+│ │  │  (Nginx, :80)    │  │ (Java 17, :8082) │  │ (Python, :8000)  │  │ │
+│ │  └──────────────────┘  └────────┬─────────┘  └──────────────────┘  │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                    │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │  基础设施存储 (Tier 1)                                                │ │
+│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │ │
+│ │  │  MySQL 8.0    │  │  Redis 7     │  │  HDFS        │              │ │
+│ │  │  (3306)       │  │  (6379)      │  │  NameNode    │              │ │
+│ │  │  16 张业务表   │  │  TTL=30min   │  │  + DataNode×2│              │ │
+│ │  └──────┬───────┘  └──────────────┘  └──────┬───────┘              │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+│                        │                           │                    │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │  大数据计算引擎 (Tier 2)                                              │ │
+│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │ │
+│ │  │  YARN (RM)   │  │  Hive 2.3.2 │  │  Spark 3.5.0 (Master    │  │ │
+│ │  │  (8088)      │  │  (10000)    │  │    + Worker, :8080)      │  │ │
+│ │  └──────────────┘  └──────┬───────┘  │  7 Batch + 1 Streaming  │  │ │
+│ │                           │           │  共享 spark_config 模块  │  │ │
+│ │                           │           └──────────────────────────┘  │ │
+│ │                           ▼                                         │ │
+│ │  ┌─ ORC 格式优化表 (比 TEXTFILE 快 5~15x) + 5 UDF (新增) ────┐   │ │
+│ │  │  7 DDL + 8 DML + 5 UDF (extract_code/classify_change...)   │   │ │
+│ │  └─────────────────────────────────────────────────────────────┘   │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
-        │                            │                           │
-        ▼                            ▼                           ▼
-┌──────────────────┐   ┌──────────────────────┐   ┌────────────────────────┐
-│  Vue 3 前端      │   │ Spring Boot 后端     │   │ FastAPI AI 服务        │
-│                  │   │                      │   │                        │
-│ - 18 页面/视图   │   │ 7 Controller         │   │ 7 个 AI Agent          │
-│ - ECharts 图表   │   │ 14 Service           │   │ ├─ FundamentalsAnalyst │
-│ - Pinia 状态管理 │   │ 14 Mapper            │   │ ├─ TechnicalAnalyst    │
-│ - Element Plus   │   │ 16 Entity            │   │ ├─ SentimentAnalyst    │
-│ - 5 大功能模块   │   │ 3 Security (JWT)     │   │ ├─ NewsAnalyst        │
-│                  │   │ WebSocket 支持        │   │ ├─ ResearcherTeam     │
-│                  │   │ Swagger API 文档      │   │ ├─ TraderAgent       │
-│                  │   │ Redis 缓存            │   │ └─ RiskManager       │
-└──────────────────┘   └──────────┬───────────┘   └───────────┬────────────┘
-                                  │                           │
-                                  ▼                           ▼
-                        ┌──────────────────┐       ┌──────────────────────┐
-                        │   MySQL 8.0      │       │ DeepSeek / 模拟模式  │
-                        │  (16 张业务表)   │       │ (API Key 可选)       │
-                        │                  │       └──────────────────────┘
-                        │  Redis 7-alpine  │
-                        │  (缓存 30 分钟)  │
-                        └──────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────┐
-│                   大数据处理层 (Docker 容器)                              │
-│                                                                         │
-│  ┌─────────────────────┐   ┌─────────────────────┐                     │
-│  │  HDFS 分布式文件系统  │   │  YARN 资源调度       │                     │
-│  │  (NameNode:9870)    │   │  (RM:8088)          │                     │
-│  │  DataNode × 2       │   │  NodeManager        │                     │
-│  └────────┬────────────┘   └─────────────────────┘                     │
-│           │                                                             │
-│           ▼                                                             │
-│  ┌─────────────────────┐   ┌─────────────────────┐                     │
-│  │  Hive 数据仓库       │   │  Spark 计算引擎      │                     │
-│  │  5 外部表 + 1 分区表 │   │  7 Batch Job        │                     │
-│  │  4 信号表 + 3 预计算  │   │  1 Streaming Job    │                     │
-│  │  2 系统表             │   │  MapReduce (遗留)   │                     │
-│  └─────────────────────┘   └─────────────────────┘                     │
+        ▲                              ▲
+        │ Kafka :39092 (双网卡桥接)     │ 共享卷 :ro (CSV 批量导入)
+        │                              │
+┌───────┴──────────────────────────────┴─────────────────────────────────┐
+│  Layer 1: 数据采集层 (collector-net — 172.20.0.x, 独立网络隔离)        │
+│                                                                        │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
+│  │  Zookeeper    │  │  Kafka 7.5.0    │  │  data-collector          │  │
+│  │  (2181)       │──│  (29092/39092)  │◀─│  (Python 容器化)          │  │
+│  │               │  │  3分区, 7天保留  │  │  6 数据源工厂模式        │  │
+│  └──────────────┘  └──────────────────┘  │  熔断器 + 限流 + 重试    │  │
+│                                           └──────────┬───────────────┘  │
+│                                                      │                  │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  外部数据源: 腾讯财经 / 同花顺 / 百度股市通 / 通达信TCP / akshare  │   │
+│  │  优先级: mootdx(10) > tencent(9) > ths(8) > baidu(7) > akshare(6)│   │
+│  └──────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
+```
                               ▲
                               │
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -124,16 +136,25 @@
 
 ### 2.2 层次划分
 
-系统共分为 **6 层**，自底向上为：
+系统共分为 **6 个逻辑层** + **2 个 Docker 部署层**：
+
+#### Docker 部署分层
+
+| 部署层 | Docker Compose | 网络 (子网) | 包含逻辑层 |
+|:-------|:---------------|:------------|:-----------|
+| **L1 数据采集层** | `docker-compose.collector.yml` | `collector-net` (172.20.0.x) | L1 数据采集 |
+| **L2 大数据层** | `docker-compose.yml` | `bigdata-net` (172.19.0.x) | L2~L6 (大数据处理 + 算法 + 后端 + AI + 前端) |
+
+#### 逻辑层次
 
 | 层次 | 模块路径 | 职责 |
 |:-----|:---------|:-----|
-| **L1 数据采集层** | `data-collector/` | 从 6 个外部数据源采集实时行情、K 线、资金流向等 |
-| **L2 大数据处理层** | `bigdata-processing/` | Hive SQL 分析 + Spark 批处理/流计算 + MapReduce |
-| **L3 算法分析层** | `analysis-algorithms/` | 技术指标、缠论、量化策略、回测引擎 |
-| **L4 后端 API 层** | `backend/` | Spring Boot REST API + JWT 认证 + Redis 缓存 |
-| **L5 AI 服务层** | `ai-service/` | 多智能体 AI 对话 + DeepSeek/模拟降级 |
-| **L6 前端展示层** | `frontend/` | Vue 3 SPA + ECharts 可视化 + Element Plus UI |
+| **L1 数据采集** | `data-collector/` | 从 6 个外部数据源采集实时行情、K 线、资金流向等 |
+| **L2 大数据处理** | `bigdata-processing/` | Hive SQL 分析 + Spark 批处理/流计算 + MapReduce (spark_config 共享模块) |
+| **L3 算法分析** | `analysis-algorithms/` | 技术指标、缠论、量化策略、回测引擎 |
+| **L4 后端 API** | `backend/` | Spring Boot REST API + JWT 认证 + Redis 缓存 |
+| **L5 AI 服务** | `ai-service/` | 多智能体 AI 对话 + DeepSeek/模拟降级 |
+| **L6 前端展示** | `frontend/` | Vue 3 SPA + ECharts 可视化 + Element Plus UI |
 
 ---
 
@@ -257,6 +278,7 @@ L2: 大数据处理层
 │    ├─ sector_ranking.py         → 行业涨跌排行                 │
 │    ├─ filter_stocks.py          → PE/PB/ROE 筛选              │
 │    └─ trend_judge.py            → 趋势判断                     │
+│    └─ stock_predictor.py       → MLlib 股票预测原型 (新增)    │
 │                                                              │
 │  支持 3 种模式: daily / incremental / rebuild                 │
 └──────────────────────────────────────────────────────────────┘
@@ -404,23 +426,50 @@ Spring Boot StockController.list()
 [交易日晚间 18:00]
        │
        ▼
-L1: 数据采集
-  python market_collect.py --all --sync
+Layer 1 (collector-net): 数据采集
+  docker compose -f docker-compose.collector.yml up -d
        │
-       ├── CSV → data/raw/ (本地存档)
-       └── MySQL: stock, stock_daily, signal_hot_reason, ...
+       ├── Kafka (实时流) → Spark Streaming (大数据层消费)
+       └── 共享卷 stock-collector-data (CSV 批量)
               │
-              ▼
-L2: 大数据处理
-  python run_batch_pipeline.py --mode daily
+              ▼  ingest_collector_data.sh 或 共享卷 :ro 挂入 NameNode
+              │
+Layer 2 (bigdata-net): 大数据处理
+  python run_batch_pipeline.py --mode daily [--parallel] [--skip-hive]
        │
-       ├── Hive SQL (6个分析SQL)
-       │     └── 写入 Hive 预计算结果表
-       ├── Spark batch (7个Job)
-       │     └── 写入 Hive 预计算结果表
-       └── MapReduce (可选，遗留)
-              │
-              ▼
+       ├── Phase 0: 环境检查 (HDFS/Hive 可用性)
+       │
+       ├── Phase 1: Hive DML (6 个 SQL, 按依赖顺序执行)
+       │     ├── analysis_daily.sql          → 日均价统计
+       │     ├── analysis_correlation.sql    → Pearson 相关系数
+       │     ├── analysis_change.sql         → 涨跌幅统计排行
+       │     ├── analysis_year_comparison.sql→ 年同比分析
+       │     ├── analysis_technical.sql      → MA/RSI 技术指标
+       │     └── analysis_signal_fusion.sql  → 信号融合分析
+       │
+       ├── Phase 2: Spark 批处理 (7 个 Job, 可并行执行)
+       │     ├── ma_trend.py      (共享 spark_config 模块)
+       │     ├── trend_judge.py   ↓ 消除 7 处重复代码
+       │     ├── filter_stocks.py → 统一配置管理
+       │     ├── correlation.py   → 统一 HDFS 输出路径
+       │     ├── sector_ranking.py→ AQE 自适应优化
+       │     ├── monthly_return.py→ Parquet Snappy 压缩
+       │     └── yearly_return.py
+       │
+       ├── Phase 3: 数据质量检查 (QC 门禁)
+       │     ├── 行数验证 (对比源表)
+       │     ├── 空值率检查
+       │     └── HDFS 输出目录验证
+       │
+       ├── ORC 格式 Hive 表 (比 TEXTFILE 快 5~15x)
+       │     └── migrate_hive_to_orc.py 一键迁移脚本
+       │
+       └── HDFS 备份管道 (v2)
+             ├── 全量备份 / 增量备份
+             ├── 并行导出 + 自动清理 (30 天保留)
+             └── 备份清单 JSON + 校验对比
+                    │
+                    ▼
 L4: 后端查询预计算结果
   AnalysisController → AnalysisService → AnalysisResultMapper
        │
@@ -687,63 +736,103 @@ UserController.login()
 ### 7.1 容器部署拓扑
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Docker Host                                │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │              bigdata-net (bridge network)                      │  │
-│  │                                                                 │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐                │  │
-│  │  │ Frontend   │  │  Backend   │  │ AI Service │                │  │
-│  │  │ (Nginx)    │←→│ (Spring)   │←→│ (FastAPI)  │                │  │
-│  │  │ :80→80     │  │ :8082→8082 │  │ :8000→8000 │                │  │
-│  │  └────────────┘  └─────┬──────┘  └────────────┘                │  │
-│  │                        │                                        │  │
-│  │  ┌────────────┐  ┌─────┴──────┐  ┌────────────┐                │  │
-│  │  │   MySQL    │←→│   Redis   │  │            │                │  │
-│  │  │ :3306→3307 │  │ :6379→6379│  │            │                │  │
-│  │  └────────────┘  └────────────┘  │            │                │  │
-│  │                                  │   HDFS     │                │  │
-│  │  ┌────────────┐  ┌────────────┐  │  + Hive    │                │  │
-│  │  │   Spark    │←→│   YARN     │  │  + Spark   │                │  │
-│  │  │ Master:8080│  │ RM:8088    │  │            │                │  │
-│  │  │ Worker:8081│  │ NM: -      │  │            │                │  │
-│  │  └────────────┘  └────────────┘  └────────────┘                │  │
-│  │                                                                 │  │
-│  │  ┌────────────────────────────────────────────────────────┐     │  │
-│  │  │  DataNode1 (9864)    DataNode2    NameNode (9870)       │     │  │
-│  │  │  ResourceManager     NodeManager  Hive Server2 (10000)  │     │  │
-│  │  └────────────────────────────────────────────────────────┘     │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  宿主机端口映射:                                                      │
-│    80   ← Frontend (Nginx)                                           │
-│    9870 ← HDFS NameNode WebUI                                        │
-│    8088 ← YARN ResourceManager WebUI                                 │
-│    8080 ← Spark Master WebUI                                         │
-│    8081 ← Spark Worker WebUI                                         │
-│    10002← Hive WebUI                                                 │
-│    3307 ← MySQL (避开本地 MySQL 3306 端口)                            │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          Docker Host                                     │
+│                                                                          │
+│  ┌─ Layer 1: 数据采集层 (collector-net, 172.20.0.x) ──────────────────┐ │
+│  │                                                                      │ │
+│  │  ┌──────────────┐   ┌────────────────┐   ┌────────────────────────┐ │ │
+│  │  │ collector-   │   │ collector-     │   │ data-collector         │ │ │
+│  │  │ zookeeper    │──▶│ kafka          │◀──│ (Python 多源采集器)     │ │ │
+│  │  │ (2181)       │   │ :9092(宿主机)   │   │ 6 数据源工厂模式       │ │ │
+│  │  │              │   │ 29092(采集层内)  │   │ 熔断器+限流+重试       │ │ │
+│  │  └──────────────┘   │ 39092(大数据层)  │   └──────────┬─────────────┘ │ │
+│  │                     └────────────────┘              │ 共享卷          │ │
+│  │                       │ 双网卡桥接                    ▼                │ │
+│  └───────────────────────┼────────────────────────────────────────────┘  │
+│                          │ collector-data (stock-collector-data 卷)      │
+│                          ▼                                               │
+│  ┌─ Layer 2: 大数据层 (bigdata-net, 172.19.0.x) ──────────────────────┐ │
+│  │                                                                      │ │
+│  │  ┌─ Tier 3: 应用服务 ────────────────────────────────────────────┐  │ │
+│  │  │  ┌────────────┐ ┌──────────────┐ ┌────────────┐              │  │ │
+│  │  │  │ Frontend    │ │   Backend    │ │ AI Service │              │  │ │
+│  │  │  │ (Nginx :80) │ │ (Spring     │ │ (FastAPI   │              │  │ │
+│  │  │  │             │ │  :8082)     │ │  :8000)    │              │  │ │
+│  │  │  └────────────┘ └──────┬───────┘ └────────────┘              │  │ │
+│  │  └────────────────────────┼─────────────────────────────────────┘  │ │
+│  │                           │                                         │ │
+│  │  ┌─ Tier 1: 基础设施存储 ─┼──────────────────────────────────────┐  │ │
+│  │  │  ┌────────────┐ ┌──────┴───────┐ ┌──────────────────────┐    │  │ │
+│  │  │  │ MySQL 8.0   │ │   Redis 7    │ │ HDFS:                │    │  │ │
+│  │  │  │ (3306)      │ │   (6379)     │ │  NameNode(9870)      │    │  │ │
+│  │  │  │ 16 张业务表  │ │   TTL=30min  │ │  DataNode1(9864)    │    │  │ │
+│  │  │  └────────────┘ └──────────────┘ │  DataNode2           │    │  │ │
+│  │  │                                   └──────────────────────┘    │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  │                                                                     │ │
+│  │  ┌─ Tier 2: 大数据计算引擎 ──────────────────────────────────────┐  │ │
+│  │  │  ┌────────────┐ ┌──────────────┐ ┌────────────────────────┐  │  │ │
+│  │  │  │ YARN       │ │ Hive Server2 │ │ Spark Master(:8080)   │  │  │ │
+│  │  │  │ RM(:8088)  │ │ (10000/10002)│ │ Spark Worker(:8081)   │  │  │ │
+│  │  │  │ NM         │ │ ORC格式优化表 │ │ 共享 spark_config 模块 │  │  │ │
+│  │  │  └────────────┘ └──────────────┘ └────────────────────────┘  │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  宿主机端口映射:                                                          │
+│    80    ← Frontend (Nginx)                                               │
+│    9870  ← HDFS NameNode WebUI                                            │
+│    8088  ← YARN RM WebUI                                                  │
+│    8080  ← Spark Master WebUI                                             │
+│    8081  ← Spark Worker WebUI                                             │
+│    10002 ← Hive WebUI                                                     │
+│    3306  ← MySQL                                                          │
+│    6379  ← Redis                                                          │
+│    9092  ← Kafka (采集层, 仅调试用)                                       │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.2 容器清单 (13 个容器)
+#### 监控服务
 
-| 服务 | 容器名 | 镜像/Dockerfile | CPU/Mem | 宿主机端口 | 健康检查 |
-|:-----|:-------|:----------------|:--------|:----------:|:--------:|
-| **Frontend** | `frontend` | 自构建 (Nginx) | 1C/512M | 80 | ✅ |
-| **Backend** | `backend` | 自构建 (Java 17) | 2C/1G | 8082 | ✅ |
-| **AI Service** | `ai-service` | 自构建 (Python 3.11) | 1C/512M | 8000 | ✅ |
-| **MySQL** | `mysql` | `mysql:8.0` | 2C/2G | 3307→3306 | ✅ |
-| **Redis** | `redis` | `redis:7-alpine` | 1C/256M | 6379 | ✅ |
-| **NameNode** | `namenode` | `bde2020/hadoop-namenode:2.0.0` | 2C/2G | 9870 | ✅ |
-| **DataNode1** | `datanode1` | `bde2020/hadoop-datanode:2.0.0` | 2C/2G | 9864 | ✅ |
-| **DataNode2** | `datanode2` | `bde2020/hadoop-datanode:2.0.0` | 2C/2G | - | ✅ |
-| **ResourceManager** | `resourcemanager` | `bde2020/hadoop-resourcemanager:2.0.0` | 2C/2G | 8088 | ✅ |
-| **NodeManager** | `nodemanager1` | `bde2020/hadoop-nodemanager:2.0.0` | 2C/2G | - | ✅ |
-| **Hive Server2** | `hive-server` | `bde2020/hive:2.3.2` | 2C/2G | 10000, 10002 | ✅ |
-| **Spark Master** | `spark-master` | `apache/spark:3.5.0` | 1C/1G | 8080, 7077 | ✅ |
-| **Spark Worker** | `spark-worker` | `apache/spark:3.5.0` | 2C/2G | 8081 | ✅ |
+| 服务 | 容器名 | 镜像 | 端口 | 用途 |
+|:-----|:-------|:-----|:----:|:-----|
+| **Prometheus** | `prometheus` | `prom/prometheus:v2.51.0` | 9090 | 指标采集 (15s间隔, 30天保留) |
+| **Grafana** | `grafana` | `grafana/grafana:10.4.2` | 3000 | 可视化仪表板 (admin/admin) |
+
+| AI 记忆持久化 | Redis(已支持) | Docker 内 Redis 服务 | 故障时自动回退文件系统 |
+
+### 7.2 容器清单 (16 个容器, 分两层部署, 含监控)
+
+> ⚡ 较上版本新增: Prometheus + Grafana (监控)、Hive UDF 模块、Spark MLlib 模块
+
+#### Layer 1: 数据采集层 (独立 `collector-net`)
+
+| 服务 | 容器名 | 镜像 | CPU/Mem | 端口 | 网络 |
+|:-----|:-------|:-----|:-------:|:----:|:----:|
+| **Zookeeper** | `collector-zookeeper` | `cp-zookeeper:7.5.0` | 0.5C/512M | 2181 | collector-net |
+| **Kafka** | `collector-kafka` | `cp-kafka:7.5.0` | 1C/1G | 9092/29092/39092 | collector-net + bigdata-net |
+| **Data Collector** | `data-collector` | 自构建 (Python 3.11) | 1C/1G | - | collector-net |
+
+#### Layer 2: 大数据层 (共享 `bigdata-net`)
+
+| **服务** | **容器名** | **镜像/Dockerfile** | **CPU/Mem** | **端口** | **Tier** |
+|:---------|:-----------|:--------------------|:-----------:|:--------:|:--------:|
+| Frontend  | `frontend`   | 自构建 (Nginx)     | 0.5C/256M  | 80        | 应用服务 |
+| Backend   | `backend`    | 自构建 (Java 17)   | 2C/2G      | 8082      | 应用服务 |
+| AI Service| `ai-service` | 自构建 (Python 3.11)| 4C/4G     | 8000      | 应用服务 |
+| MySQL     | `mysql`      | `mysql:8.0`        | 2C/2G      | 3306      | 基础设施存储 |
+| Redis     | `redis`      | `redis:7-alpine`   | 0.5C/256M  | 6379      | 基础设施存储 |
+| NameNode  | `namenode`   | `hadoop-namenode:2.0.0` | 2C/2G | 9870      | 基础设施存储 |
+| DataNode1 | `datanode1`  | `hadoop-datanode:2.0.0` | 2C/2G | 9864      | 基础设施存储 |
+| DataNode2 | `datanode2`  | `hadoop-datanode:2.0.0` | 2C/2G | -         | 基础设施存储 |
+| RM        | `resourcemanager` | `hadoop-resourcemanager:2.0.0` | 1C/1G | 8088 | 计算引擎 |
+| NM        | `nodemanager1` | `hadoop-nodemanager:2.0.0` | 2C/2G | - | 计算引擎 |
+| Hive      | `hive-server` | `hive:2.3.2`       | 2C/2G      | 10000/10002 | 计算引擎 |
+| SparkMaster| `spark-master` | `apache/spark:3.5.0` | 1C/1G | 8080/7077 | 计算引擎 |
+| SparkWorker| `spark-worker` | `apache/spark:3.5.0` | 4C/4G | 8081      | 计算引擎 |
+| Prometheus | `prometheus` | `prom/prometheus:v2.51.0` | 1C/512M | 9090 | 监控 |
+| Grafana    | `grafana`    | `grafana/grafana:10.4.2` | 1C/256M | 3000 | 监控 |
 
 ---
 
@@ -818,6 +907,16 @@ ai:
 
 ### 8.4 持久化数据卷
 
+#### Layer 1: 采集层命名卷
+
+| 卷名 | 用途 |
+|:-----|:-----|
+| `stock-collector-kafka-data` | Kafka 消息持久化 |
+| `stock-collector-data` | 采集 CSV 原始数据 (跨层桥接到 NameNode :ro) |
+| `stock-collector-logs` | 采集器日志 |
+
+#### Layer 2: 大数据层命名卷
+
 | 宿主机路径 | 容器路径 | 用途 |
 |:-----------|:---------|:-----|
 | `../data/hadoop/namenode` | `/hadoop/dfs/name` | HDFS 元数据 |
@@ -825,25 +924,34 @@ ai:
 | `../data/hadoop/datanode2` | `/hadoop/dfs/data` | HDFS 数据块 (节点2) |
 | `../data/mysql` | `/var/lib/mysql` | MySQL 业务数据 |
 | `../data/spark/logs` | `/opt/spark/logs` | Spark 日志 |
-| `../data-collector/data` | `/data/collector_output` | 采集原始数据 (挂入 HDFS) |
+| `../data/spark/worker-logs` | `/opt/spark/logs` | Spark Worker 日志 |
+
+#### 跨层桥接卷
+
+| 卷名 | 源 | 目标 | 访问模式 | 用途 |
+|:-----|:--:|:----:|:--------:|:-----|
+| `stock-collector-data` | 采集层 (collector-net) | NameNode (bigdata-net) | `ro` | CSV 批量导入 HDFS |
 
 ### 8.5 端口分配
 
-| 宿主机端口 | 容器端口 | 服务 | 用途 |
-|:----------:|:--------:|:-----|:-----|
-| 80 | 80 | Nginx | 前端访问入口 |
-| 8082 | 8082 | Spring Boot | REST API |
-| 8000 | 8000 | FastAPI | AI 服务 |
-| 3307 | 3306 | MySQL | 业务数据库 (避开了本地 3306) |
-| 6379 | 6379 | Redis | 缓存 |
-| 9870 | 9870 | NameNode | HDFS Web UI |
-| 9864 | 9864 | DataNode1 | DataNode Web UI |
-| 8088 | 8088 | ResourceManager | YARN Web UI |
-| 10000 | 10000 | Hive | HiveServer2 JDBC |
-| 10002 | 10002 | Hive | Hive Web UI |
-| 8080 | 8080 | Spark | Spark Master Web UI |
-| 8081 | 8081 | Spark | Spark Worker Web UI |
-| 7077 | 7077 | Spark | Spark Master RPC |
+| 宿主机端口 | 容器端口 | 服务 | 所属层 | 用途 |
+|:----------:|:--------:|:-----|:------:|:-----|
+| 80 | 80 | Nginx | 大数据层 | 前端访问入口 |
+| 8082 | 8082 | Spring Boot | 大数据层 | REST API |
+| 8000 | 8000 | FastAPI | 大数据层 | AI 服务 |
+| 3306 | 3306 | MySQL | 大数据层 | 业务数据库 |
+| 6379 | 6379 | Redis | 大数据层 | 缓存 |
+| 9870 | 9870 | NameNode | 大数据层 | HDFS Web UI |
+| 9864 | 9864 | DataNode1 | 大数据层 | DataNode Web UI |
+| 8088 | 8088 | ResourceManager | 大数据层 | YARN Web UI |
+| 10000 | 10000 | Hive | 大数据层 | HiveServer2 JDBC |
+| 10002 | 10002 | Hive | 大数据层 | Hive Web UI |
+| 8080 | 8080 | Spark | 大数据层 | Spark Master Web UI |
+| 8081 | 8081 | Spark | 大数据层 | Spark Worker Web UI |
+| 7077 | 7077 | Spark | 大数据层 | Spark Master RPC |
+| 9092 | 9092 | Kafka | 采集层 | Kafka (仅宿主机调试) |
+| 9090 | 9090 | Prometheus | 大数据层 | 指标采集与查询 |
+| 3000 | 3000 | Grafana | 大数据层 | 监控仪表板 |
 
 ---
 
@@ -862,50 +970,54 @@ curl -fsSL https://get.docker.com | sh
 # Linux: sudo apt install docker-compose-plugin
 ```
 
-### 9.2 构建与启动
+### 9.2 构建与启动 (双层架构)
 
 ```powershell
 # 进入 docker 目录
 cd f:\bs\A_system\docker
 
-# ====== 完整部署 (含构建) ======
-docker compose up -d --build
+# ====== 推荐: 使用分层部署脚本 ======
+# 仅启动大数据层 (常用)
+..\scripts\deploy-layers.ps1 -Mode up -Layer bigdata
 
-# ====== 或使用预构建镜像 (仅首次需要 --build) ======
-docker compose up -d
+# 启动全部 (先采集层, 后大数据层)
+..\scripts\deploy-layers.ps1 -Mode up -Layer all
 
-# 查看启动状态
-docker compose ps
+# ====== 或使用 start-all.sh (Linux/Mac) ======
+# 大数据层
+bash ../scripts/start-all.sh --bigdata-only
 
-# 查看实时日志
-docker compose logs -f
+# 全量 (含采集层)
+bash ../scripts/start-all.sh --full
 ```
 
-### 9.3 分步部署
+### 9.3 手动分层部署
 
-如果需要分步部署（如先启动基础设施，再启动应用）：
+如果需要手动分步部署：
 
 ```powershell
-# Step 1: 启动大数据基础设施 (HDFS + YARN + MySQL + Hive + Spark)
-docker compose up -d namenode datanode1 datanode2 resourcemanager nodemanager1 mysql hive-server spark-master spark-worker
+cd f:\bs\A_system\docker
 
-# 等待 30-60 秒确认所有服务健康
-docker compose ps
+# ====== Step 1: 启动数据采集层 (可选) ======
+docker compose -f docker-compose.collector.yml up -d
+# 启动顺序: Zookeeper → Kafka → DataCollector
+# 验证: docker compose -f docker-compose.collector.yml ps
 
-# Step 2: 启动 Redis (缓存)
-docker compose up -d redis
+# ====== Step 2: 启动大数据层 (+ 应用 + 生产配置) ======
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# 启动顺序 (自动按依赖): namenode → datanode* → resourcemanager
+#   → nodemanager → mysql → redis → hive-server → spark* → ai-service → backend → frontend
 
-# Step 3: 启动 AI 服务
-docker compose up -d ai-service
+# 分层状态查看
+docker compose -f docker-compose.collector.yml ps
+docker compose -f docker-compose.yml ps
 
-# Step 4: 启动后端
-docker compose up -d backend
+# 集成状态 (所有容器)
+..\scripts\deploy-layers.ps1 -Mode status -Layer all
 
-# Step 5: 启动前端
-docker compose up -d frontend
-
-# 验证所有服务
-docker compose ps
+# 查看日志
+..\scripts\deploy-layers.ps1 -Mode logs -Layer collector
+..\scripts\deploy-layers.ps1 -Mode logs -Layer bigdata
 ```
 
 ### 9.4 MySQL 初始化
@@ -945,46 +1057,83 @@ server {
 }
 ```
 
-### 9.6 数据采集 (可选)
+### 9.6 数据采集
 
-Docker 部署后如需采集真实数据：
+Docker 部署后数据采集自动运行（容器化）：
 
 ```powershell
+# ====== 方式一: Docker 容器采集 (推荐) ======
+docker compose -f docker-compose.collector.yml up -d
+# data-collector 容器自动启动, 内部运行 market_collect.py
+
+# 查看采集日志
+docker logs -f data-collector
+
+# 采集数据导入 HDFS (从共享卷)
+docker exec namenode bash -c "
+  hdfs dfs -put -f /data/collector_output/*.csv /user/hadoop/stock_data/daily/
+"
+
+# ====== 方式二: 宿主机直接采集 (开发调试) ======
 cd f:\bs\A_system\data-collector\scheduler
-pip install pandas requests akshare
-
-# HTTPS 全量采集 (腾讯+同花顺+百度+akshare)
+pip install pandas requests akshare mootdx
 python market_collect.py --all --sync
-
-# 独立模式 (零工厂依赖)
-python market_collect.py --standalone
 ```
 
-### 9.7 大数据批处理 (可选)
+### 9.7 大数据批处理 (v2 优化版)
 
-如需执行 Hive/Spark 批处理分析：
+```powershell
+cd f:\bs\A_system\bigdata-processing\batch
 
-```bash
-cd bigdata-processing/batch
-
-# 全量跑批
+# ====== 基本用法 ======
+# 全量跑批 (Hive DML + Spark batch + 数据质量检查)
 python run_batch_pipeline.py --mode daily
 
-# 增量跑批 (指定日期)
+# 指定日期增量
 python run_batch_pipeline.py --mode incremental --date 2026-05-13
 
-# 全量重算
-python run_batch_pipeline.py --mode rebuild
+# ====== 高级选项 ======
+# 并行执行 Spark Job (最多3个同时跑)
+python run_batch_pipeline.py --mode daily --parallel
+
+# 仅 Spark (跳过 Hive)
+python run_batch_pipeline.py --mode daily --skip-hive
+
+# 预览执行计划 (不实际运行)
+python run_batch_pipeline.py --mode daily --dry-run
+
+# ====== Hive ORC 格式迁移 ======
+# 查询性能提升 5~15 倍
+cd ..\scripts
+python migrate_hive_to_orc.py --dry-run    # 预览迁移计划
+python migrate_hive_to_orc.py              # 执行全量迁移
+python migrate_hive_to_orc.py --switch     # 迁移后切换表名
+
+# ====== HDFS 备份 ======
+cd ..\backup
+python hdfs_backup.py --mode full           # 全量备份 (并行导出)
+python hdfs_backup.py --mode incremental --days 7  # 增量备份
+python hdfs_backup.py --mode cleanup --retention-days 30  # 清理过期
 ```
 
 ### 9.8 停止与清理
 
 ```powershell
-# 停止所有容器 (数据保留)
+# ====== 推荐: 使用分层脚本 ======
+..\scripts\deploy-layers.ps1 -Mode down -Layer all
+
+# ====== 手动停止 (分层) ======
+cd f:\bs\A_system\docker
+
+# 停止大数据层 (先停, 释放依赖)
 docker compose down
 
-# 停止并删除数据卷 (数据丢失)
+# 停止采集层 (后停)
+docker compose -f docker-compose.collector.yml down
+
+# 停止并删除数据卷 (数据丢失!)
 docker compose down -v
+docker compose -f docker-compose.collector.yml down -v
 
 # 停止单个服务
 docker compose stop backend
@@ -1051,22 +1200,65 @@ docker exec spark-master /opt/spark/bin/spark-submit \
 
 ### 10.3 Web UI 访问
 
-| 服务 | 访问地址 |
-|:-----|:---------|
-| 前端应用 | http://localhost |
-| HDFS WebUI | http://localhost:9870 |
-| YARN WebUI | http://localhost:8088 |
-| Hive WebUI | http://localhost:10002 |
-| Spark Master | http://localhost:8080 |
-| Spark Worker | http://localhost:8081 |
-| Swagger API | http://localhost:8082/swagger-ui/index.html |
+| 服务 | 访问地址 | 所属层 |
+|:-----|:---------|:------:|
+| 前端应用 | http://localhost | 大数据层 (app) |
+| Prometheus   | http://localhost:9090 | 大数据层 (monitoring) |
+| Grafana      | http://localhost:3000 | 大数据层 (monitoring) |
+| HDFS WebUI | http://localhost:9870 | 大数据层 (storage) |
+| YARN WebUI | http://localhost:8088 | 大数据层 (computation) |
+| Hive WebUI | http://localhost:10002 | 大数据层 (computation) |
+| Spark Master | http://localhost:8080 | 大数据层 (computation) |
+| Spark Worker | http://localhost:8081 | 大数据层 (computation) |
+| Swagger API | http://localhost:8082/swagger-ui/index.html | 大数据层 (app) |
+| Prometheus   | http://localhost:9090 | 大数据层 (monitoring) |
+| Grafana      | http://localhost:3000 | 大数据层 (monitoring) |
 
-### 10.4 测试用户
+### 10.4 验证大数据层批处理
 
-| 用户名 | 密码 | 角色 |
-|:-------|:-----|:-----|
-| `admin` | `admin123` | 管理员 |
-| `test` | `test123` | 普通用户 |
+```powershell
+# 验证 Hive ORC 表
+python bigdata-processing\scripts\migrate_hive_to_orc.py --dry-run
+
+# 执行批处理 (dry-run 模式预览)
+python bigdata-processing\batch\run_batch_pipeline.py --mode daily --dry-run
+
+# 验证数据质量模块
+python -c "from bigdata_quality import DataQualityChecker; print('QC模块就绪')"
+
+# 验证 Spark 共享配置
+python -c "from spark_config import create_spark_session; print('Spark共享模块就绪')"
+
+# 验证 HDFS 备份管道
+python bigdata-processing\backup\hdfs_backup.py --mode list
+```
+
+### 10.5 账户凭据
+
+> ⚠️ **安全更新 (2026-05-18)**: 凭据文件已从 `backend/src/main/resources/security/` 迁移至 `docs/security/`，**不再打包进 JAR**。生产环境请通过环境变量注入凭据。
+
+所有账户及基础设施凭据统一参考 `docs/security/` 目录。
+
+#### 应用用户
+
+| 用户名 | 密码 | 角色 | 层级 |
+|:-------|:-----|:-----|:----:|
+| `superadmin` | `Super@Admin2026!` | 超级管理员 | L4 |
+| `admin` | `Admin@Stock2026!` | 管理员 | L3 |
+| `data_operator` | `DataOp@2026Sys` | 管理员 | L3 |
+| `premium_trader` | `Trader@2026Pro!` | 高级用户 | L2 |
+| `li_si` | `LiSiTrader@2026` | 高级用户 | L2 |
+| `test` | `Test1234` | 普通用户 | L1 |
+| `zhang_san` | `ZhangSan2026!` | 普通用户 | L1 |
+
+#### Docker 基础设施凭据
+
+| 服务 | 用户名 | 密码 | 端口 |
+|:-----|:-------|:-----|:----:|
+| MySQL (Docker) | `root` | `hadoop123` | 3307→3306 |
+| MySQL (本地开发) | `root` | `123456` | 3306 |
+| Redis | 无认证 | - | 6379 |
+| JWT Secret | - | `DefaultSecretKeyForAStockSystem2026DevEnvironment` | - |
 
 ---
 
@@ -1112,18 +1304,52 @@ server: {
 
 本地 MySQL 连接使用 `localhost:3306` (而非 Docker 内网的 `mysql:3306`)，对应 `application.yml` 中的 `spring.profiles.active: dev` 配置（默认 dev profile 使用 localhost）。
 
+## 12. CI/CD 与监控
+
+### 12.1 GitHub Actions 流水线
+
+项目已配置 GitHub Actions CI 流水线 (`.github/workflows/ci.yml`)，自动执行以下任务：
+
+| 阶段 | 触发条件 | 执行内容 |
+|:-----|:---------|:---------|
+| **Backend Build & Test** | push/PR | JDK 17 + Maven 编译 + 单元测试 |
+| **Frontend Build & Lint** | push/PR | Node 20 + npm ci + vue-tsc 类型检查 + vite 构建 + vitest 测试 |
+| **AI Service Lint & Test** | push/PR | Python 3.11 + ruff lint + pytest |
+| **Docker Image Build** | 以上全部通过 | 构建 AI/Backend/Frontend 三个 Docker 镜像（cache: gha） |
+
+```yaml
+# 流水线状态:
+# [![CI](https://github.com/your-org/A_system/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/A_system/actions/workflows/ci.yml)
+```
+
+### 12.2 监控系统
+
+Prometheus + Grafana 集成在 Docker Compose 中（`docker-compose.yml`），启动后自动可用：
+
+```
+Prometheus → 采集 6 个目标（自身 / Backend / AI / Redis / MySQL / Spark）
+                 │
+                 ▼
+Grafana    ← 预配置 Prometheus 数据源，自动加载仪表板
+                 │
+                 ▼
+Web UI:    http://localhost:9090 (Prometheus)
+           http://localhost:3000 (Grafana, admin/admin)
+```
+
 ### 11.3 项目代码量统计
 
-| 模块 | 语言 | 文件数 | 代码行数 |
-|:-----|:-----|:------:|:--------:|
-| data-collector | Python | ~20 | ~2,500 |
-| bigdata-processing | SQL/Python/Java | ~30 | ~3,000 |
-| analysis-algorithms | Python | ~22 | ~2,500 |
-| backend | Java | ~74 | ~4,400 |
-| frontend | Vue/TS | ~55 | ~2,500 |
-| ai-service | Python | ~14 | ~1,800 |
-| docker/scripts | 多语言 | ~20 | ~500 |
-| **总计** | | **~230** | **~17,000** |
+| 模块 | 语言 | 文件数 | 代码行数 | 备注 |
+|:-----|:-----|:------:|:--------:|:-----|
+| data-collector | Python | ~55 | ~3,000 | 8采集器 + 7适配器 + 管道 + 调度器 |
+| bigdata-processing | SQL/Python | ~30 | ~3,500 | 7 DDL + 8 DML + 6 Spark + UDF + MLlib |
+| analysis-algorithms | Python | ~22 | ~2,500 | 技术指标 + 缠论 + 量化策略 |
+| backend | Java | ~100 | ~4,500 | 7 Controller + 15 Service + 28 Entity + JWT |
+| frontend | Vue/TS | ~55 | ~2,500 | 20 视图 + 11 API + 4 Store + ECharts |
+| ai-service | Python | ~20 | ~2,200 | 7 Agent + FusionEngine + Redis记忆 |
+| docker | 多语言 | ~42 | ~2,000 | 16 服务编排 + 监控 + 7 Dockerfile |
+| scripts | 多语言 | ~14 | ~1,000 | 部署脚本 + e2e验证 + 健康检查 |
+| **总计** | | **~270** | **~20,000** | |
 
 ---
 

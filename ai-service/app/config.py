@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     # 后端行情 API
     backend_api_url: str = "http://localhost:8080/api"
 
+    # API 鉴权（可选，不配置时放行所有请求）
+    ai_api_key: str = ""
+
+    # Redis 配置（可选，用于记忆持久化）
+    redis_host: str = ""
+    redis_port: int = 6379
+    redis_password: str = ""
+
     class Config:
         env_file = str(Path(__file__).parent.parent / ".env")
         env_file_encoding = "utf-8"

@@ -1,0 +1,56 @@
+# ============================================================
+# Docker 开发环境 — Backend (Spring Boot + Maven + Devtools)
+#
+# 特性:
+#   - 多阶段构建: 先构建 JAR，再运行
+#   - spring-boot-devtools: 源码变更自动重启（比手动构建快）
+#   - 支持远程调试 (JDWP)
+#   - 宿主机源代码通过 bind mount 挂载，容器内实时生效
+# ============================================================
+
+# ---- 构建阶段 ----
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+
+# 先拷贝 pom.xml 和 settings，利用 Docker 缓存层加速
+COPY pom.xml ./
+RUN mvn dependency:go-offline -B -q || true
+
+# 拷贝所有源码
+COPY src ./src
+
+# 构建（跳过测试以加速开发迭代）
+RUN mvn clean package -DskipTests -B -q
+
+# ---- 运行阶段 ----
+FROM eclipse-temurin:17-jdk-alpine
+
+# 安装 curl（用于健康检查）
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# 从构建阶段拷贝 JAR
+COPY --from=builder /build/target/*.jar app.jar
+
+# 清空 targets（运行时无需保留）
+RUN rm -rf /app/target /root/.m2 2>/dev/null || true
+
+# 暴露端口
+EXPOSE 8082
+
+# ====== 启动命令 ======
+# spring-boot-devtools 的远程重启 + 远程调试:
+#   - spring.devtools.restart.enabled=true: 类路径变更时自动重启
+#   - -Djava.security.egd=file:/dev/./urandom: 加速 Tomcat 启动
+#
+# 环境变量覆盖 application.yml 配置:
+#   SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
+#   spring.profiles.active 由 SPRING_PROFILES_ACTIVE 环境变量驱动
+ENTRYPOINT ["java", \
+    "-Djava.security.egd=file:/dev/./urandom", \
+    "-Dspring.devtools.restart.enabled=true", \
+    "-Dspring.devtools.restart.poll-interval=2s", \
+    "-Dspring.devtools.restart.quiet-period=1s", \
+    "-jar", "app.jar"]

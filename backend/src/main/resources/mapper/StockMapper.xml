@@ -3,8 +3,8 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.stock.mapper.StockMapper">
 
-    <!-- 查询股票列表（含最新行情） -->
-    <select id="selectStockList" resultType="java.util.Map">
+    <!-- 修复: XML id="selectByFilter" 匹配 Java 接口 method name，原有 id="selectStockList" 删除 -->
+    <select id="selectByFilter" resultType="java.util.Map">
         SELECT s.stock_code AS stockCode, s.stock_name AS stockName, s.market,
                s.industry, s.pe, s.pb, s.total_market_cap AS totalMarketCap,
                d.close_price AS price, d.change_percent AS changePct,
@@ -15,6 +15,7 @@
         <where>
             <if test="keyword != null">AND (s.stock_name LIKE CONCAT('%',#{keyword},'%') OR s.stock_code LIKE CONCAT('%',#{keyword},'%'))</if>
             <if test="industry != null">AND s.industry = #{industry}</if>
+            <if test="market != null">AND s.market = #{market}</if>
         </where>
         ORDER BY d.change_percent DESC
         LIMIT #{limit} OFFSET #{offset}
@@ -33,15 +34,18 @@
         ORDER BY stockCount DESC
     </select>
 
-    <!-- 查询股票详情 -->
-    <select id="selectStockDetail" resultType="java.util.Map">
-        SELECT s.*, d.close_price AS price, d.change_percent AS changePct,
-               d.volume, d.high_price AS highPrice, d.low_price AS lowPrice,
-               d.open_price AS openPrice, d.pre_close AS preClose
+    <!-- 修复: 新增 selectByMarketCap 实现，匹配 Java 接口 -->
+    <select id="selectByMarketCap" resultType="java.util.Map">
+        SELECT s.stock_code AS stockCode, s.stock_name AS stockName,
+               s.total_market_cap AS totalMarketCap, s.pe, s.pb,
+               s.industry, s.market
         FROM stock s
-        LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
-            AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
-        WHERE s.stock_code = #{code}
+        <where>
+            <if test="minCap != null">AND s.total_market_cap >= #{minCap}</if>
+            <if test="maxCap != null">AND s.total_market_cap &lt;= #{maxCap}</if>
+        </where>
+        ORDER BY s.total_market_cap DESC
+        <if test="limit != null">LIMIT #{limit}</if>
     </select>
 
 </mapper>

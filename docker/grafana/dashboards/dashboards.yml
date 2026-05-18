@@ -1,0 +1,12 @@
+# Grafana Dashboard Provisioning
+apiVersion: 1
+
+providers:
+  - name: "Stock System Dashboards"
+    orgId: 1
+    folder: "股票分析系统"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards

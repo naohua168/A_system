@@ -1,0 +1,44 @@
+# ============================================================
+# Docker 开发环境 — AI Service (FastAPI + Uvicorn --reload)
+#
+# 特性:
+#   - uvicorn --reload: 源码变更自动重启服务
+#   --reload-dir 限定监视目录，减少文件系统扫描开销
+#   - 宿主机代码通过 bind mount 挂载，实时生效
+#   - watchfiles 库提供高性能文件变更检测
+# ============================================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 先拷贝 requirements.txt，利用 Docker 缓存
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 额外安装 watchfiles（uvicorn --reload 的高性能依赖）
+RUN pip install --no-cache-dir watchfiles
+
+# 暴露端口
+EXPOSE 8000
+
+# ====== 启动命令 ======
+# uvicorn --reload 配置:
+#   --reload:         监听文件变更自动重启
+#   --reload-dir /a   仅监视 /app 目录（排除系统路径）
+#   --host 0.0.0.0:   Docker 内必须监听所有网卡
+#   --port 8000:      固定端口
+#
+# watchfiles:
+#   比默认的 stat 轮询更高效，使用 inotify/kqueue 系统调用
+#   当宿主机文件通过 bind mount 同步时，变更事件自动触发重启
+CMD ["uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--reload", \
+     "--reload-dir", "/app"]

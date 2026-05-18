@@ -3,30 +3,20 @@
 根据 PE / PB / ROE / 成交量等基本面与技术面指标筛选优质股票
 
 用法:
-    spark-submit \
-        --master local[2] \
-        --conf spark.sql.catalogImplementation=hive \
-        filter_stocks.py
-
-    自定义阈值:
+    spark-submit --master local[2] filter_stocks.py
     spark-submit ... filter_stocks.py --pe-max 20 --pb-max 2 --roe-min 10 --volume-min 1000000
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-
-def create_spark_with_hive():
-    """创建支持 Hive 的 Spark 会话"""
-    return SparkSession.builder \
-        .appName("StockFilter") \
-        .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
-        .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
-        .config("spark.sql.catalogImplementation", "hive") \
-        .enableHiveSupport() \
-        .getOrCreate()
+# 修复: 使用 pathlib 代替 rsplit("/")，兼容 Windows 反斜杠路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spark_config import create_spark_session, save_dataframe, OUTPUT_PATHS
 
 
 def filter_stocks(spark, pe_max=30, pb_max=3, roe_min=8,
@@ -97,10 +87,7 @@ def filter_stocks(spark, pe_max=30, pb_max=3, roe_min=8,
 
 def save_results(df):
     """结果写入 HDFS Parquet"""
-    df.write.mode("overwrite") \
-        .option("compression", "snappy") \
-        .parquet("/user/hadoop/stock_data/analysis/spark/filter_stocks/")
-    print("已保存到 HDFS")
+    save_dataframe(df, OUTPUT_PATHS["filter_stocks"])
 
 
 def main():
@@ -112,7 +99,7 @@ def main():
     parser.add_argument("--trade-date", default=None, help="交易日，默认最近")
     args = parser.parse_args()
 
-    spark = create_spark_with_hive()
+    spark = create_spark_session("StockFilter")
     try:
         spark.sql("USE stock_analysis")
         print("开始筛选股票...")

@@ -1,0 +1,54 @@
+# 项目根 .dockerignore — 用于构建上下文为项目根的前端等容器
+# 排除所有非构建必需的大文件/目录，加速 Docker 构建
+
+# ===== Frontend =====
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ===== Backend =====
+backend/target/
+backend/data/
+backend/*.jar
+backend/*.class
+
+# ===== Python =====
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+**/venv/
+**/env/
+**/.pytest_cache/
+**/.coverage
+
+# ===== AI Service =====
+ai-service/__pycache__/
+ai-service/.venv/
+
+# ===== Data =====
+data/
+logs/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.iml
+
+# ===== Git / OS =====
+.git/
+.gitattributes
+.gitignore
+.DS_Store
+Thumbs.db
+
+# ===== Docker =====
+**/Dockerfile
+**/Dockerfile.dev
+
+# ===== 大数据 =====
+bigdata-processing/data/
+bigdata-processing/__pycache__/
+
+# ===== 脚本 =====
+scripts/*.pyc

@@ -1,5 +1,5 @@
 # ============================================================
-# analysis-algorithms 依赖清单
+# analysis-algorithms 依赖清单（优化版）
 # 安装: pip install -r requirements.txt
 # ============================================================
 
@@ -7,8 +7,17 @@
 pandas>=1.5.0
 numpy>=1.23.0
 
+# 数据源读取（从 MySQL 存储层）
+pymysql>=1.0.0
+sqlalchemy>=2.0.0
+
+# 缓存（Redis 热数据加速）
+redis>=4.0.0
+
+# HDFS 灾备读取（可选）
+# pyspark>=3.5.0
+
 # 技术指标计算 (可选，纯 Python 实现可替代)
-# TA-Lib 安装较复杂，代码已提供纯 Pandas 版本
 # TA-Lib>=0.4.28
 
 # 测试

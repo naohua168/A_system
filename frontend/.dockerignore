@@ -1,0 +1,43 @@
+# ============================================================
+# Frontend — .dockerignore
+# 排除 node_modules、构建产物、IDE 配置
+# ============================================================
+
+# --- 依赖 ---
+node_modules/
+.npm/
+
+# --- 构建产物 ---
+dist/
+build/
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- 日志 ---
+logs/
+*.log
+
+# --- 测试报告 ---
+coverage/
+test-results/
+
+# --- Git ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Docker ---
+Dockerfile
+Dockerfile.dev
+nginx.conf
+nginx.prod.conf

@@ -1,23 +1,29 @@
 import request from './request'
 
+// ── 类型定义 ──
+interface YearlyReturn { year: number; rate: number; rank?: number }
+interface MonthlyReturn { month: string; rate: number }
+interface TrendAnalysis { trend: string; ma5?: number; ma10?: number; ma20?: number }
+interface SectorRanking { industry: string; avgChange: number; count: number }
+
 /** 获取股票基础分析（分页） */
-export function getAnalysis(assetCode: string, type?: string) {
-  return request.get(`/analysis/${assetCode}`, { params: { type } })
+export function getAnalysis(assetCode: string, type?: string): Promise<any> {
+  return request.get(`/analysis/${assetCode}`, { params: { type } }) as any
 }
 
 /** 年收益率 */
-export function getYearlyReturn(stockCode: string, years = 3) {
-  return request.get(`/analysis/${stockCode}/yearly-return`, { params: { years } })
+export function getYearlyReturn(stockCode: string, years = 3): Promise<YearlyReturn[]> {
+  return request.get(`/analysis/${stockCode}/yearly-return`, { params: { years } }) as any
 }
 
 /** 月收益率 */
-export function getMonthlyReturn(stockCode: string, months = 12) {
-  return request.get(`/analysis/${stockCode}/monthly-return`, { params: { months } })
+export function getMonthlyReturn(stockCode: string, months = 12): Promise<MonthlyReturn[]> {
+  return request.get(`/analysis/${stockCode}/monthly-return`, { params: { months } }) as any
 }
 
 /** 趋势分析 */
-export function getTrend(stockCode: string, days = 30) {
-  return request.get(`/analysis/${stockCode}/trend`, { params: { days } })
+export function getTrend(stockCode: string, days = 30): Promise<TrendAnalysis> {
+  return request.get(`/analysis/${stockCode}/trend`, { params: { days } }) as any
 }
 
 /** 股票筛选 */
@@ -27,16 +33,16 @@ export function filterStocks(conditions: {
   maxPrice?: number
   minChange?: number
   limit?: number
-}) {
-  return request.post('/analysis/filter', conditions)
+}): Promise<any[]> {
+  return request.post('/analysis/filter', conditions) as any
 }
 
 /** 相关性分析 */
-export function getCorrelation(codeA: string, codeB: string, days = 60) {
-  return request.get('/analysis/correlation', { params: { codeA, codeB, days } })
+export function getCorrelation(codeA: string, codeB: string, days = 60): Promise<{ coefficient: number }> {
+  return request.get('/analysis/correlation', { params: { codeA, codeB, days } }) as any
 }
 
 /** 行业涨跌排行（板块云图数据） */
-export function getSectorRanking(tradeDate?: string) {
-  return request.get('/analysis/sector-ranking', { params: { tradeDate } })
+export function getSectorRanking(tradeDate?: string): Promise<SectorRanking[]> {
+  return request.get('/analysis/sector-ranking', { params: { tradeDate } }) as any
 }

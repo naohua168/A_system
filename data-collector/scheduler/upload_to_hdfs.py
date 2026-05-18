@@ -1,7 +1,13 @@
 """
-HDFS 上传脚本
+HDFS 上传脚本（增强版）
 将 data-collector 采集的 CSV 文件上传到 HDFS 指定路径（支持6种新数据源）
 支持 WebHDFS (hdfs 库) 和命令行 hdfs dfs 两种模式
+
+增强功能:
+  1. 上传失败指数退避重试（3次）
+  2. HDFS 连接健康检查 + 自动恢复
+  3. 批量上传中断恢复（断点续传标记）
+  4. 更详细的上传日志
 
 用法:
     # 上传所有未上传的数据文件
@@ -30,8 +36,7 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
-from config import DATA_DIR, HDFS as HDFS_CFG
-
+from config import DATA_DIR, HDFS as HDFS_CFG, MAX_RETRIES, RETRY_BACKOFF_BASE
 
 # ============================================================
 # 文件类型 → HDFS 路径映射规则（支持6种新数据源）
@@ -55,6 +60,14 @@ FILE_ROUTING_RULES = [
     ("industry_compare_","signals/industry/",     True),   # 行业对比
     ("signals_",        "signals/stock/",         True),   # 个股综合信号
 
+    # ---------- 资讯层（a-stock-data 迁移合并：研报+新闻+公告）----------
+    ("research_reports_","info/research/",   True),   # 研报列表
+    ("consensus_eps_",   "info/consensus_eps/", True), # 一致预期EPS
+    ("stock_news_",      "info/stock_news/",  True),   # 个股新闻
+    ("cls_news_",        "info/cls_news/",    True),   # 财联社快讯
+    ("global_news_",     "info/global_news/", True),   # 全球资讯
+    ("filings_",         "info/filings/",     True),   # 巨潮公告
+
     # ---------- 维度 ----------
     ("dim_",        "dim/",             True),   # 维度数据
 ]
@@ -63,8 +76,13 @@ FILE_ROUTING_RULES = [
 UPLOAD_MARKER_DIR = Path(__file__).parent / ".uploaded"
 
 
+def _exponential_backoff(attempt: int) -> float:
+    """指数退避: 1s, 2s, 4s, max=30s"""
+    return min(RETRY_BACKOFF_BASE * (2 ** attempt), 30.0)
+
+
 class HDFSUploader:
-    """HDFS 文件上传器"""
+    """HDFS 文件上传器（增强版 — 带重试和连接恢复）"""
 
     def __init__(self, use_shell: bool = False):
         self.use_shell = use_shell
@@ -82,7 +100,7 @@ class HDFSUploader:
 
     @property
     def client(self):
-        """hdfs 库的 InsecureClient"""
+        """hdfs 库的 InsecureClient（自动降级到 shell）"""
         if self._client is None and not self.use_shell:
             try:
                 from hdfs import InsecureClient
@@ -90,14 +108,46 @@ class HDFSUploader:
                     self.hdfs_url,
                     user=self.hdfs_user,
                 )
+                logger.info("HDFS 客户端初始化成功")
             except ImportError:
                 print("⚠️  hdfs 库未安装，回退到 shell 模式。执行: pip install hdfs")
                 self.use_shell = True
+            except Exception as e:
+                logger.warning("HDFS 客户端初始化失败: %s，回退 shell 模式", e)
+                self.use_shell = True
         return self._client
+
+    def _check_hdfs_available(self) -> bool:
+        """检查 HDFS 是否可达（WebHDFS 或 shell）"""
+        try:
+            if self.use_shell:
+                result = subprocess.run(
+                    ["hdfs", "dfs", "-ls", self.hdfs_base],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return result.returncode == 0
+            else:
+                if self.client is None:
+                    return False
+                self.client.list(self.hdfs_base)
+                return True
+        except Exception as e:
+            logger.warning("HDFS 不可达: %s", e)
+            return False
 
     # -----------------------------------------------------------
     # 文件路由
     # -----------------------------------------------------------
+
+    def _wait_for_hdfs(self, max_retries: int = 3) -> bool:
+        """等待 HDFS 恢复可达"""
+        for attempt in range(max_retries):
+            if self._check_hdfs_available():
+                return True
+            delay = _exponential_backoff(attempt)
+            print(f"⏳ HDFS 不可用，{delay:.0f}s 后重试 (第{attempt+1}/{max_retries})...")
+            time.sleep(delay)
+        return False
 
     def resolve_hdfs_path(self, filename: str) -> Optional[str]:
         """根据文件名判断应上传到 HDFS 的哪个子目录"""
@@ -156,17 +206,16 @@ class HDFSUploader:
         marker.write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
 
     # -----------------------------------------------------------
-    # 上传方法
+    # 上传方法（带重试）
     # -----------------------------------------------------------
 
     def upload_file(self, file_info: dict, force: bool = False) -> bool:
-        """上传单个文件到 HDFS"""
+        """上传单个文件到 HDFS（带指数退避重试）"""
         local_path = file_info["local_path"]
         hdfs_path = file_info["hdfs_path"]
         filename = file_info["name"]
 
         if not force and self._is_uploaded(filename):
-            # print(f"⏭️  已上传，跳过: {filename}")
             return True
 
         local_size = os.path.getsize(local_path)
@@ -174,32 +223,47 @@ class HDFSUploader:
             print(f"⚠️  空文件，跳过: {filename}")
             return False
 
-        try:
-            if self.use_shell:
-                self._upload_shell(local_path, hdfs_path)
-            else:
-                self._upload_client(local_path, hdfs_path)
-
-            self._mark_uploaded(filename)
-            print(f"✅ 上传成功: {filename}  ({self._format_size(local_size)})")
-            return True
-
-        except Exception as e:
-            print(f"❌ 上传失败 [{filename}]: {e}")
+        # 等待 HDFS 可用
+        if not self._wait_for_hdfs():
+            print(f"❌ HDFS 不可达，跳过: {filename}")
             return False
+
+        # 上传重试
+        last_exc = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                if self.use_shell:
+                    self._upload_shell(local_path, hdfs_path)
+                else:
+                    self._upload_client(local_path, hdfs_path)
+
+                self._mark_uploaded(filename)
+                print(f"✅ 上传成功: {filename}  ({self._format_size(local_size)})")
+                return True
+
+            except Exception as e:
+                last_exc = e
+                if attempt < MAX_RETRIES:
+                    delay = _exponential_backoff(attempt)
+                    print(f"⚠️  上传失败 [{filename}] (第{attempt+1}次), {delay:.0f}s 后重试: {e}")
+                    time.sleep(delay)
+                    # 重连
+                    self._client = None
+                else:
+                    print(f"❌ 上传失败 [{filename}] ({MAX_RETRIES+1}次): {e}")
+
+        return False
 
     def _upload_client(self, local_path: str, hdfs_path: str):
         """通过 hdfs 库上传"""
         if self.client is None:
             raise RuntimeError("HDFS 客户端未初始化")
-        # 确保父目录存在
         parent = str(Path(hdfs_path).parent)
         self.client.makedirs(parent)
         self.client.upload(hdfs_path, local_path, overwrite=True)
 
     def _upload_shell(self, local_path: str, hdfs_path: str):
         """通过 hdfs dfs -put 命令上传（无 hdfs 库时回退）"""
-        # 确保父目录存在
         parent = str(Path(hdfs_path).parent)
         subprocess.run(
             ["hdfs", "dfs", "-mkdir", "-p", parent],
@@ -224,18 +288,22 @@ class HDFSUploader:
                 "stock_analysis.stock_daily_staging",
                 "stock_analysis.fund_nav",
                 "stock_analysis.fund_basic",
-                # 信号层表（a-stock-data 新增）
                 "stock_analysis.signal_hot_reason",
                 "stock_analysis.signal_northbound",
                 "stock_analysis.signal_industry",
                 "stock_analysis.signal_stock",
+                "stock_analysis.info_research_report",
+                "stock_analysis.info_consensus_eps",
+                "stock_analysis.info_stock_news",
+                "stock_analysis.info_cls_news",
+                "stock_analysis.info_global_news",
+                "stock_analysis.info_filing",
             ]
 
         print(f"\n🔧 执行 Hive MSCK REPAIR: {', '.join(tables)}")
         for table in tables:
             sql = f"MSCK REPAIR TABLE {table};"
             try:
-                # 通过 beeline 执行
                 result = subprocess.run(
                     ["beeline", "-u", "jdbc:hive2://localhost:10000",
                      "-e", sql],
@@ -322,7 +390,7 @@ class HDFSUploader:
 # ============================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="📤 上传采集数据到 HDFS，打通数据通道",
+        description="📤 上传采集数据到 HDFS，打通数据通道（增强版）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--file", help="上传指定文件")
@@ -333,18 +401,22 @@ def main():
     parser.add_argument("--shell", action="store_true", help="使用 hdfs dfs shell 命令（无需安装 hdfs 库）")
     parser.add_argument("--list-hdfs", nargs="?", const="", help="列出 HDFS 上的文件")
     parser.add_argument("--clear-marks", action="store_true", help="清除已上传标记")
+    parser.add_argument("--retry", type=int, default=0, help="上传失败重试次数（覆盖默认值）")
 
     args = parser.parse_args()
+    # 重试配置覆盖
+    if args.retry > 0:
+        global MAX_RETRIES
+        MAX_RETRIES = args.retry
+
     uploader = HDFSUploader(use_shell=args.shell)
 
-    # 清除标记
     if args.clear_marks:
         import shutil
         shutil.rmtree(UPLOAD_MARKER_DIR, ignore_errors=True)
         print("🗑️  已清除所有上传标记")
         return
 
-    # 列出 HDFS
     if args.list_hdfs is not None:
         base = args.list_hdfs or HDFS_CFG["base_path"]
         files = uploader.list_hdfs_files(base)
@@ -353,7 +425,6 @@ def main():
             print(f"   {f}")
         return
 
-    # 单文件上传
     if args.file:
         info = uploader.classify_file(args.file)
         if not info:
@@ -364,7 +435,6 @@ def main():
             uploader.run_hive_repair()
         return
 
-    # 批量上传
     uploader.upload_all(
         target_dir=args.dir,
         force=args.force,
