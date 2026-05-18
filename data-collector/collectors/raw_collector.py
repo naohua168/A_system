@@ -49,7 +49,8 @@ class TencentRawProducer(RawDataProducer):
         return "tencent"
 
     def fetch_raw(self, topic: str = "raw_realtime", params: dict = None) -> List[dict]:
-        codes = params.get("codes", ["000001", "600519", "300750"]) if params else ["000001"]
+        from collectors.stock_list import get_all_stock_codes
+        codes = params.get("codes", get_all_stock_codes()) if params else get_all_stock_codes()
         prefixed = ",".join(
             f"{'sh' if c.startswith(('6','9')) else 'sz' if c.startswith(('0','3')) else 'bj'}{c}"
             for c in codes

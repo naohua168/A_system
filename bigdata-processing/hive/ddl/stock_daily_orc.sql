@@ -61,12 +61,11 @@ CREATE TABLE stock_basic_orc (
     market           STRING  COMMENT '所属市场',
     industry         STRING  COMMENT '所属行业',
     listing_date     STRING  COMMENT '上市日期',
-    total_market_cap DOUBLE  COMMENT '总市值',
-    float_market_cap DOUBLE  COMMENT '流通市值',
+    total_market_cap DOUBLE  COMMENT '总市值(元)',
+    float_market_cap DOUBLE  COMMENT '流通市值(元)',
     pe               DOUBLE  COMMENT '市盈率',
     pb               DOUBLE  COMMENT '市净率',
     roe              DOUBLE  COMMENT '净资产收益率(%)',
-    market_cap       DOUBLE  COMMENT '总市值(元)',
     source           STRING  COMMENT '数据来源'
 )
 COMMENT '股票基本信息 — ORC 格式优化版'

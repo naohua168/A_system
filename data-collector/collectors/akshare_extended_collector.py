@@ -167,13 +167,15 @@ class AkshareExtendedCollector(BaseCollector):
     # 限售解禁日历
     # ==========================================================
 
-    def fetch_lockup_expiry(self, code: str, trade_date: str,
+    def fetch_lockup_expiry(self, code: str, trade_date: str = None,
                              forward_days: int = 90) -> dict:
         """限售解禁日历
 
         返回: {history: [{date, type, shares, ratio}],
                upcoming: [{date, type, shares, float_ratio}]}
         """
+        if not trade_date:
+            trade_date = datetime.now().strftime("%Y-%m-%d")
         history = []
         try:
             df = self.ak.stock_restricted_release_queue_em(symbol=code)
@@ -323,6 +325,37 @@ class AkshareExtendedCollector(BaseCollector):
         """巨潮公告全文"""
         market = "沪市" if code.startswith("6") else ("北交所" if code.startswith("8") else "深市")
         return self.ak.stock_zh_a_disclosure_report_cninfo(symbol=code, market=market)
+
+    # ==========================================================
+    # K线数据（HTTP回退方案，当 mootdx TCP 不可用时使用）
+    # ==========================================================
+
+    def fetch_kline_http(self, code: str, freq: str = "daily",
+                          days: int = 365) -> pd.DataFrame:
+        """通过 akshare HTTP 获取日K线（备用方案）"""
+        try:
+            import akshare as ak
+            suffix = {"6": "SH", "9": "SH"}.get(code[0], "SZ")
+            symbol = f"{code}.{suffix}"
+            df = ak.stock_zh_a_hist(symbol=symbol, period=freq,
+                                     start_date="19900101", adjust="")
+            if df.empty:
+                return df
+            if days > 0 and len(df) > days:
+                df = df.tail(days)
+            rename = {
+                "日期": "date", "开盘": "open", "收盘": "close",
+                "最高": "high", "最低": "low", "成交量": "volume",
+                "成交额": "amount", "振幅": "amplitude",
+                "涨跌幅": "change_pct", "涨跌额": "change_amount",
+                "换手率": "turnover_pct",
+            }
+            df.rename(columns={k: v for k, v in rename.items() if k in df.columns},
+                      inplace=True)
+            df["code"] = code
+            return df
+        except Exception as e:
+            raise RuntimeError(f"akshare K线采集失败 [{code}]: {e}")
 
     # ==========================================================
     # 基金净值

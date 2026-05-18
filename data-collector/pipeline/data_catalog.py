@@ -46,21 +46,20 @@ DATA_CATALOG: List[DataTypeDef] = [
         data_type="realtime_quotes",
         display_name="实时行情",
         layer="market",
-        description="实时行情+PE/PB/市值/换手率（腾讯财经主，mootdx备）",
+        description="全市场实时行情+PE/PB/市值/换手率（腾讯财经全市场扫描）",
         source_order=["tencent", "mootdx"],
         storage=StorageTarget(
             mysql_table="stock",
             csv_prefix="realtime_",
             hdfs_path="daily/",
         ),
-        fetch_codes=["000001", "600519", "300750", "002463", "688017",
-                      "000858", "600036", "601318", "002415", "300059"],
+        is_global=True,             # 腾讯财经支持全市场批量拉取
     ),
     DataTypeDef(
         data_type="history_kline",
         display_name="历史K线",
         layer="market",
-        description="日K线（mootdx TCP）",
+        description="全市场日K线（mootdx TCP，需逐只股票迭代采集）",
         source_order=["mootdx"],
         storage=StorageTarget(
             mysql_table="stock_daily",
@@ -68,20 +67,19 @@ DATA_CATALOG: List[DataTypeDef] = [
             hdfs_path="daily/",
             retention_days=730,
         ),
-        fetch_codes=["000001", "600519", "300750", "002463", "688017"],
+        # fetch_codes=None — 管道自动迭代全市场股票
     ),
     DataTypeDef(
         data_type="stock_basic",
         display_name="股票基本信息",
         layer="market",
-        description="股票基本信息（腾讯财经）",
+        description="全市场股票基本信息（腾讯财经全市场扫描）",
         source_order=["tencent"],
         storage=StorageTarget(
             mysql_table="stock",
             csv_prefix="stock_basic_",
             hdfs_path="basic/",
         ),
-        fetch_codes=None,
         is_global=True,
     ),
 
@@ -116,27 +114,25 @@ DATA_CATALOG: List[DataTypeDef] = [
         data_type="concept_blocks",
         display_name="概念板块归属",
         layer="signal",
-        description="行业/概念/地域三维归属（百度PAE）",
+        description="全市场行业/概念/地域三维归属（百度PAE，逐只股票迭代）",
         source_order=["baidu"],
         storage=StorageTarget(
             mysql_table="signal_concept_block",
             csv_prefix="concept_blocks_",
             hdfs_path="signals/concept/",
         ),
-        fetch_codes=["000001", "600519", "300750"],
     ),
     DataTypeDef(
         data_type="fund_flow",
         display_name="个股资金流向",
         layer="signal",
-        description="个股资金流向分钟级+20日历史（百度）",
+        description="全市场个股资金流向分钟级+20日历史（百度，逐只股票迭代）",
         source_order=["baidu"],
         storage=StorageTarget(
             mysql_table="signal_fund_flow",
             csv_prefix="fund_flow_",
             hdfs_path="signals/fund_flow/",
         ),
-        fetch_codes=["000001", "600519", "300750"],
     ),
     DataTypeDef(
         data_type="dragon_tiger_daily",
@@ -168,7 +164,7 @@ DATA_CATALOG: List[DataTypeDef] = [
         data_type="lockup_expiry",
         display_name="限售解禁日历",
         layer="signal",
-        description="历史解禁+未来90天预警（akshare）",
+        description="全市场历史解禁+未来90天预警（akshare，逐只股票迭代）",
         source_order=["akshare_ext"],
         storage=StorageTarget(
             mysql_table="signal_lockup_detail",
@@ -176,7 +172,6 @@ DATA_CATALOG: List[DataTypeDef] = [
             hdfs_path="signals/lockup/",
             retention_days=365,
         ),
-        fetch_codes=["000001", "600519", "300750"],
     ),
 
     # ==================== 资讯层 ====================
@@ -184,7 +179,7 @@ DATA_CATALOG: List[DataTypeDef] = [
         data_type="research_reports",
         display_name="研报列表",
         layer="information",
-        description="东财研报列表+评级+EPS预测",
+        description="全市场东财研报列表+评级+EPS预测（逐只股票迭代）",
         source_order=["information"],
         storage=StorageTarget(
             mysql_table="info_research_report",
@@ -192,13 +187,12 @@ DATA_CATALOG: List[DataTypeDef] = [
             hdfs_path="info/research/",
             retention_days=365,
         ),
-        fetch_codes=["000001", "600519", "300750", "688017"],
     ),
     DataTypeDef(
         data_type="consensus_eps",
         display_name="机构一致预期EPS",
         layer="information",
-        description="同花顺源机构一致预期EPS",
+        description="全市场同花顺源机构一致预期EPS（逐只股票迭代）",
         source_order=["information"],
         storage=StorageTarget(
             mysql_table="info_consensus_eps",
@@ -206,13 +200,12 @@ DATA_CATALOG: List[DataTypeDef] = [
             hdfs_path="info/consensus_eps/",
             retention_days=365,
         ),
-        fetch_codes=["000001", "600519", "300750", "688017"],
     ),
     DataTypeDef(
         data_type="stock_news",
         display_name="个股新闻",
         layer="information",
-        description="东财个股新闻（akshare）",
+        description="全市场东财个股新闻（akshare，逐只股票迭代）",
         source_order=["information"],
         storage=StorageTarget(
             mysql_table="info_stock_news",
@@ -220,7 +213,6 @@ DATA_CATALOG: List[DataTypeDef] = [
             hdfs_path="info/stock_news/",
             retention_days=7,
         ),
-        fetch_codes=["000001", "600519", "300750"],
     ),
     DataTypeDef(
         data_type="cls_news",
@@ -254,7 +246,7 @@ DATA_CATALOG: List[DataTypeDef] = [
         data_type="filings",
         display_name="巨潮公告",
         layer="information",
-        description="沪深北全量公告（akshare/cninfo）",
+        description="全市场沪深北全量公告（akshare/cninfo，逐只股票迭代）",
         source_order=["information"],
         storage=StorageTarget(
             mysql_table="info_filing",
@@ -262,7 +254,6 @@ DATA_CATALOG: List[DataTypeDef] = [
             hdfs_path="info/filings/",
             retention_days=365,
         ),
-        fetch_codes=["000001", "600519", "300750"],
     ),
 ]
 

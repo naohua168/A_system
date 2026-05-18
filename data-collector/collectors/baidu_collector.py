@@ -3,12 +3,15 @@
 覆盖：概念板块归属（行业/概念/地域三维）+ 个股资金流向（分钟级+20日历史）
 数据特点：HTTP直连，零鉴权，需处理 ResultCode 类型不稳定（int/string）
 """
+import logging
 from typing import List, Optional
 
 import pandas as pd
 import requests
 
 from .base_collector import BaseCollector
+
+logger = logging.getLogger(__name__)
 
 _BAIDU_HEADERS = {
     "Host": "finance.pae.baidu.com",
@@ -37,15 +40,19 @@ class BaiduCollector(BaseCollector):
                region: [{name, change_pct, desc}],
                concept_tags: [str]}
         """
-        url = (
-            f"https://finance.pae.baidu.com/api/getrelatedblock"
-            f"?code={code}&market=ab&typeCode=all&finClientType=pc"
-        )
-        r = requests.get(url, headers=_BAIDU_HEADERS, timeout=10)
-        d = r.json()
-        # ResultCode 可能 int 也可能 string
-        if str(d.get("ResultCode", -1)) != "0":
-            raise RuntimeError(f"百度PAE错误: {d}")
+        try:
+            url = (
+                f"https://finance.pae.baidu.com/api/getrelatedblock"
+                f"?code={code}&market=ab&typeCode=all&finClientType=pc"
+            )
+            r = requests.get(url, headers=_BAIDU_HEADERS, timeout=10)
+            d = r.json()
+            if not d or str(d.get("ResultCode", -1)) != "0":
+                logger.warning("百度PAE概念板块无数据 [%s]: %s", code, d)
+                return {"industry": [], "concept": [], "region": [], "concept_tags": []}
+        except Exception as e:
+            logger.warning("百度PAE概念板块采集失败 [%s]: %s", code, e)
+            return {"industry": [], "concept": [], "region": [], "concept_tags": []}
 
         result = {"industry": [], "concept": [], "region": [], "concept_tags": []}
         for block in d.get("Result", []):

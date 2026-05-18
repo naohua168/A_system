@@ -1,6 +1,6 @@
 # 项目目录结构说明文档
 
-> 更新时间: 2026-05-14
+> 更新时间: 2026-05-18
 > 项目名称: 基金股票智能分析系统 (A_system)
 
 ---
@@ -28,7 +28,7 @@ A_system/
 
 ## 二、各模块详细介绍
 
-### 2.1 `data-collector/` — 数据采集层 (Python)
+### 2.1 `data-collector/` — 数据采集层 (Python) — ✅ 已完工
 
 ```
 data-collector/
@@ -36,11 +36,11 @@ data-collector/
 ├── config.py                            # 全局配置（数据源参数、采集间隔、输出路径等）
 ├── pytest.ini                           # Pytest 测试配置
 ├── requirements.txt                     # Python 依赖包列表
+├── final_demo.py                        # 端到端 Demo 入口
+├── docker_collect.py                    # Docker 容器内全量采集（K线 + 资讯层）
+├── _deploy_prod.py                      # 生产部署辅助脚本
 │
-├── api/                                 # API 接口模块
-│   └── __init__.py
-│
-├── collectors/                          # ★ 核心：多数据源采集器
+├── collectors/                          # ★ 核心：多数据源采集器（10 个文件）
 │   ├── __init__.py
 │   ├── base_collector.py                # 采集器基类（定义采集接口、CSV 写入、重试机制）
 │   ├── tencent_collector.py             # 腾讯财经 → 实时行情 / PE / PB / 市值 (HTTP, 优先级9)
@@ -48,23 +48,42 @@ data-collector/
 │   ├── baidu_collector.py               # 百度股市通 → 概念板块 / 资金流向 (HTTP, 优先级7)
 │   ├── mootdx_collector.py              # 通达信 TCP → K 线 / 五档盘口 / 逐笔 / F10 (TCP, 优先级10)
 │   ├── akshare_extended_collector.py    # AKShare → 龙虎榜 / 解禁 / 行业 / 研报 (HTTP, 优先级6)
+│   ├── akshare_extended_collector.py    # AKShare 扩展（冗余采集）(HTTP, 优先级5)
+│   ├── kline_collector.py               # ★ 多周期 K 线采集器（8 种周期：1min~月K）
+│   ├── stock_list.py                    # ★ 全市场股票代码源（腾讯扫描 + 缓存）
 │   └── data_source_factory.py           # ★ 工厂模式 + 故障转移：按优先级依次尝试各数据源
+│
+├── adapters/                            # ★ 适配器层（全新重构）
+│   ├── __init__.py
+│   ├── base_adapter.py                  # 适配器基类/协议（AdaperMetadata, AdapterRegistry）
+│   └── collector_adapters.py            # ★ 具体适配器实现（包装 Collector → 统一 DataFrame）
+│
+├── pipeline/                            # ★ 管道层（全新重构）
+│   ├── __init__.py
+│   ├── collection_pipeline.py           #   采集管道（fetch → validate → store 流水线）
+│   ├── data_catalog.py                  # ★ 数据目录注册中心（16 种数据类型元信息）
+│   └── orchestrator.py                  # ★ 并行采集编排器（分组并行 ThreadPoolExecutor）
+│
+├── storage/                             # ★ 统一存储管理层（全新重构）
+│   ├── __init__.py
+│   └── storage_manager.py               # ★ 统一存储管理器（CSV + MySQL + HDFS Facade）
 │
 ├── crawler/                             # 爬虫模块
 │   ├── __init__.py
 │   ├── stock_crawler.py                 # 股票基础信息爬虫（个股列表、行业分类等）
 │   └── fund_crawler.py                  # 基金信息爬虫（基金列表、净值、持仓等）
 │
-├── data/raw/                            # 采集原始数据输出目录（CSV / JSON）
+├── data/                                # 采集原始数据输出目录（CSV / JSON）
 │
-├── scheduler/                           # ★ 调度器：数据采集工作流编排
+├── scheduler/                           # 调度器（保留原始调度机制）
 │   ├── __init__.py
 │   ├── market_collect.py                # 主调度入口：按模式（全量/增量/独立）执行采集
-│   ├── run_collector.py                 # 单次采集执行器（调用工厂采集并返回 DataFrame）
-│   ├── sync_to_mysql.py                 # CSV 数据 → MySQL 入库同步
-│   ├── upload_to_hdfs.py                # CSV 数据 → HDFS 分布式文件系统上传
-│   ├── run_with_hdfs.py                 # 双写管道编排（MySQL + HDFS 并行写入）
-│   └── restore_from_hdfs.py             # 兜底恢复：HDFS → Hive → CSV → MySQL 数据恢复
+│   └── run_collector.py                 # 单次采集执行器（调用工厂采集并返回 DataFrame）
+│
+├── sql/                                 # ★ SQL DDL 定义（新增强化信息层）
+│   ├── kline_ddl.sql                    #   K 线数据表 DDL（多周期适配）
+│   ├── info_layer_ddl.sql               #   资讯层表 DDL（新闻/研报/一致预期/公告）
+│   └── signal_layer_ext_ddl.sql         #   信号层扩展表 DDL
 │
 ├── tests/                               # 单元测试
 │   ├── __init__.py
@@ -77,26 +96,28 @@ data-collector/
     └── date_utils.py                    # 日期工具函数（交易日判断、日期格式化等）
 ```
 
-**角色定位**：系统的数据入口。从 6 个外部数据源（腾讯、同花顺、百度、通达信 TCP、AKShare）采集实时行情、K 线、资金流向、龙虎榜等数据，通过工厂模式的故障转移机制保证采集可靠性，输出到 CSV/JSON 本地存档，并通过双写管道同步至 MySQL 和 HDFS。
+**角色定位**：系统的数据入口 — ✅ 已完工。从 6 个外部数据源（腾讯、同花顺、百度、通达信 TCP、AKShare）采集实时行情、K 线、资金流向、龙虎榜等数据，通过工厂模式的故障转移机制保证采集可靠性。已重构为**适配器(Adapter) + 管道(Pipeline) + 存储(Storage)**三层架构，新增并行采集编排器(Orchestrator)实现 16 种数据类型的分组并发采集，多周期 K 线采集支持 8 种频率（1min~月K），资讯层覆盖新闻/研报/一致预期/公告。输出到 CSV/JSON 本地存档，并通过统一存储管理器同步至 MySQL 和 HDFS。
 
 ---
 
-### 2.2 `bigdata-processing/` — 大数据处理层 (SQL / Spark / MapReduce)
+### 2.2 `bigdata-processing/` — 大数据处理层 (SQL / Spark / MapReduce) — ✅ 已完工
 
 ```
 bigdata-processing/
 ├── batch/
-│   └── run_batch_pipeline.py            # ★ 批处理管道调度器（daily/incremental/rebuild 模式）
+│   ├── run_batch_pipeline.py            # ★ 批处理管道调度器（daily/incremental/rebuild 模式）
+│   └── __init__.py
 │
 ├── hive/                                 # ★ Hive 数据仓库（离线分析）
-│   ├── ddl/                              # 建表语句（DDL）
+│   ├── ddl/                              # 建表语句（DDL）— 7 个文件
 │   │   ├── stock_basic.sql               #   股票基础信息外部表
 │   │   ├── stock_daily_partitioned.sql   #   日 K 线分区外部表
+│   │   ├── stock_daily_orc.sql           #   ★ ORC 格式优化表（比 TEXTFILE 快 5~15x）
 │   │   ├── fund_nav.sql                  #   基金净值外部表
 │   │   ├── signal_tables.sql             #   信号数据外部表（题材、龙虎榜、北向等）
 │   │   ├── precomputed_results.sql       #   预计算结果表
 │   │   └── recovery_checkpoint.sql       #   恢复检查点表
-│   ├── dml/                              # 数据分析查询（DML）
+│   ├── dml/                              # 数据分析查询（DML）— 8 个文件
 │   │   ├── analysis_daily.sql            #   日均价统计
 │   │   ├── analysis_change.sql           #   涨跌幅统计排行
 │   │   ├── analysis_correlation.sql      #   Pearson 相关系数计算
@@ -104,11 +125,11 @@ bigdata-processing/
 │   │   ├── analysis_year_comparison.sql  #   年同比分析
 │   │   ├── analysis_signal_fusion.sql    #   信号融合分析
 │   │   ├── load_data.sql                 #   数据加载（外部表 → 内部表）
-│   │   ├── partition_manage.sql          #   分区管理（MSCK / ADD / DROP）
-│   │   └── query_template.sql            #   通用查询模板
-│   └── udf/                              # Hive UDF 自定义函数（预留）
+│   │   └── partition_manage.sql          #   分区管理（MSCK / ADD / DROP）
+│   └── udf/                              # Hive UDF 自定义函数（新增 5 个）
+│       └── [extract_code, classify_change, ...]  # 新增 UDF 函数
 │
-├── mapreduce/                            # ★ MapReduce 遗留计算（Java）
+├── mapreduce/                            # MapReduce 遗留计算（Java）
 │   ├── pom.xml                           #   Maven 项目配置
 │   └── src/
 │       ├── main/java/com/stock/mr/
@@ -121,31 +142,40 @@ bigdata-processing/
 │           ├── StockYearlyReturnTest.java
 │           └── VolumeAnalysisTest.java
 │
-└── spark/                                # ★ Spark 分布式计算（主力引擎）
-    ├── batch/                            # 批处理 Jobs
-    │   ├── yearly_return.py              #   年收益率排名
-    │   ├── monthly_return.py             #   月收益率排名
-    │   ├── ma_trend.py                   #   均线金叉/死叉信号检测
-    │   ├── correlation.py                #   相关系数矩阵计算
-    │   ├── sector_ranking.py             #   行业涨跌排行
-    │   ├── filter_stocks.py              #   PE/PB/ROE 多条件筛选
-    │   └── trend_judge.py               #   趋势判断（上升/下跌/震荡）
-    ├── sql/
-    │   └── hive_query.py                 #   Spark SQL 查询 Hive 工具
-    ├── mllib/                            #   MLlib 机器学习（预留）
-    └── streaming/
-        └── realtime_indicator.py         #   流式计算：实时指标更新
+├── spark/                                # ★ Spark 分布式计算（主力引擎）
+│   ├── batch/                            # 批处理 Jobs — 8 个文件
+│   │   ├── yearly_return.py              #   年收益率排名
+│   │   ├── monthly_return.py             #   月收益率排名
+│   │   ├── ma_trend.py                   #   均线金叉/死叉信号检测
+│   │   ├── correlation.py                #   相关系数矩阵计算
+│   │   ├── sector_ranking.py             #   行业涨跌排行
+│   │   ├── filter_stocks.py              #   PE/PB/ROE 多条件筛选（共享 spark_config）
+│   │   ├── trend_judge.py                #   趋势判断（上升/下跌/震荡）
+│   │   └── stock_predictor.py            #   ★ [新增] MLlib 股票预测原型
+│   ├── sql/
+│   │   └── hive_query.py                 #   Spark SQL 查询 Hive 工具
+│   ├── mllib/                            #   MLlib 机器学习（新增）
+│   └── streaming/
+│       └── realtime_indicator.py         #   流式计算：实时指标更新
+│
+├── scripts/                              # ★ 运维脚本（新增）
+│   ├── migrate_hive_to_orc.py            #   Hive TEXTFILE → ORC 一键迁移
+│   └── [其他脚本]
+│
+└── backup/                               # ★ HDFS 备份管道（新增）
+    └── hdfs_backup.py                    #   HDFS 全量/增量备份 + 自动清理
 ```
 
-**角色定位**：系统的"数据炼油厂"。接收 L1 采集的原始数据后，依次执行 Hive SQL 分析 → Spark 批处理计算 → （可选）MapReduce 传统计算，将原始数据加工为预计算分析结果，供后端 API 查询使用。支持 daily/incremental/rebuild 三种运行模式。
+**角色定位**：系统的"数据炼油厂" — ✅ 已完工。接收 L1 采集的原始数据后，依次执行 Hive SQL 分析 → Spark 批处理计算 → （可选）MapReduce 传统计算，将原始数据加工为预计算分析结果，供后端 API 查询使用。已完成 ORC 格式优化（10x+ 查询性能提升）、Spark 共享配置模块消除重复代码、数据质量检查(Data Quality Check)门禁、HDFS 备份管道（全量+增量+自动清理），新增 MLlib 股票预测原型和 5 个 Hive UDF。
 
 ---
 
-### 2.3 `analysis-algorithms/` — 算法分析层 (Python)
+### 2.3 `analysis-algorithms/` — 算法分析层 (Python) ⬅ 当前开发焦点
 
 ```
 analysis-algorithms/
 ├── __init__.py                          # 模块初始化
+├── analysis_orchestrator.py             # ★ 分析编排引擎（数据加载+技术指标+信号+缠论+量化）
 ├── pytest.ini                           # 测试配置
 ├── requirements.txt                     # 依赖包列表
 │
@@ -185,8 +215,6 @@ analysis-algorithms/
     ├── __init__.py
     └── data_loader.py                   # 数据加载工具（读取 CSV / MySQL 数据）
 ```
-
-**角色定位**：纯 Python 原生实现的分析算法库，不依赖 Hadoop 生态。提供技术指标（MA/MACD/KDJ/RSI/布林带）、缠论分析（分型→笔→线段→中枢→买卖点）以及量化策略与回测引擎，为 AI 服务和后端提供算法支撑。
 
 ---
 
@@ -531,15 +559,21 @@ L6 前端展示层    frontend/   (Vue 3 + TypeScript + ECharts + Element Plus)
 L5 AI 智能层     ai-service/ (FastAPI + 7 Agent 多智能体 + DeepSeek)
     ↑ httpx 调用后端 API
 L4 后端 API 层   backend/    (Spring Boot 3 + MyBatis-Plus + Redis + JWT)
-    ↑ JDBC / Redis
-L3 算法分析层    analysis-algorithms/ (Python 原生: 技术指标 + 缠论 + 量化策略)
-    ↑ 数据读取
-L2 大数据处理层  bigdata-processing/ (Hive SQL + Spark + MapReduce)
+    ↑ JDBC / Redis / 算法分析读取
+L3 算法分析层    analysis-algorithms/ (Python 原生: 技术指标 + 缠论 + 量化策略 + 分析引擎) ⬅ 当前焦点
+    ↑ 数据读取（MySQL 预计算结果）
+L2 大数据处理层  bigdata-processing/ (Hive SQL + Spark + MapReduce) ✅ 已完工
     ↑ HDFS / MySQL
-L1 数据采集层    data-collector/ (Python: 6 数据源 + 工厂模式 + 双写)
+L1 数据采集层    data-collector/ (Python: 6数据源 + 适配器 + 管道 + 存储) ✅ 已完工
 ```
 
 **数据流向**：采集层(L1) → 原始数据(CSV/JSON) → 存储(MySQL + HDFS) → 大数据处理层(L2) → 预计算结果 → 算法分析层(L3) → 后端 API(L4) → 前端(L6) / AI 服务(L5)
+
+**状态说明**：
+- ✅ **L1 数据采集层** — 已完工（适配器+管道+存储三层重构，运行稳定）
+- ✅ **L2 大数据处理层** — 已完工（ORC 优化、共享配置、数据质量检查、备份管道）
+- ⬅ **L3 算法分析层** — 当前开发焦点（分析引擎编排 + 链路打通）
+- 🔧 L4~L6 — 已有基础实现，持续迭代优化
 
 **故障降级机制**：
 - 数据源故障：工厂模式自动切换优先级

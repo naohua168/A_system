@@ -38,6 +38,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
 import pandas as pd
 
+# 全市场股票列表（从腾讯财经实时扫描获取，非硬编码）
+from collectors.stock_list import get_all_stock_codes
+
 from collectors.data_source_factory import DataSourceFactory
 from config import DATA_DIR, RATE_LIMIT
 
@@ -87,11 +90,11 @@ class DataCollectorRunner:
     # ==========================================================
 
     def collect_realtime(self, codes: list = None) -> pd.DataFrame:
-        """采集实时行情（腾讯财经，含PE/PB/市值）"""
+        """采集实时行情（腾讯财经，全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750", "688017", "002463"]
+            codes = get_all_stock_codes()
         t0 = time.time()
-        print(f"[{datetime.now():%H:%M:%S}] 📡 实时行情: {codes}")
+        print(f"[{datetime.now():%H:%M:%S}] 📡 实时行情: 全市场 {len(codes)} 只")
         try:
             df = self.factory.get_realtime_quotes(codes)
             if not df.empty:
@@ -105,9 +108,9 @@ class DataCollectorRunner:
             return pd.DataFrame()
 
     def collect_kline(self, codes: list = None, days: int = 365) -> dict:
-        """采集历史K线（mootdx）"""
+        """采集历史K线（mootdx，全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750", "688017", "002463"]
+            codes = get_all_stock_codes()
         t0 = time.time()
         results = {}
         for code in codes:
@@ -188,9 +191,9 @@ class DataCollectorRunner:
             return {}
 
     def collect_stock_signals(self, codes: list = None) -> dict:
-        """采集个股信号层数据（概念板块+资金流向）"""
+        """采集个股信号层数据（概念板块+资金流向，全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750"]
+            codes = get_all_stock_codes()
         t0 = time.time()
         results = {}
         today = datetime.now().strftime("%Y-%m-%d")
@@ -225,9 +228,9 @@ class DataCollectorRunner:
     # ==========================================================
 
     def collect_research_reports(self, codes: list = None) -> dict:
-        """采集研报列表"""
+        """采集研报列表（全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750", "688017"]
+            codes = get_all_stock_codes()
         t0 = time.time()
         results = {}
         for code in codes:
@@ -249,9 +252,9 @@ class DataCollectorRunner:
         return results
 
     def collect_consensus_eps(self, codes: list = None) -> dict:
-        """采集机构一致预期EPS"""
+        """采集机构一致预期EPS（全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750", "688017"]
+            codes = get_all_stock_codes()
         t0 = time.time()
         results = {}
         for code in codes:
@@ -272,9 +275,9 @@ class DataCollectorRunner:
         return results
 
     def collect_stock_news(self, codes: list = None) -> dict:
-        """采集个股新闻"""
+        """采集个股新闻（全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750"]
+            codes = get_all_stock_codes()
         t0 = time.time()
         results = {}
         for code in codes:
@@ -329,9 +332,9 @@ class DataCollectorRunner:
             return pd.DataFrame()
 
     def collect_filings(self, codes: list = None) -> dict:
-        """采集巨潮公告"""
+        """采集巨潮公告（全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750"]
+            codes = get_all_stock_codes()
         t0 = time.time()
         results = {}
         for code in codes:

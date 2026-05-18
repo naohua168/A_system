@@ -55,7 +55,7 @@ def filter_stocks(spark, pe_max=30, pb_max=3, roe_min=8,
                ROUND(b.pe, 2) AS pe,
                ROUND(b.pb, 2) AS pb,
                ROUND(b.roe, 2) AS roe,
-               ROUND(b.market_cap / 1e8, 2) AS market_cap_billions,
+               ROUND(b.total_market_cap / 1e8, 2) AS market_cap_billions,
                CASE
                    WHEN b.pe <= {pe_max} AND b.pb <= {pb_max}
                         AND b.roe >= {roe_min} AND l.volume >= {volume_min}

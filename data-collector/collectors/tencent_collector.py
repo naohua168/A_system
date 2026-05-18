@@ -90,11 +90,24 @@ class TencentCollector(BaseCollector):
         return result
 
     def fetch_all_realtime(self) -> pd.DataFrame:
-        """获取全市场实时行情"""
+        """获取全市场实时行情
+
+        扫描所有 A 股代码前缀范围，批量发送给腾讯财经接口。
+        编码格式: {交易所前缀}{6位代码}，如 sh600519, sz000001。
+        """
         codes = []
-        for prefix in ["sh6", "sz0", "sz3", "sh9", "bj4", "bj8"]:
-            for i in range(0, 1000):
-                codes.append(f"{prefix}{i:06d}")
+        # (交易所前缀, 起始代码, 终止代码) — 覆盖沪/深/北交所实际代码范围
+        prefix_ranges = [
+            ("sh", 600000, 609999),    # 上海主板
+            ("sh", 688000, 689999),    # 科创板
+            ("sz", 0, 3999),           # 深圳主板 (000000~003999)
+            ("sz", 300000, 301999),    # 创业板
+            ("bj", 400000, 409999),    # 北交所
+            ("bj", 800000, 809999),    # 北交所
+        ]
+        for prefix, start, end in prefix_ranges:
+            for code_int in range(start, end + 1):
+                codes.append(f"{prefix}{code_int:06d}")
         all_records = []
         batch_size = 100
         for i in range(0, len(codes), batch_size):
@@ -117,12 +130,25 @@ class TencentCollector(BaseCollector):
                         all_records.append({
                             "code": code, "name": vals[1],
                             "price": float(vals[3]) if vals[3] else 0,
+                            "last_close": float(vals[4]) if vals[4] else 0,
+                            "open": float(vals[5]) if vals[5] else 0,
+                            "high": float(vals[33]) if vals[33] else 0,
+                            "low": float(vals[34]) if vals[34] else 0,
+                            "change_amt": float(vals[31]) if vals[31] else 0,
                             "change_pct": float(vals[32]) if vals[32] else 0,
-                            "pe_ttm": float(vals[39]) if vals[39] else 0,
-                            "pb": float(vals[46]) if vals[46] else 0,
-                            "mcap_yi": float(vals[44]) if vals[44] else 0,
+                            "amount_wan": float(vals[37]) if vals[37] else 0,
                             "turnover_pct": float(vals[38]) if vals[38] else 0,
+                            "pe_ttm": float(vals[39]) if vals[39] else 0,
+                            "amplitude_pct": float(vals[43]) if vals[43] else 0,
+                            "mcap_yi": float(vals[44]) if vals[44] else 0,
+                            "float_mcap_yi": float(vals[45]) if vals[45] else 0,
+                            "pb": float(vals[46]) if vals[46] else 0,
+                            "limit_up": float(vals[47]) if vals[47] else 0,
+                            "limit_down": float(vals[48]) if vals[48] else 0,
+                            "vol_ratio": float(vals[49]) if vals[49] else 0,
+                            "pe_static": float(vals[52]) if vals[52] else 0,
                             "source": self.source_name,
+                            "timestamp": pd.Timestamp.now(),
                         })
                     except (ValueError, IndexError):
                         continue

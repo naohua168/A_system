@@ -209,14 +209,19 @@ class DataSourceFactory:
         start_date: str = None, end_date: str = None,
         freq: str = "daily", prefer: str = "mootdx",
     ) -> pd.DataFrame:
-        """获取历史K线（优先 mootdx TCP，速度最快不封IP）"""
-        # 修复: 回退到 tencent 而非仅 mootdx
-        fallback_chain = ["mootdx", "tencent"]
+        """获取历史K线（优先 mootdx TCP，回退 akshare HTTP）"""
+        fallback_chain = ["mootdx", "akshare_ext"]
         source_order = [prefer] + [s for s in fallback_chain if s != prefer]
         return self.collect_with_fallback(
             "fetch_history_kline", source_order,
             code=code, start_date=start_date, end_date=end_date, freq=freq,
         )
+
+    def get_kline_http(self, code: str, freq: str = "daily",
+                        days: int = 365) -> pd.DataFrame:
+        """akshare HTTP K线（跳过 mootdx TCP，直接 HTTP）"""
+        collector = self.get_collector("akshare_ext")
+        return collector.fetch_kline_http(code, freq, days)
 
     def get_stock_basic(self, codes: List[str] = None,
                         prefer: str = "tencent") -> pd.DataFrame:

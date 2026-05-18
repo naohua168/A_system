@@ -40,10 +40,10 @@ from config import DATA_DIR, RATE_LIMIT
 logger = logging.getLogger("data_collector.market")
 
 # ============================================================
-# 采集测试股票（覆盖沪深创业板）
+# 全市场股票列表（从腾讯财经实时扫描获取，非硬编码）
 # ============================================================
-TEST_CODES = ["000001", "600519", "300750", "002463", "688017",
-              "000858", "600036", "601318", "002415", "300059"]
+from collectors.stock_list import get_all_stock_codes
+FULL_MARKET_CODES = get_all_stock_codes()  # ~5500 只
 
 
 def _safe_float(val, default=0.0) -> float:
@@ -386,9 +386,9 @@ class StandaloneHttpCollector:
         return str(fp.name)
 
     def collect_realtime_tencent(self, codes: list = None) -> pd.DataFrame:
-        """腾讯实时行情（纯HTTP，零鉴权）"""
+        """腾讯实时行情（纯HTTP，零鉴权，全市场）"""
         if codes is None:
-            codes = ["000001", "600519", "300750", "002463", "688017"]
+            codes = FULL_MARKET_CODES
         import requests as _req
         codes_str = ",".join(
             f"{'sh' if c.startswith(('6','9')) else 'sz' if c.startswith(('0','3')) else 'bj'}{c}"

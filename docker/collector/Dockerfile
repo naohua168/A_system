@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ libc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY . .
 # 修复: 使用系统级安装 (不使用 --user)，确保所有用户可访问
 RUN pip install --no-cache-dir -r requirements.txt
 

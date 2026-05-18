@@ -57,6 +57,11 @@ class CollectorAdapter(DataSourceAdapter):
     def check_health(self) -> bool:
         return self.collector.health_check()
 
+    @staticmethod
+    def _resolve_code(request: AdapterRequest) -> Optional[str]:
+        """从请求中提取股票代码，无代码时返回 None 而非硬编码默认值"""
+        return request.code or (request.codes[0] if request.codes else None)
+
 
 # ============================================================
 # 腾讯财经适配器
@@ -148,10 +153,19 @@ class BaiduAdapter(CollectorAdapter):
         )
 
     def fetch(self, request: AdapterRequest) -> pd.DataFrame:
-        code = request.code or (request.codes[0] if request.codes else "000001")
-        if "concept" in (request.extra.get("focus", "")):
+        raw_focus = request.extra.get("focus", "")
+        focus_map = {"concept_blocks": "concept", "fund_flow": "fund"}
+        focus = focus_map.get(raw_focus, raw_focus)
+        code = request.code or (request.codes[0] if request.codes else None)
+        if code is None:
+            return pd.DataFrame()
+        if "concept" in focus:
             # 概念板块: 归一化为 DataFrame
-            result = self.collector.fetch_concept_blocks(code)
+            try:
+                result = self.collector.fetch_concept_blocks(code)
+            except Exception as e:
+                logger.warning("概念板块采集失败 [%s]: %s", code, e)
+                return pd.DataFrame()
             records = []
             for block_type in ["industry", "concept", "region"]:
                 for item in result.get(block_type, []):
@@ -176,7 +190,11 @@ class BaiduAdapter(CollectorAdapter):
             return pd.DataFrame(records) if records else pd.DataFrame()
 
         # 资金流向
-        history = self.collector.fetch_fund_flow_history(code, request.days)
+        try:
+            history = self.collector.fetch_fund_flow_history(code, request.days or 20)
+        except Exception as e:
+            logger.warning("资金流向采集失败 [%s]: %s", code, e)
+            return pd.DataFrame()
         if not history:
             return pd.DataFrame()
         df = pd.DataFrame(history)
@@ -199,7 +217,14 @@ class AkshareAdapter(CollectorAdapter):
         )
 
     def fetch(self, request: AdapterRequest) -> pd.DataFrame:
-        focus = request.extra.get("focus", "")
+        # 兼容旧 focus 短名 和 新 data_type 全名
+        focus_map = {
+            "dragon_tiger_daily": "dragon_tiger",
+            "industry_compare": "industry",
+            "lockup_expiry": "lockup",
+        }
+        raw_focus = request.extra.get("focus", request.extra.get("data_type", ""))
+        focus = focus_map.get(raw_focus, raw_focus)
 
         if focus == "dragon_tiger":
             result = self.collector.fetch_daily_dragon_tiger(
@@ -225,7 +250,9 @@ class AkshareAdapter(CollectorAdapter):
             return df
 
         if focus == "lockup":
-            code = request.code or (request.codes[0] if request.codes else "000001")
+            code = self._resolve_code(request)
+            if code is None:
+                return pd.DataFrame()
             result = self.collector.fetch_lockup_expiry(
                 code=code,
                 trade_date=request.date_str or "",
@@ -262,31 +289,35 @@ class InformationAdapter(CollectorAdapter):
         )
 
     def fetch(self, request: AdapterRequest) -> pd.DataFrame:
-        focus = request.extra.get("focus", "")
+        # 优先使用外部传入的 focus，否则从 data_type 自动派生
+        focus = request.extra.get("focus", request.extra.get("data_type", ""))
+        # 兼容旧调用方：research_reports → research
+        if focus == "research_reports":
+            focus = "research"
 
-        if focus == "research":
-            code = request.code or (request.codes[0] if request.codes else "000001")
-            records = self.collector.fetch_research_reports(code, request.max_pages)
-            return pd.DataFrame(records) if records else pd.DataFrame()
+        code = self._resolve_code(request)
+        if code is None and focus in ("research", "consensus_eps", "stock_news", "filings"):
+            return pd.DataFrame()
 
-        if focus == "consensus_eps":
-            code = request.code or (request.codes[0] if request.codes else "000001")
-            return self.collector.fetch_consensus_eps(code)
+        ACTION_MAP = {
+            "research": lambda: pd.DataFrame(
+                self.collector.fetch_research_reports(
+                    code=code,
+                    max_pages=request.max_pages,
+                ) or []
+            ),
+            "consensus_eps": lambda: (
+                lambda df: df.assign(stock_code=code) if not df.empty else df
+            )(self.collector.fetch_consensus_eps(code=code)),
+            "stock_news": lambda: self.collector.fetch_stock_news(code=code),
+            "cls_news": lambda: self.collector.fetch_cls_news(),
+            "global_news": lambda: self.collector.fetch_global_news(),
+            "filings": lambda: self.collector.fetch_cninfo_filings(code=code),
+        }
 
-        if focus == "stock_news":
-            code = request.code or (request.codes[0] if request.codes else "000001")
-            return self.collector.fetch_stock_news(code)
-
-        if focus == "cls_news":
-            return self.collector.fetch_cls_news()
-
-        if focus == "global_news":
-            return self.collector.fetch_global_news()
-
-        if focus == "filings":
-            code = request.code or (request.codes[0] if request.codes else "000001")
-            return self.collector.fetch_cninfo_filings(code)
-
+        action = ACTION_MAP.get(focus)
+        if action:
+            return action()
         return pd.DataFrame()
 
 

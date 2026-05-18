@@ -65,36 +65,60 @@ class CollectionPipeline:
 
     用法:
         pipeline = CollectionPipeline()
-        report = pipeline.run("realtime_quotes")
-        report = pipeline.run_many(["realtime_quotes", "hot_reason"])
+        report = pipeline.run("realtime_quotes")            # 全市场实时行情
+        report = pipeline.run("history_kline")               # 迭代全市场K线
+        report = pipeline.run("research_reports")            # 迭代全市场研报
     """
 
-    def __init__(self, storage: Optional[StorageManager] = None):
+    def __init__(self, storage: Optional[StorageManager] = None,
+                 max_stocks: int = 0):
+        """
+        Args:
+            storage: 存储管理器实例
+            max_stocks: 全市场迭代时的最大股票数，0=不限制（全量采集）
+        """
         self.storage = storage or StorageManager()
         self.report = CollectReport()
+        self.max_stocks = max_stocks
 
     def run(self, data_type: str, codes: Optional[List[str]] = None,
             params: Optional[Dict] = None) -> CollectReport:
         """执行单类型采集
 
         Args:
-            data_type: 数据类型标识 (来自 data_catalog)
-            codes: 要采集的股票列表（覆盖默认值）
-            params: 扩展参数（如 start_date, end_date 等）
+            data_type: 数据类型标识
+            codes: 指定股票列表；None 表示全市场
+            params: 扩展参数
         Returns:
             CollectReport 实例
         """
         type_def = get_data_type_def(data_type)
         t0 = time.time()
 
-        # 构建请求
-        request = AdapterRequest(
-            codes=codes or type_def.fetch_codes,
-            **(params or {}),
-        )
+        # 构建请求，注入 data_type 供适配器分发使用
+        sys_extra = {"data_type": data_type, "focus": data_type}
+        user_extra = (params or {}).pop("extra", {}) if params else {}
+        merged_extra = {**sys_extra, **user_extra}
+        merged_params = {**(params or {}), "extra": merged_extra}
 
-        # 故障转移采集
-        df, adapter_used = self._collect_with_fallback(type_def, request)
+        # 判断是否为全市场采集模式
+        is_full_market = codes is None
+        if is_full_market:
+            if type_def.is_global:
+                # 全局类型 — 不传 codes，适配器一次性拉取全部
+                request = AdapterRequest(**merged_params)
+                df, adapter_used = self._collect_with_fallback(type_def, request)
+            else:
+                # 逐只股票迭代模式 — 遍历全市场股票
+                df, adapter_used = self._collect_all_stocks(type_def, merged_params)
+        else:
+            # 指定部分股票
+            request = AdapterRequest(
+                codes=codes,
+                **merged_params,
+            )
+            df, adapter_used = self._collect_with_fallback(type_def, request)
+
         success = not df.empty
 
         # 存储
@@ -116,6 +140,56 @@ class CollectionPipeline:
             storage_results=storage_results,
         )
         return self.report
+
+    def _collect_all_stocks(self, type_def: DataTypeDef,
+                             params: Optional[Dict] = None) -> tuple:
+        """遍历全市场所有股票，逐只采集
+
+        用于 K线、研报、新闻、公告、资金流向 等需要逐只股票调用的数据类型。
+        """
+        from collectors.stock_list import get_all_stock_codes
+        all_codes = get_all_stock_codes()
+        if self.max_stocks > 0:
+            all_codes = all_codes[:self.max_stocks]
+
+        adapters = AdapterRegistry.get_adapters(type_def.data_type)
+        if not adapters:
+            return pd.DataFrame(), ""
+
+        all_dfs = []
+        total = len(all_codes)
+        success_count = 0
+        params = params or {}
+
+        for idx, code in enumerate(all_codes):
+            request = AdapterRequest(
+                code=code,
+                codes=[code],
+                **(params),
+            )
+            for adapter in adapters:
+                try:
+                    df = adapter.fetch(request)
+                    if df is not None and not df.empty:
+                        all_dfs.append(df)
+                        success_count += 1
+                        break
+                except NotImplementedError:
+                    continue
+                except Exception as e:
+                    logger.debug("[%s] %s 采集失败: %s",
+                                 type_def.data_type, code, e)
+                    continue
+
+            if (idx + 1) % 500 == 0:
+                logger.info("[%s] 进度 %d/%d (%.1f%%)，成功 %d 只",
+                            type_def.data_type, idx + 1, total,
+                            (idx + 1) / total * 100, success_count)
+
+        result = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+        logger.info("[%s] 全市场采集完成: %d/%d 成功, 共 %d 行",
+                    type_def.data_type, success_count, total, len(result))
+        return result, adapters[0].metadata.source_name if adapters else ""
 
     def run_many(self, data_types: List[str],
                  codes: Optional[List[str]] = None) -> CollectReport:

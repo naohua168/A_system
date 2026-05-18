@@ -2,6 +2,12 @@
 
 基于 **Hadoop 生态 + 多智能体决策** 的金融大数据分析平台，覆盖数据采集、大数据处理、算法分析、后端 API、前端展示、AI 智能对话全链路。
 
+> **开发进度**：
+> - ✅ **L1 数据采集层** — 已完工（适配器+管道+存储三层重构，16 种数据类型并行采集）
+> - ✅ **L2 大数据处理层** — 已完工（ORC 优化、共享配置、数据质量检查、HDFS 备份管道）
+> - ⬅ **L3 算法分析层** — 当前开发焦点（分析引擎编排 + 技术指标+缠论+量化链路打通）
+> - 🔧 L4~L6 — 已有基础实现，持续迭代优化
+
 ---
 
 ## 目录
@@ -1341,15 +1347,15 @@ Web UI:    http://localhost:9090 (Prometheus)
 
 | 模块 | 语言 | 文件数 | 代码行数 | 备注 |
 |:-----|:-----|:------:|:--------:|:-----|
-| data-collector | Python | ~55 | ~3,000 | 8采集器 + 7适配器 + 管道 + 调度器 |
-| bigdata-processing | SQL/Python | ~30 | ~3,500 | 7 DDL + 8 DML + 6 Spark + UDF + MLlib |
-| analysis-algorithms | Python | ~22 | ~2,500 | 技术指标 + 缠论 + 量化策略 |
+| data-collector | Python | ~60 | ~4,500 | 10采集器 + 适配器 + 3管道 + 3存储 + 调度器 ✅ |
+| bigdata-processing | SQL/Python | ~35 | ~4,000 | 7 DDL(含ORC) + 8 DML + 8 Spark + 5 UDF + MLlib ✅ |
+| analysis-algorithms | Python | ~22 | ~2,500 | 技术指标 + 缠论 + 量化策略 ⬅ 当前焦点 |
 | backend | Java | ~100 | ~4,500 | 7 Controller + 15 Service + 28 Entity + JWT |
 | frontend | Vue/TS | ~55 | ~2,500 | 20 视图 + 11 API + 4 Store + ECharts |
 | ai-service | Python | ~20 | ~2,200 | 7 Agent + FusionEngine + Redis记忆 |
 | docker | 多语言 | ~42 | ~2,000 | 16 服务编排 + 监控 + 7 Dockerfile |
 | scripts | 多语言 | ~14 | ~1,000 | 部署脚本 + e2e验证 + 健康检查 |
-| **总计** | | **~270** | **~20,000** | |
+| **总计** | | **~290** | **~22,000** | |
 
 ---
 
