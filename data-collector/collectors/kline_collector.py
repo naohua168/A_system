@@ -46,7 +46,7 @@ class KlineCollector(BaseCollector):
     def fetch_kline(self, code: str, freq: str = "daily",
                     days: int = 365) -> pd.DataFrame:
         """
-        采集多周期K线数据
+        采集多周期K线数据（带指数退避重试 + 断线重连）
 
         Args:
             code: 6位股票代码
@@ -62,19 +62,32 @@ class KlineCollector(BaseCollector):
                 return daily
             return self._aggregate_to(daily, freq)
 
-        # 分钟K/日K 优先新浪
-        df = self._fetch_from_sina(code, freq)
-        if not df.empty:
-            df["code"] = code
-            df["freq"] = freq
-            return df
+        # 分钟K/日K 优先新浪（带重试）
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            df = self._fetch_from_sina(code, freq)
+            if not df.empty:
+                df["code"] = code
+                df["freq"] = freq
+                return df
+            if attempt < max_retries:
+                wait = 2 ** attempt
+                logger.debug("[新浪] %s %s 重试 attempt=%d/%d wait=%ds",
+                             code, freq, attempt, max_retries, wait)
+                time.sleep(wait)
 
-        # 回退腾讯
-        df = self._fetch_from_tencent(code, freq)
-        if not df.empty:
-            df["code"] = code
-            df["freq"] = freq
-            return df
+        # 回退腾讯（带重试）
+        for attempt in range(1, max_retries + 1):
+            df = self._fetch_from_tencent(code, freq)
+            if not df.empty:
+                df["code"] = code
+                df["freq"] = freq
+                return df
+            if attempt < max_retries:
+                wait = 2 ** attempt
+                logger.debug("[腾讯] %s %s 重试 attempt=%d/%d wait=%ds",
+                             code, freq, attempt, max_retries, wait)
+                time.sleep(wait)
 
         return pd.DataFrame()
 

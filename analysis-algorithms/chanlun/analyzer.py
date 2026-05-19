@@ -16,9 +16,6 @@ from .central import identify_centrals
 from .signal import generate_signals
 from .visualizer import ChanlunVisualizer
 
-# 可选的直接数据采集
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.resolve()))
-
 
 class ChanlunAnalyzer:
     """缠论分析器 — 统一入口"""
@@ -102,15 +99,29 @@ def main():
     if args.file:
         df = pd.read_csv(args.file)
     else:
-        # 尝试从 data-collector 采集
+        # 从 MySQL 或生成示例数据
         try:
-            from data_collector.crawler.stock_crawler import StockCrawler
-            crawler = StockCrawler()
-            df = crawler.fetch_kline(args.code, days=args.days, save=False)
-        except ImportError:
-            from ..utils.data_loader import load_sample
-            print("⚠️  未找到数据，使用示例数据")
-            df = load_sample()
+            from data.loader import DataLoader
+            dl = DataLoader()
+            df = dl.read_kline(args.code, days=args.days)
+            dl.close()
+        except Exception:
+            import numpy as np
+            np.random.seed(42)
+            n = 120
+            dates = pd.bdate_range("2025-01-01", periods=n)
+            base, trend = 10.0, np.linspace(0, 2, n)
+            noise = np.random.normal(0, 0.2, n).cumsum()
+            closes = base + trend + noise
+            df = pd.DataFrame({
+                "date": dates.strftime("%Y-%m-%d"),
+                "open": closes - np.random.uniform(0, 0.3, n),
+                "high": closes + np.random.uniform(0, 0.5, n),
+                "low": closes - np.random.uniform(0, 0.5, n),
+                "close": closes,
+                "volume": np.random.randint(500000, 5000000, n),
+            })
+            print("⚠️  使用模拟数据")
 
     if df.empty:
         print("❌ 无数据")

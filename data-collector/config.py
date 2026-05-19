@@ -19,6 +19,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 ENABLED_SOURCES = {
     "mootdx": True,         # 通达信TCP — K线/五档盘口/逐笔成交/财务/F10（需国内IP）
     "tencent": True,        # 腾讯财经 — PE/PB/市值/换手率/涨跌停价（不封IP）
+    "sina_kline": True,     # 新浪财经 — HTTP K线（全场景可用，mootdx备份）
     "ths_hot": True,        # 同花顺热点 — 当日强势股+题材归因（零鉴权73ms）
     "ths_northbound": True, # 同花顺北向 — 北向资金实时分钟流向（零鉴权）
     "baidu": True,          # 百度股市通 — 概念板块+资金流向（PAE协议）
@@ -31,6 +32,7 @@ ENABLED_SOURCES = {
 # ============================================================
 SOURCE_PRIORITY = {
     "mootdx": 10,           # TCP直连，最稳定，不封IP
+    "sina_kline": 9,        # HTTP新浪K线，全场景可用
     "tencent": 9,           # HTTP，不封IP
     "ths_hot": 8,           # 零鉴权73ms
     "ths_northbound": 8,    # 零鉴权
@@ -56,6 +58,11 @@ STOCK_PREFIX_MAP = {
 # ============================================================
 DEFAULT_KLINE_FREQ = "daily"        # K线频率: daily/weekly/monthly
 DEFAULT_KLINE_YEARS = 2             # 默认拉取 2 年历史K线
+KLINE_COLLECT_INTERVAL = 0.3        # K线逐只采集间隔（秒），防止反爬
+KLINE_BATCH_SIZE = 50               # K线批量并发采集数
+KLINE_RECONNECT_MAX_RETRIES = 5     # K线断线重连最大重试次数
+KLINE_AGGREGATE_WEEKLY = True       # 是否聚合周K
+KLINE_AGGREGATE_MONTHLY = True      # 是否聚合月K
 FUND_NAV_YEARS = 1                  # 基金净值拉取年限
 BATCH_SIZE = 100                    # 批量查询时的分批大小
 REQUEST_TIMEOUT = 30                # HTTP 请求超时 (秒)
@@ -105,6 +112,35 @@ RATE_LIMIT = {
     "concept_blocks_interval": 0.3,        # 概念板块API调用间隔 (秒)
     "fund_flow_interval": 0.3,             # 资金流向API调用间隔 (秒)
     "dragon_tiger_interval": 1.0,          # 龙虎榜API调用间隔 (秒)
+}
+
+# ============================================================
+# MySQL 连接配置（统一管理，消除硬编码）
+# 所有模块通过 get_mysql_config() 获取配置
+# ============================================================
+MYSQL_CONFIG = {
+    "host": os.getenv("MYSQL_HOST", "localhost"),
+    "port": int(os.getenv("MYSQL_PORT", "3306")),
+    "user": os.getenv("MYSQL_USER", "root"),
+    "password": os.getenv("MYSQL_PASSWORD", "hadoop123"),
+    "database": os.getenv("MYSQL_DB", "stock_analysis"),
+}
+
+# ============================================================
+# Kafka 配置（消除 raw_collector.py 中的硬编码）
+# ============================================================
+KAFKA_CONFIG = {
+    "bootstrap_servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+    "topics": {
+        "realtime": "raw_realtime",
+        "kline": "raw_kline",
+        "fund_nav": "raw_fund_nav",
+        "news": "raw_news",
+        "filings": "raw_filings",
+    },
+    "max_request_size": 10485760,
+    "acks": "all",
+    "retries": 3,
 }
 
 # ============================================================

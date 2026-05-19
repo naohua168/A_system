@@ -37,7 +37,7 @@ from pyspark.sql.types import (
     StructField, StructType, TimestampType,
 )
 
-sys.path.insert(0, str(__file__).rsplit("/", 2)[0] + "/spark")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "spark"))
 from spark_config import SparkConfig, OUTPUT_PATHS
 
 # ============================================================
@@ -117,16 +117,17 @@ def parse_realtime_with_df(raw_df: DataFrame) -> DataFrame:
     )
 
     # 3. 展开解析结果
-    result = parsed \
+    result = (parsed
         .withColumn("_code_tmp",
             F.when(F.col("raw_json").contains("="),
                    F.expr("REGEXP_EXTRACT(SPLIT(raw_json, '=')[0], '(\\\\d+)', 1)"))
              .otherwise(F.lit(None))
-        ) \
+        )
         .withColumn("_fields",
             F.when(F.col("parsed").isNotNull(),
                    F.split(F.regexp_replace(F.col("parsed"), '"', ""), "~"))
-             .otherwise(F.array()))
+             .otherwise(F.array())
+        )
         .select(
             F.col("_code_tmp").alias("stock_code"),
             F.when(F.size("_fields") > 1, F.col("_fields")[1]).alias("name"),
@@ -140,6 +141,7 @@ def parse_realtime_with_df(raw_df: DataFrame) -> DataFrame:
             F.to_date(F.current_timestamp()).alias("trade_date"),
             F.lit("tencent").alias("source"),
         )
+    )
 
     # 4. 数据质量过滤
     result = result.filter(

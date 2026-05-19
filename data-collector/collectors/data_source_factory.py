@@ -15,6 +15,7 @@ from .tencent_collector import TencentCollector
 from .ths_hot_collector import ThsHotCollector, ThsNorthboundCollector
 from .baidu_collector import BaiduCollector
 from .akshare_extended_collector import AkshareExtendedCollector
+from .kline_collector import KlineCollector       # 新增: 新浪/腾讯 HTTP K 线
 from .information_collector import InformationCollector
 from config import (
     ENABLED_SOURCES, MAX_RETRIES, RETRY_BACKOFF_BASE,
@@ -32,7 +33,8 @@ _COLLECTOR_REGISTRY: Dict[str, type] = {
     "ths_northbound": ThsNorthboundCollector,
     "baidu": BaiduCollector,
     "akshare_ext": AkshareExtendedCollector,
-    "information": InformationCollector,       # 资讯层: 研报+新闻+公告
+    "information": InformationCollector,           # 资讯层: 研报+新闻+公告
+    "sina_kline": KlineCollector,                  # 新增: 新浪 HTTP K 线（备选，mootdx不可用时）
 }
 
 
@@ -209,8 +211,8 @@ class DataSourceFactory:
         start_date: str = None, end_date: str = None,
         freq: str = "daily", prefer: str = "mootdx",
     ) -> pd.DataFrame:
-        """获取历史K线（优先 mootdx TCP，回退 akshare HTTP）"""
-        fallback_chain = ["mootdx", "akshare_ext"]
+        """获取历史K线（优先 mootdx TCP，回退 sina_kline HTTP）"""
+        fallback_chain = ["mootdx", "sina_kline"]
         source_order = [prefer] + [s for s in fallback_chain if s != prefer]
         return self.collect_with_fallback(
             "fetch_history_kline", source_order,

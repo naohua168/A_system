@@ -58,4 +58,12 @@ public interface AnalysisService {
      * @return 行业排行列表
      */
     List<Map<String, Object>> getSectorRanking(String tradeDate);
+
+    /**
+     * 获取缠论分析数据（供前端K线图渲染）
+     * @param stockCode 股票代码
+     * @param days K线天数
+     * @return {bi, zhongshu, fengxing, buy_sell_points, stats}
+     */
+    Map<String, Object> getChanlunAnalysis(String stockCode, int days);
 }

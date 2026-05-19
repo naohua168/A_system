@@ -36,14 +36,14 @@ class Pen:
         return 0.0
 
 
-def find_pens(fractals: List[Fractal]) -> List[Pen]:
+def find_pens(fractals: Optional[List[Fractal]]) -> List[Pen]:
     """连接分型为笔
     Args:
         fractals: 已过滤的分型列表
     Returns:
         笔列表
     """
-    if len(fractals) < 2:
+    if not fractals or len(fractals) < 2:
         return []
 
     pens = []

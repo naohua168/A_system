@@ -161,6 +161,9 @@ class CollectionPipeline:
         success_count = 0
         params = params or {}
 
+        _has_sleep = type_def.data_type in ("history_kline", "research_reports",
+                                             "lockup_expiry", "fund_flow", "concept_blocks")
+
         for idx, code in enumerate(all_codes):
             request = AdapterRequest(
                 code=code,
@@ -180,6 +183,10 @@ class CollectionPipeline:
                     logger.debug("[%s] %s 采集失败: %s",
                                  type_def.data_type, code, e)
                     continue
+
+            # 限流：逐只采集的数据类型增加间隔（防反爬）
+            if _has_sleep:
+                time.sleep(0.3)
 
             if (idx + 1) % 500 == 0:
                 logger.info("[%s] 进度 %d/%d (%.1f%%)，成功 %d 只",

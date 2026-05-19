@@ -321,6 +321,54 @@ class InformationAdapter(CollectorAdapter):
         return pd.DataFrame()
 
 
+
+# ============================================================
+# 新浪财经 K 线适配器（HTTP，不依赖 mootdx TCP）
+# ============================================================
+class SinaKlineAdapter(CollectorAdapter):
+    """新浪财经 — 日 K 线（优先），腾讯财经备用
+
+    KlineCollector 封装新浪/腾讯 HTTP API 获取 K 线数据。
+    作为 mootdx TCP 的 HTTP 回退方案，Docker 内外均可用。
+
+    fetch_kline() 返回列: date, open, high, low, close, volume, code, freq, source
+    COLUMN_MAP 中的 stock_daily 映射:
+      date→trade_date, code→stock_code, open→open_price,
+      close→close_price, high→high_price, low→low_price
+    """
+
+    def __init__(self):
+        super().__init__(
+            source_name="sina_kline", priority=9,
+            supported_types=["history_kline"],
+            description="新浪HTTP日K线（不依赖TCP，Docker内外均可用）",
+        )
+
+    def fetch(self, request: AdapterRequest) -> pd.DataFrame:
+        code = self._resolve_code(request)
+        if code is None:
+            return pd.DataFrame()
+
+        df = self.collector.fetch_kline(
+            code=code,
+            freq=request.freq or "daily",
+            days=max(request.days or 365, 60),
+        )
+        if df.empty:
+            return df
+
+        # 补齐 stock_daily 表需要的额外字段
+        df = df.rename(columns={"code": "stock_code"})
+        df["pre_close"] = df["close"].shift(1).fillna(0)
+        df["change_pct"] = (
+            (df["close"] - df["pre_close"]) / df["pre_close"].replace(0, float("nan")) * 100
+        ).fillna(0).round(2)
+        df["amount"] = (df["close"] * df["volume"]).fillna(0).astype(float)
+        df["turnover_pct"] = 0.0
+        df["source"] = self.metadata.source_name
+        return df
+
+
 # ============================================================
 # 模块加载时自动注册到 AdapterRegistry
 # ============================================================
@@ -329,6 +377,7 @@ def register_all_adapters():
     adapters = [
         TencentAdapter(),
         MootdxAdapter(),
+        SinaKlineAdapter(),                          # 新增: 新浪 HTTP K 线
         ThsHotAdapter(),
         ThsNorthboundAdapter(),
         BaiduAdapter(),

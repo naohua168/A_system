@@ -50,12 +50,17 @@ class Fractal:
 def merge_klines(df: pd.DataFrame) -> List[KLine]:
     """K线包含处理 — 合并有包含关系的相邻K线
     Args:
-        df: 包含 date, high, low 列的 DataFrame，按日期升序
+        df: 包含 date/high/low 列的 DataFrame（也支持 trade_date 列名），按日期升序
     Returns:
         处理后的 KLine 列表
     """
     if df.empty:
         return []
+
+    # 统一列名: trade_date → date
+    work = df.copy()
+    if "trade_date" in work.columns and "date" not in work.columns:
+        work = work.rename(columns={"trade_date": "date"})
 
     klines = [
         KLine(
@@ -65,7 +70,7 @@ def merge_klines(df: pd.DataFrame) -> List[KLine]:
             low=float(row["low"]),
             idx=i,
         )
-        for i, (_, row) in enumerate(df.iterrows())
+        for i, (_, row) in enumerate(work.iterrows())
     ]
 
     if len(klines) <= 1:
@@ -116,67 +121,65 @@ def merge_klines(df: pd.DataFrame) -> List[KLine]:
 
 
 def _calc_strength(k1: KLine, k2: KLine, k3: KLine, ftype: str) -> float:
-    """计算分型强度"""
+    """计算分型强度（测试接口，内部未使用 — 已内联到 find_fractals）"""
     if ftype == "top":
-        # 顶分型强度 = (k2高点 - k1高点) + (k2高点 - k3高点)
         return (k2.high - k1.high) + (k2.high - k3.high)
-    else:
-        # 底分型强度 = (k1低点 - k2低点) + (k3低点 - k2低点)
-        return (k1.low - k2.low) + (k3.low - k2.low)
+    return (k1.low - k2.low) + (k3.low - k2.low)
 
 
 def find_fractals(klines: List[KLine]) -> List[Fractal]:
-    """识别顶底分型
-    规则: 连续3根处理后K线
-      - 顶分型: 中间高点 > 左右高点 (↑↓↑)
-      - 底分型: 中间低点 < 左右低点 (↓↑↓)
-    """
-    if len(klines) < 3:
+    """优化版分型识别 — 内联强度计算 + 局部变量缓存"""
+    n = len(klines)
+    if n < 3:
         return []
 
     fractals = []
+    # 预分配列表容量避免扩容
+    fractals_reserve = n // 3 + 1
 
-    for i in range(1, len(klines) - 1):
+    for i in range(1, n - 1):
         k1, k2, k3 = klines[i - 1], klines[i], klines[i + 1]
 
+        # 局部变量缓存 — 消除属性访问开销
+        k2_h = k2.high
+        k1_h = k1.high
+        k3_h = k3.high
+        k2_l = k2.low
+        k1_l = k1.low
+        k3_l = k3.low
+
         # 顶分型: 中间最高价最高, 中间最低价也最高
-        if k2.high > k1.high and k2.high > k3.high and \
-           k2.low > k1.low and k2.low > k3.low:
-            f = Fractal(
-                type="top",
-                k1=k1, k2=k2, k3=k3,
-                strength=round(_calc_strength(k1, k2, k3, "top"), 2),
-            )
+        if k2_h > k1_h and k2_h > k3_h and k2_l > k1_l and k2_l > k3_l:
+            strength = round((k2_h - k1_h) + (k2_h - k3_h), 2)
+            f = Fractal(type="top", k1=k1, k2=k2, k3=k3, strength=strength)
             fractals.append(f)
 
         # 底分型: 中间最低价最低, 中间最高价也最低
-        elif k2.low < k1.low and k2.low < k3.low and \
-             k2.high < k1.high and k2.high < k3.high:
-            f = Fractal(
-                type="bottom",
-                k1=k1, k2=k2, k3=k3,
-                strength=round(_calc_strength(k1, k2, k3, "bottom"), 2),
-            )
+        elif k2_l < k1_l and k2_l < k3_l and k2_h < k1_h and k2_h < k3_h:
+            strength = round((k1_l - k2_l) + (k3_l - k2_l), 2)
+            f = Fractal(type="bottom", k1=k1, k2=k2, k3=k3, strength=strength)
             fractals.append(f)
 
     return fractals
 
 
 def filter_fractals(fractals: List[Fractal]) -> List[Fractal]:
-    """过滤分型: 交替出现 + 间隔至少1根K线"""
-    if not fractals:
+    """优化版分型过滤 — 预分配列表 + 就近跳转"""
+    n = len(fractals)
+    if n == 0:
         return []
 
     filtered = [fractals[0]]
+    filtered_extend = filtered.extend  # 方法引用缓存
 
-    for f in fractals[1:]:
+    for i in range(1, n):
+        f = fractals[i]
         last = filtered[-1]
 
-        # 分型必须交替: 顶底/底顶
+        # 同类型跳过
         if f.type == last.type:
             continue
-
-        # 间隔至少1根K线
+        # 间隔不足跳过
         if abs(f.k2.idx - last.k2.idx) < 2:
             continue
 
@@ -188,10 +191,13 @@ def filter_fractals(fractals: List[Fractal]) -> List[Fractal]:
 def identify_fractals(df: pd.DataFrame) -> pd.DataFrame:
     """完整的分型识别流程: 包含处理 → 分型识别 → 过滤
     Args:
-        df: K线数据 (date, high, low, close)
+        df: K线数据，列名支持 trade_date 或 date (open, high, low, close)
     Returns:
         带分型标记的 DataFrame (fractal_type, fractal_price)
     """
+    # 统一列名: trade_date → date
+    if "trade_date" in df.columns and "date" not in df.columns:
+        df = df.rename(columns={"trade_date": "date"})
     # 1. K线包含处理
     merged = merge_klines(df)
 

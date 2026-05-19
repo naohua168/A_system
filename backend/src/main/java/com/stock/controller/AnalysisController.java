@@ -107,4 +107,13 @@ public class AnalysisController {
     public ApiResponse getSectorRanking(@RequestParam(required = false) String tradeDate) {
         return ApiResponse.ok(analysisService.getSectorRanking(tradeDate));
     }
+
+    // ==================== 缠论分析 ====================
+
+    @GetMapping("/{stockCode}/chanlun")
+    public ApiResponse getChanlun(
+            @PathVariable String stockCode,
+            @RequestParam(defaultValue = "365") int days) {
+        return ApiResponse.ok(analysisService.getChanlunAnalysis(stockCode, days));
+    }
 }

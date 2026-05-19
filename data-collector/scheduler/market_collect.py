@@ -99,7 +99,7 @@ class HttpOnlyCollector:
     def collect_realtime(self, codes: list = None) -> pd.DataFrame:
         """采集实时行情 + PE/PB/市值"""
         if codes is None:
-            codes = TEST_CODES
+            codes = FULL_MARKET_CODES
         t0 = time.time()
         print(f"[{datetime.now():%H:%M:%S}] 📡 实时行情 (腾讯) codes={len(codes)}")
         try:
@@ -123,7 +123,7 @@ class HttpOnlyCollector:
     def collect_basic(self, codes: list = None) -> pd.DataFrame:
         """采集股票基本信息"""
         if codes is None:
-            codes = TEST_CODES
+            codes = FULL_MARKET_CODES
         t0 = time.time()
         print(f"[{datetime.now():%H:%M:%S}] 📋 股票基本信息 (腾讯)")
         try:
@@ -208,7 +208,7 @@ class HttpOnlyCollector:
     # ----------------------------------------------------------
     def collect_concept_blocks(self, codes: list = None) -> dict:
         if codes is None:
-            codes = TEST_CODES[:3]
+            codes = FULL_MARKET_CODES[:3]
         t0 = time.time()
         print(f"[{datetime.now():%H:%M:%S}] 🏷️  概念板块 (百度)")
         results = {}
@@ -231,7 +231,7 @@ class HttpOnlyCollector:
     # ----------------------------------------------------------
     def collect_fund_flow(self, codes: list = None, days: int = 10) -> dict:
         if codes is None:
-            codes = TEST_CODES[:3]
+            codes = FULL_MARKET_CODES[:3]
         t0 = time.time()
         print(f"[{datetime.now():%H:%M:%S}] 💧 资金流向 (百度)")
         results = {}
@@ -273,43 +273,206 @@ class HttpOnlyCollector:
         return {}
 
     # ----------------------------------------------------------
-    # 9. TCP K线（mootdx — 通达信 TCP 7709端口）
+    # 9. K线采集（mootdx TCP 优先 → 新浪HTTP回退）
     # ----------------------------------------------------------
-    def collect_kline(self, codes: list = None, years: int = 2) -> dict:
-        """通过 mootdx TCP 采集历史K线数据"""
+    def collect_kline(self, codes: list = None, years: int = 2,
+                      freq: str = "daily", sync_mysql: bool = True,
+                      aggregate_weekly: bool = True,
+                      aggregate_monthly: bool = True) -> dict:
+        """采集历史K线数据（多源故障转移 + 自动同步MySQL + 多周期聚合）
+
+        Args:
+            codes: 股票代码列表
+            years: 回溯年数
+            freq: K线频率 (daily/weekly/monthly)
+            sync_mysql: 是否同步到MySQL
+            aggregate_weekly: 是否从日K聚合周K
+            aggregate_monthly: 是否从日K聚合月K
+        """
         if codes is None:
-            codes = TEST_CODES
+            codes = FULL_MARKET_CODES
         t0 = time.time()
-        print(f"[{datetime.now():%H:%M:%S}] 📈 TCP K线 (mootdx) codes={len(codes)}")
+        print(f"[{datetime.now():%H:%M:%S}] 📈 K线采集 codes={len(codes)} freq={freq}")
         results = {}
-        try:
-            collector = self.factory.get_collector("mootdx")
-        except Exception as e:
-            print(f"  ❌ mootdx 不可用: {e}（pip install mootdx 或检查国内IP）")
-            self.report.record("kline", 0, False, time.time() - t0)
-            return results
 
         from datetime import timedelta
         end = datetime.now()
         start = (end - timedelta(days=years * 365)).strftime("%Y%m%d")
         end_str = end.strftime("%Y%m%d")
 
-        for code in codes:
-            try:
-                df = collector.fetch_history_kline(code, start, end_str, freq="daily")
-                if not df.empty:
-                    fp = DATA_DIR / f"kline_{code}_daily_{end:%Y%m%d}.csv"
-                    df.to_csv(fp, index=False, encoding="utf-8-sig")
-                    print(f"  ✅ {code}: {len(df)} 根K线 -> {fp.name}")
-                    results[code] = len(df)
-                else:
-                    print(f"  ⚠️  {code}: 无数据")
-            except Exception as e:
-                print(f"  ❌ {code}: {e}")
-            time.sleep(0.5)
+        total = len(codes)
+        success_count = 0
+        all_dfs_daily = []  # 收集日K数据用于后续聚合
+
+        for idx, code in enumerate(codes):
+            df = self._fetch_kline_with_reconnect(code, freq, years, start, end_str)
+            if not df.empty:
+                fp = DATA_DIR / f"kline_{code}_{freq}_{end:%Y%m%d}.csv"
+                df.to_csv(fp, index=False, encoding="utf-8-sig")
+                print(f"  ✅ ({idx+1}/{total}) {code}: {len(df)} 根K线 -> {fp.name}")
+                results[code] = len(df)
+                success_count += 1
+                all_dfs_daily.append(df)
+            else:
+                print(f"  ⚠️  ({idx+1}/{total}) {code}: 无数据")
+
+            # 进度日志（每500只）
+            if (idx + 1) % 500 == 0:
+                print(f"  📊 进度: {idx+1}/{total} ({(idx+1)/total*100:.1f}%) 成功{success_count}只")
+
         total_kline = sum(results.values())
-        self.report.record("kline", total_kline, bool(results), time.time() - t0)
+        elapsed = time.time() - t0
+        self.report.record("kline", total_kline, bool(results), elapsed)
+
+        print(f"\n  📊 K线采集完成: {success_count}/{total} 成功, 共{total_kline}根, "
+              f"耗时{elapsed:.0f}s ({(elapsed/total if total else 0):.2f}s/只)")
+
+        # ---- 同步到MySQL ----
+        if sync_mysql and results:
+            self._sync_kline_to_mysql()
+            print(f"  ✅ K线数据已同步到MySQL")
+
+        # ---- 多周期聚合 ----
+        if all_dfs_daily and freq == "daily":
+            if aggregate_weekly:
+                self._aggregate_and_sync(all_dfs_daily, codes, "weekly")
+            if aggregate_monthly:
+                self._aggregate_and_sync(all_dfs_daily, codes, "monthly")
+
         return results
+
+    def _fetch_kline_with_reconnect(self, code: str, freq: str,
+                                     years: int, start: str, end: str,
+                                     max_retries: int = 3) -> pd.DataFrame:
+        """逐只股票K线采集（指数退避断线重连）"""
+        from config import KLINE_COLLECT_INTERVAL, KLINE_RECONNECT_MAX_RETRIES
+        import time as _time
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                # 优先mootdx TCP，失败回退新浪HTTP
+                try:
+                    mootdx_collector = self.factory.get_collector("mootdx")
+                    df = mootdx_collector.fetch_history_kline(code, start, end, freq)
+                    if df is not None and not df.empty:
+                        _time.sleep(KLINE_COLLECT_INTERVAL)
+                        return df
+                except Exception:
+                    pass
+
+                # 回退新浪HTTP K线采集器
+                sina_collector = self.factory.get_collector("sina_kline")
+                df = sina_collector.fetch_kline(code, freq, days=years * 365)
+                if df is not None and not df.empty:
+                    # 统一列名: code → stock_code
+                    if "code" in df.columns and "stock_code" not in df.columns:
+                        df = df.rename(columns={"code": "stock_code"})
+                    if "stock_code" not in df.columns:
+                        df["stock_code"] = code
+                    _time.sleep(KLINE_COLLECT_INTERVAL)
+                    return df
+            except Exception as e:
+                logger.debug(f"[{code}] 采集失败 attempt={attempt}/{max_retries}: {e}")
+                if attempt < max_retries:
+                    wait = 2 ** attempt
+                    _time.sleep(wait)
+        return pd.DataFrame()
+
+    def _sync_kline_to_mysql(self):
+        """将采集的K线CSV同步到MySQL"""
+        print(f"  📤 同步K线数据到MySQL...")
+        try:
+            from scheduler.sync_to_mysql import DataSync as SyncProcessor
+            syncer = SyncProcessor(verbose=False)
+            syncer.sync_all()
+            syncer.close()
+            print(f"  ✅ K线同步完成")
+        except Exception as e:
+            print(f"  ⚠️  K线同步失败(可后续手动执行sync_to_mysql.py): {e}")
+
+    def _aggregate_and_sync(self, all_dfs: list, codes: list, target: str):
+        """从日K聚合到周K/月K并同步MySQL"""
+        if not all_dfs:
+            return
+
+        print(f"  🔄 聚合日K→{target}...")
+        try:
+            from storage.storage_manager import StorageManager
+            sm = StorageManager()
+        except Exception as e:
+            print(f"  ⚠️  无法连接MySQL存储，跳过{target}同步: {e}")
+            return
+
+        table_map = {"weekly": "stock_kline_weekly", "monthly": "stock_kline_monthly"}
+        col_map = {
+            "stock_kline_weekly": {"stock_code": "stock_code", "date": "week_label",
+                                    "open": "open_price", "high": "high_price",
+                                    "low": "low_price", "close": "close_price",
+                                    "volume": "volume"},
+            "stock_kline_monthly": {"stock_code": "stock_code", "date": "month_label",
+                                     "open": "open_price", "high": "high_price",
+                                     "low": "low_price", "close": "close_price",
+                                     "volume": "volume"},
+        }
+
+        import pandas as pd
+        all_agg = []
+        # 合并所有日K数据
+        combined = pd.concat(all_dfs, ignore_index=True)
+        if combined.empty:
+            return
+
+        # 按股票代码分组聚合
+        for code_group, group_df in combined.groupby("stock_code" if "stock_code" in combined.columns else "code"):
+            if group_df.empty:
+                continue
+            gdf = group_df.copy()
+            if "date" in gdf.columns:
+                gdf["date"] = pd.to_datetime(gdf["date"])
+                gdf = gdf.sort_values("date")
+
+            if target == "weekly":
+                gdf["_period"] = gdf["date"].dt.isocalendar().year.astype(str) + "-W" + \
+                                 gdf["date"].dt.isocalendar().week.astype(str).str.zfill(2)
+            else:
+                gdf["_period"] = gdf["date"].dt.to_period("M").astype(str)
+
+            def _agg_fn(grp):
+                return pd.Series({
+                    "stock_code": str(code_group) if not isinstance(code_group, str) else code_group,
+                    "date": grp.name,
+                    "open": grp["open"].iloc[0] if "open" in grp.columns else 0,
+                    "high": grp["high"].max() if "high" in grp.columns else 0,
+                    "low": grp["low"].min() if "low" in grp.columns else 0,
+                    "close": grp["close"].iloc[-1] if "close" in grp.columns else 0,
+                    "volume": grp["volume"].sum() if "volume" in grp.columns else 0,
+                })
+
+            agg_df = gdf.groupby("_period", sort=False).apply(_agg_fn, include_groups=False).reset_index(drop=True)
+            if not agg_df.empty:
+                all_agg.append(agg_df)
+
+        if not all_agg:
+            print(f"  ⚠️  无{target}数据可聚合")
+            return
+
+        final_df = pd.concat(all_agg, ignore_index=True)
+        table = table_map[target]
+        mapping = col_map[table]
+
+        # 列映射
+        rename_map = {k: v for k, v in mapping.items() if k in final_df.columns}
+        final_df = final_df.rename(columns=rename_map)
+        final_df["source"] = "aggregated"
+        final_df["freq"] = target
+
+        try:
+            sm.write(table, final_df, backends=["mysql"])
+            print(f"  ✅ {target}K: {len(final_df)} 条 → MySQL.{table}")
+        except Exception as e:
+            print(f"  ⚠️  {target}K写入MySQL失败: {e}")
+
+        sm.close()
 
     # ----------------------------------------------------------
     # TCP全量采集（K线 + 实时行情）
@@ -496,9 +659,12 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="HTTP + TCP 全协议数据采集 (增强版)")
     parser.add_argument("--all", action="store_true", help="全量HTTP采集")
-    parser.add_argument("--tcp", action="store_true", help="HTTP + TCP K线采集")
+    parser.add_argument("--tcp", action="store_true", help="HTTP + TCP K线采集(含MySQL同步)")
+    parser.add_argument("--kline", action="store_true", help="仅采集K线(含MySQL同步+多周期聚合)")
     parser.add_argument("--signals", action="store_true", help="仅采集信号层")
     parser.add_argument("--sync", action="store_true", help="采集后同步MySQL")
+    parser.add_argument("--kline-years", type=int, default=2, help="K线回溯年数")
+    parser.add_argument("--no-agg", action="store_true", help="K线不聚合周K/月K")
     parser.add_argument("--standalone", action="store_true",
                         help="独立模式(零工厂依赖，仅requests+akshare)")
     args = parser.parse_args()
@@ -509,7 +675,37 @@ if __name__ == "__main__":
         runner.run_all()
     elif args.tcp:
         factory_runner = HttpOnlyCollector()
+        # 合并report
         factory_runner.collect_tcp_all()
+        # TCP模式默认自动同步K线到MySQL + 聚合周K/月K
+        print(f"\n[{datetime.now():%H:%M:%S}] 📤 同步K线数据到MySQL...")
+        try:
+            _saved_argv = sys.argv.copy()
+            sys.argv = [sys.argv[0]]
+            from scheduler.sync_to_mysql import main as sync_main
+            sync_main()
+            sys.argv = _saved_argv
+            print(f"  ✅ K线数据同步完成")
+        except Exception as e:
+            print(f"  ⚠️  K线同步失败: {e}")
+        if not args.no_agg:
+            print(f"\n[{datetime.now():%H:%M:%S}] 🔄 聚合周K/月K...")
+            try:
+                from storage.storage_manager import StorageManager as _SM
+                from scheduler.aggregate_kline import KlineAggregator
+                aggr = KlineAggregator()
+                aggr.aggregate_all()
+                print(f"  ✅ 多周期聚合完成")
+            except ImportError:
+                print(f"  ⚠️  aggregate_kline模块不可用")
+    elif args.kline:
+        factory_runner = HttpOnlyCollector()
+        factory_runner.collect_kline(
+            years=args.kline_years,
+            sync_mysql=True,
+            aggregate_weekly=not args.no_agg,
+            aggregate_monthly=not args.no_agg,
+        )
     else:
         factory_runner = HttpOnlyCollector()
         if args.all or args.sync:
@@ -525,16 +721,15 @@ if __name__ == "__main__":
             factory_runner.collect_northbound()
             factory_runner.collect_industry_compare()
 
-    # 修复: 使用 sync_once 标志防止重复调用
     if factory_runner is not None:
         sync_done = getattr(factory_runner, '_sync_done', False)
         if args.sync and not sync_done:
             print(f"\n📤 同步到MySQL...")
-            from sync_to_mysql import main as sync_main
             import sys as _sys
             saved_argv = _sys.argv.copy()
             _sys.argv = [_sys.argv[0]]
             try:
+                from scheduler.sync_to_mysql import main as sync_main
                 sync_main()
             finally:
                 _sys.argv = saved_argv

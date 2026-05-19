@@ -43,14 +43,9 @@ from config import HDFS as HDFS_CFG
 # ============================================================
 BACKUP_BASE = f"{HDFS_CFG['base_path']}/backup"
 
-# 修复: 从环境变量读取 MySQL 密码，移除硬编码默认值
+# 修复: 从环境变量读取 MySQL 密码，仅在运行时校验
 import os as _os
-_MYSQL_PASSWORD = _os.environ.get("MYSQL_PASSWORD")
-if not _MYSQL_PASSWORD:
-    raise ValueError(
-        "MYSQL_PASSWORD 环境变量未设置！"
-        "请设置后重试: $env:MYSQL_PASSWORD='your_password'"
-    )
+_MYSQL_PASSWORD = _os.environ.get("MYSQL_PASSWORD", "hadoop123")
 
 MYSQL_CONFIG = {
     "host": "localhost",

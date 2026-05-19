@@ -336,6 +336,8 @@ import { addWatchlist, removeWatchlist } from '@/api/watchlist'
 import { ElMessage } from 'element-plus'
 import { safeNum, safeVal, formatVol, parseTradeDate, formatDateShort } from '@/utils/format'
 import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI } from '@/utils/indicators'
+import { getChanlunAnalysis } from '@/api/analysis'
+import type { ChanlunBi, ChanlunZhongshu, ChanlunFengxing } from '@/api/analysis'
 
 const route = useRoute()
 const stockCode = route.params.code as string
@@ -496,9 +498,60 @@ async function loadSignalData(code: string) {
   } catch { /* silent */ }
 }
 
-// 缠论数据（当前无后端API，仅保留空结构供前端占位）
-function getEmptyChanlunData() {
-  return { bi: [] as any[], zhongshu: [] as any[], fengxing: [] as any[] }
+// 缠论数据（从后端 API 获取实时分析结果）
+const chanlunData = ref<{
+  bi: ChanlunBi[]; zhongshu: ChanlunZhongshu[]; fengxing: ChanlunFengxing[]
+  buy_sell_points?: any[]; stats?: any
+}>({ bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} })
+
+async function fetchChanlunData() {
+  if (!showChanlun.value) return
+  try {
+    const data = await getChanlunAnalysis(stockCode, 365)
+    // 确保字段存在，前端渲染器只读 bi/zhongshu/fengxing
+    chanlunData.value = {
+      bi: data.bi || [],
+      zhongshu: data.zhongshu || [],
+      fengxing: data.fengxing || [],
+      buy_sell_points: data.buy_sell_points || [],
+      stats: data.stats || {},
+    }
+    // 更新缠论统计面板
+    const stats = data.stats || {}
+    const bp = data.buy_sell_points || []
+    const zs = data.zhongshu || []
+    const fx = data.fengxing || []
+    const buys = bp.filter((p: any) => p.type.startsWith('buy_'))
+    const sells = bp.filter((p: any) => p.type.startsWith('sell_'))
+    const dingFx = fx.filter((f: any) => f.type === 'ding')
+    const diFx = fx.filter((f: any) => f.type === 'di')
+    const hasBeiChi = buys.some((p: any) => p.type === 'buy_1') || sells.some((p: any) => p.type === 'sell_1')
+
+    Object.assign(chanlunStats, {
+      dingCount: stats.top_fractals || fx.filter((f: any) => f.type === 'ding').length,
+      diCount: stats.bottom_fractals || fx.filter((f: any) => f.type === 'di').length,
+      biCount: stats.pens || data.bi?.length || 0,
+      zhongshuCount: stats.centers || zs.length,
+      trendType: bp.length > 0 ? (hasBeiChi ? '趋势背驰段' : '中枢震荡') : '无信号',
+      level: '日线',
+      currentBi: data.bi?.length > 0 ? '向上笔' : '无',
+      zhongshuInfo: zs.map((z: any, i: number) => ({
+        name: `中枢${i + 1}`,
+        zg: z.high,
+        zd: z.low,
+      })),
+      pricePosition: zs.length > 0 ? (bp.find((p: any) => p.type === 'buy_1') ? '下方' : '内部') : '未知',
+      lastDingFeng: { price: dingFx[dingFx.length - 1]?.price || 0, date: '' },
+      lastDiFeng: { price: diFx[diFx.length - 1]?.price || 0, date: '' },
+      buyPoints: buys.slice(0, 3).map((p: any) => ({ type: p.type, price: p.price, desc: p.description || '' })),
+      sellPoints: sells.slice(0, 3).map((p: any) => ({ type: p.type, price: p.price, desc: p.description || '' })),
+      beichi: hasBeiChi ? (bp[0]?.type === 'buy_1' ? '底背驰' : '顶背驰') : '无背驰',
+      signals: bp.map((p: any) => ({ type: p.type.startsWith('buy') ? 'buy' : 'sell', text: p.type })),
+    })
+    nextTick(renderChart)
+  } catch {
+    chanlunData.value = { bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} }
+  }
 }
 
 // --- Render ---
@@ -551,8 +604,8 @@ function renderChart() {
   }
 
   // 缠论 (TradingView风格)
-  if (showChanlun.value) {
-    const clData = getEmptyChanlunData()
+  if (showChanlun.value && chanlunData.value) {
+    const clData = chanlunData.value
     // 中枢 - 半透明框 + 标注区间价格
     clData.zhongshu.forEach(zs => {
       series.push({
@@ -777,12 +830,19 @@ onMounted(async () => {
   window.addEventListener('resize', handleResize)
 })
 
+// 初始化时如果缠论开关已打开（默认是关的，保留此逻辑以备后续默认开启）
+nextTick(() => { if (showChanlun.value) fetchChanlunData() })
+
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   klineChart?.dispose(); bottomChart?.dispose()
 })
 
-watch([showChanlun, activePeriod], () => { nextTick(renderChart) })
+watch(showChanlun, (val) => {
+  if (val) { fetchChanlunData() }
+  else { chanlunData.value = { bi: [], zhongshu: [], fengxing: [] }; nextTick(renderChart) }
+})
+watch(activePeriod, () => { nextTick(renderChart) })
 </script>
 
 <style scoped lang="scss">

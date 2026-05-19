@@ -120,14 +120,16 @@ class RawDataCollector:
         if self._kafka_producer is None:
             try:
                 from kafka import KafkaProducer
+                from config import KAFKA_CONFIG
+                kafka_cfg = KAFKA_CONFIG
                 self._kafka_producer = KafkaProducer(
-                    bootstrap_servers="localhost:9092",
-                    max_request_size=10485760,
-                    acks="all",
-                    retries=3,
+                    bootstrap_servers=kafka_cfg["bootstrap_servers"],
+                    max_request_size=kafka_cfg["max_request_size"],
+                    acks=kafka_cfg["acks"],
+                    retries=kafka_cfg["retries"],
                 )
                 self._kafka_enabled = True
-                logger.info("[Kafka] 生产者连接成功")
+                logger.info("[Kafka] 生产者连接成功: %s", kafka_cfg["bootstrap_servers"])
             except Exception as e:
                 logger.warning("[Kafka] 不可用，回退到本地文件: %s", e)
                 self._kafka_enabled = False

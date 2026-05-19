@@ -45,3 +45,10 @@ logs/
 .env
 .env.local
 application-local.yml
+
+# ===== Temp / Generated =====
+*.tmp
+pytest_*.txt
+.coverage
+benchmark_result.json
+benchmark_*.json

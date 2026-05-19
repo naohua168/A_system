@@ -1,30 +1,41 @@
 """
-analysis-algorithms — 分析算法库（优化版）
+analysis-algorithms — 分析算法库 L3
 
-适配新数据架构:
-  - 数据来源: 存储层 MySQL（由 data-loader → Kafka → Spark → MySQL 管道填充）
-  - 分析结果: 写回 MySQL + Redis 缓存（供后端 API 实时读取）
-  - 技术指标: 优先使用 Spark 预计算结果，回退到本地 Pandas 计算
-  - 缠论/量化: 本地计算（算法复杂，不适合 Spark 实现）
+新架构 — 三层解耦:
+  data/      数据访问层（读 MySQL → 统一列名映射 → 降级策略）
+  engine/    分析编排层（编排技术指标 + 缠论 + 量化 → 结果持久化）
+  scheduler/ 批量调度层（全量/增量/单股三种运行模式）
 
-模块组织:
-  technical/      技术指标（MA / MACD / RSI / KDJ / 布林带）
-  chanlun/        缠论六步递归分解
-  quantitative/   量化策略回测
-  utils/          数据加载工具
-  analysis_orchestrator.py  统一分析引擎（对外唯一入口）
+算法模块（纯计算，无数据依赖）:
+  technical/   技术指标（MA/MACD/KDJ/RSI/布林带）
+  chanlun/     缠论六步递归分解（分型→笔→线段→中枢→买卖点）
+  quantitative/量化策略回测（MA/动量/多因子 + 回测引擎）
+
+与上下游的依赖关系:
+  ← L2 (bigdata-processing): 读 MySQL precomputed_* 预计算结果
+  ← L1 (data-collector):      读 MySQL stock_daily / stock / signal_* 表
+  → L4 (backend):             写 MySQL analysis_result 表供后端 API 查询
 
 使用方式:
-  from analysis_orchestrator import analyze, rank
+  from engine import analyze, rank
 
-  # 单股全量分析
+  # 单股全量分析（结果自动写回 MySQL → 后端 API 可读）
   result = analyze("000001")
 
   # 股票排名
-  top20 = rank("change_pct", 20)
+  top20 = rank("change_percent", 20)
+
+CLI 批量运行:
+  python -m scheduler.batch_runner --mode daily          # 全量
+  python -m scheduler.batch_runner --mode incremental     # 增量
+  python -m scheduler.batch_runner --mode single --code 000001  # 单股
 """
 
-from . import technical
-from . import chanlun
-from . import quantitative
-from .analysis_orchestrator import AnalysisEngine, analyze, rank
+from engine import AnalysisEngine, get_engine, analyze, rank
+
+__all__ = [
+    "AnalysisEngine",
+    "get_engine",
+    "analyze",
+    "rank",
+]

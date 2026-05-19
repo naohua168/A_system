@@ -44,15 +44,23 @@ from config import DATA_DIR, MYSQL_SYNC
 logger = logging.getLogger("data_collector.sync")
 
 # ============================================================
-# MySQL 连接配置（与后端 application.yml 一致）
+# MySQL 连接配置（与 config.MYSQL_CONFIG 保持同步）
 # ============================================================
-MYSQL_CONFIG = {
-    "host": "localhost",
-    "port": 3306,
-    "user": "root",
-    "password": "hadoop123",
-    "database": "stock_analysis",
-}
+def _get_mysql_config() -> dict:
+    """获取MySQL连接配置（优先使用集中配置）"""
+    try:
+        from config import MYSQL_CONFIG
+        return MYSQL_CONFIG
+    except ImportError:
+        return {
+            "host": "localhost",
+            "port": 3306,
+            "user": "root",
+            "password": "hadoop123",
+            "database": "stock_analysis",
+        }
+
+MYSQL_CONFIG = _get_mysql_config()
 
 # ============================================================
 # 文件 → 数据库表 映射规则
@@ -64,6 +72,21 @@ SYNC_RULES = [
         "columns": ["stock_code", "trade_date", "open_price", "close_price",
                      "high_price", "low_price", "volume", "amount", "change_percent"],
         "mapper": lambda df, fname: _map_kline(df, fname),
+    },
+    # K线周K/月K（从日K聚合生成的CSV）
+    {
+        "prefix": "kline_weekly_",
+        "table": "stock_kline_weekly",
+        "columns": ["stock_code", "week_label", "open_price", "high_price",
+                     "low_price", "close_price", "volume", "source"],
+        "mapper": lambda df, fname: _map_aggregated_kline(df, fname, "week_label"),
+    },
+    {
+        "prefix": "kline_monthly_",
+        "table": "stock_kline_monthly",
+        "columns": ["stock_code", "month_label", "open_price", "high_price",
+                     "low_price", "close_price", "volume", "source"],
+        "mapper": lambda df, fname: _map_aggregated_kline(df, fname, "month_label"),
     },
     {
         "prefix": "realtime_",
@@ -256,7 +279,26 @@ def _map_kline(df: pd.DataFrame, fname: str) -> pd.DataFrame:
             "amount": float(row.get("amount", 0)),
             "change_percent": float(row.get("change_pct", 0)),
         }
-        if _validate_kline_row(record):
+    if _validate_kline_row(record):
+        records.append(record)
+    return pd.DataFrame(records)
+
+
+def _map_aggregated_kline(df: pd.DataFrame, fname: str, label_col: str) -> pd.DataFrame:
+    """聚合K线CSV → stock_kline_weekly/monthly 表格式"""
+    records = []
+    for _, row in df.iterrows():
+        record = {
+            "stock_code": str(row.get("stock_code", "")),
+            label_col: str(row.get(label_col, row.get("date", ""))),
+            "open_price": float(row.get("open", row.get("open_price", 0))),
+            "high_price": float(row.get("high", row.get("high_price", 0))),
+            "low_price": float(row.get("low", row.get("low_price", 0))),
+            "close_price": float(row.get("close", row.get("close_price", 0))),
+            "volume": int(row.get("volume", 0)),
+            "source": str(row.get("source", "aggregated")),
+        }
+        if record["stock_code"] and record[label_col]:
             records.append(record)
     return pd.DataFrame(records)
 

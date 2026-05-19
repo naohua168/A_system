@@ -3,11 +3,19 @@ import sys, time, logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("docker_collect")
 
-MYSQL_CFG = {
-    "host": "mysql", "port": 3306,
-    "user": "root", "password": "hadoop123",
-    "database": "stock_analysis",
-}
+try:
+    from config import MYSQL_CONFIG as _MC
+    MYSQL_CFG = {
+        "host": _MC["host"], "port": _MC["port"],
+        "user": _MC["user"], "password": _MC["password"],
+        "database": _MC["database"],
+    }
+except ImportError:
+    MYSQL_CFG = {
+        "host": "mysql", "port": 3306,
+        "user": "root", "password": "hadoop123",
+        "database": "stock_analysis",
+    }
 MAX_STOCKS = 100  # 先采前100只验证
 
 try:
