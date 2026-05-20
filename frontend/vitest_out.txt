@@ -1,0 +1,90 @@
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mF:/bs/A_system/frontend[39m
+
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeNum[2m > [22m正常数字
+ [31m×[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeNum[2m > [22mnull/undefined 返回 -
+[31m   → expected '0.00' to be '-' // Object.is equality[39m
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeNum[2m > [22mNaN 返回 -
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeNum[2m > [22m字符串数字
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeNum[2m > [22m自定义小数位
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeVal[2m > [22m正常数字返回本身
+ [31m×[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeVal[2m > [22mnull 返回默认值
+[31m   → expected +0 to be -1 // Object.is equality[39m
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeVal[2m > [22mNaN 返回默认值
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatVol[2m > [22m亿级别
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatVol[2m > [22m万级别
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatVol[2m > [22m千级别以下
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatVol[2m > [22mnull 返回 -
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatMoney[2m > [22m正常金额
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatMoney[2m > [22m零值
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPrice[2m > [22m正常价格格式化
+ [31m×[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPrice[2m > [22mnull/undefined 返回 -
+[31m   → expected '0.00' to be '-' // Object.is equality[39m
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPrice[2m > [22mNaN 返回 -
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPrice[2m > [22m负数价格
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPercent[2m > [22m正数带 + 号
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPercent[2m > [22m负数带 - 号
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPercent[2m > [22m零值
+ [31m×[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPercent[2m > [22mnull 返回 -
+[31m   → expected '0.00%' to be '-' // Object.is equality[39m
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPercent[2m > [22m超大百分比
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPoints[2m > [22m正数带 + 号
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPoints[2m > [22m负数
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPoints[2m > [22mNaN 返回 -
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mparseTradeDate[2m > [22m标准日期解析
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mparseTradeDate[2m > [22m空字符串返回 0
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mparseTradeDate[2m > [22m斜杠分隔
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatDateShort[2m > [22m标准日期
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatDateShort[2m > [22m空字符串返回原值
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mgetChangeClass[2m > [22m正数返回 rise
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mgetChangeClass[2m > [22m负数返回 fall
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mgetChangeClass[2m > [22m零值返回 flat
+ [32m✓[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mgetChangeClass[2m > [22mNaN 返回 flat
+ [32m✓[39m src/__tests__/api/request.test.ts[2m > [22mAPI request module[2m > [22m模块可正常加载[33m 468[2mms[22m[39m
+ [32m✓[39m src/__tests__/api/request.test.ts[2m > [22mAPI request module[2m > [22maxios 实例已正确配置 baseURL
+ [32m✓[39m src/__tests__/stores/user.test.ts[2m > [22museUserStore[2m > [22m初始状态 - 未登录
+ [32m✓[39m src/__tests__/stores/user.test.ts[2m > [22museUserStore[2m > [22m从 localStorage 恢复 token
+ [32m✓[39m src/__tests__/stores/user.test.ts[2m > [22museUserStore[2m > [22mlogout 清除 token 和用户信息
+ [32m✓[39m src/__tests__/stores/user.test.ts[2m > [22museUserStore[2m > [22mlogin - 成功后保存 token 和用户信息
+ [32m✓[39m src/__tests__/stores/user.test.ts[2m > [22museUserStore[2m > [22mfetchUserInfo - 无 token 时不请求
+ [32m✓[39m src/__tests__/stores/user.test.ts[2m > [22museUserStore[2m > [22mfetchUserInfo - 有 token 时获取用户信息
+ [32m✓[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22m初始状态为空列表
+ [31m×[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22mfetchWatchlist - 获取自选列表
+[31m   → expected { records: [ { id: 1, …(4) } ], …(3) } to have property 'length'[39m
+ [31m×[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22maddToWatchlist - 添加自选
+[31m   → store.addToWatchlist is not a function[39m
+ [31m×[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22mremoveFromWatchlist - 移除自选
+[31m   → store.removeFromWatchlist is not a function[39m
+ [32m✓[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22misInWatchlist - 检查是否在自选
+ [32m✓[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22mitems 为空时 isInWatchlist 返回 false
+ [32m✓[39m src/components/__tests__/LayerStatusBadge.spec.ts[2m > [22mLayerStatusBadge.vue[2m > [22mrenders completed status correctly
+ [31m×[39m src/components/__tests__/LayerStatusBadge.spec.ts[2m > [22mLayerStatusBadge.vue[2m > [22mrenders in_progress status correctly
+[31m   → expected '开发中' to contain '进行中'[39m
+ [32m✓[39m src/components/__tests__/LayerStatusBadge.spec.ts[2m > [22mLayerStatusBadge.vue[2m > [22mrenders blocked status correctly
+ [31m×[39m src/components/__tests__/LayerStatusBadge.spec.ts[2m > [22mLayerStatusBadge.vue[2m > [22mrenders pending status correctly
+[31m   → expected '待开始' to contain '待处理'[39m
+ [32m✓[39m src/components/__tests__/AppLayout.spec.ts[2m > [22mAppLayout.vue[2m > [22mrenders header and main slot
+ [32m✓[39m src/components/__tests__/AppHeader.spec.ts[2m > [22mAppHeader.vue[2m > [22mrenders logo and navigation links
+ [32m✓[39m src/components/__tests__/AppHeader.spec.ts[2m > [22mAppHeader.vue[2m > [22mshows login text when not authenticated
+ [32m✓[39m src/components/__tests__/AppHeader.spec.ts[2m > [22mAppHeader.vue[2m > [22mshows username when authenticated
+ [32m✓[39m src/components/__tests__/AppHeader.spec.ts[2m > [22mAppHeader.vue[2m > [22mnavigates to login on logout
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22m初始状态
+[31m   → expected undefined to be null[39m
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22msetCurrentStock - 设置当前股票
+[31m   → store.setCurrentStock is not a function[39m
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22msetKlineData - 设置K线数据
+[31m   → store.setKlineData is not a function[39m
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22mtoggleStockInWatchlist - 添加到自选
+[31m   → store.toggleStockInWatchlist is not a function[39m
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22mtoggleStockInWatchlist - 从自选移除
+[31m   → store.toggleStockInWatchlist is not a function[39m
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22mtoggleStockInWatchlist - 添加多只互不影响的股票
+[31m   → store.toggleStockInWatchlist is not a function[39m
+ [31m×[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22misInWatchlist - 检查是否在自选
+[31m   → store.isInWatchlist is not a function[39m
+
+[2m Test Files [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m4 passed[39m[22m[90m (8)[39m
+[2m      Tests [22m [1m[31m16 failed[39m[22m[2m | [22m[1m[32m49 passed[39m[22m[90m (65)[39m
+[2m   Start at [22m 15:33:23
+[2m   Duration [22m 10.60s[2m (transform 2.22s, setup 1.96s, collect 8.85s, tests 1.06s, environment 52.64s, prepare 8.48s)[22m
+

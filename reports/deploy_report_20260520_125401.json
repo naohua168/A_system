@@ -1,0 +1,165 @@
+{
+  "report_time": "2026-05-20 12:54:01",
+  "deploy_version": "v2.2",
+  "env": {
+    "hive_available": true,
+    "docker_available": true,
+    "python_version": "Python 3.13.9",
+    "java_version": "",
+    "node_version": "v24.11.0"
+  },
+  "pre_tests": [
+    {
+      "module": "data-collector",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 96.31,
+      "status": "passed",
+      "error": ""
+    },
+    {
+      "module": "bigdata-processing",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 1.23,
+      "status": "passed",
+      "error": ""
+    },
+    {
+      "module": "analysis-algorithms",
+      "passed": 123,
+      "failed": 21,
+      "skipped": 0,
+      "total": 144,
+      "duration_sec": 4.42,
+      "status": "failed",
+      "error": "未知错误"
+    },
+    {
+      "module": "backend",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 0.01,
+      "status": "failed",
+      "error": "[WinError 2] 系统找不到指定的文件。"
+    },
+    {
+      "module": "ai-service",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 300.03,
+      "status": "failed",
+      "error": "测试超时 (>300s)"
+    },
+    {
+      "module": "frontend",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 0.01,
+      "status": "failed",
+      "error": "[WinError 2] 系统找不到指定的文件。"
+    }
+  ],
+  "orc_migration": {
+    "status": "failed",
+    "tables_migrated": 0,
+    "tables_total": 0,
+    "duration_sec": 0.31,
+    "log_file": "F:\\bs\\A_system\\logs\\orc_migration_auto_20260520_124709.log",
+    "error": "can only concatenate str (not \"NoneType\") to str"
+  },
+  "post_tests": [
+    {
+      "module": "data-collector",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 105.72,
+      "status": "passed",
+      "error": ""
+    },
+    {
+      "module": "bigdata-processing",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 0.96,
+      "status": "passed",
+      "error": ""
+    },
+    {
+      "module": "analysis-algorithms",
+      "passed": 123,
+      "failed": 21,
+      "skipped": 0,
+      "total": 144,
+      "duration_sec": 4.63,
+      "status": "failed",
+      "error": "未知错误"
+    },
+    {
+      "module": "backend",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 0.01,
+      "status": "failed",
+      "error": "[WinError 2] 系统找不到指定的文件。"
+    },
+    {
+      "module": "ai-service",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 300.02,
+      "status": "failed",
+      "error": "测试超时 (>300s)"
+    },
+    {
+      "module": "frontend",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "total": 0,
+      "duration_sec": 0.01,
+      "status": "failed",
+      "error": "[WinError 2] 系统找不到指定的文件。"
+    }
+  ],
+  "remaining_items": [
+    {
+      "id": "REM-001",
+      "layer": "L2",
+      "category": "部署流程",
+      "item": "ORC 格式迁移（TEXTFILE→ORC）",
+      "status": "可一键执行",
+      "command": "python scripts/deploy_verify.py 或 start-all.sh --migrate-orc",
+      "priority": "低"
+    },
+    {
+      "id": "REM-004",
+      "layer": "All",
+      "category": "质量保障",
+      "item": "端到端全链路验证",
+      "status": "脚本已就绪",
+      "command": "python scripts/e2e_verify.py",
+      "priority": "低"
+    }
+  ],
+  "overall_status": "partial",
+  "summary": "ORC 迁移失败，请检查日志手动处理"
+}

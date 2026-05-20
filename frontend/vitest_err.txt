@@ -1,0 +1,596 @@
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+[90mstderr[2m | src/components/__tests__/AppLayout.spec.ts[2m > [22m[2mAppLayout.vue[2m > [22m[2mrenders header and main slot[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/stocks"
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AlertBell> 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/components/__tests__/AppHeader.spec.ts[2m > [22m[2mAppHeader.vue[2m > [22m[2mrenders logo and navigation links[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AlertBell> 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/components/__tests__/AppHeader.spec.ts[2m > [22m[2mAppHeader.vue[2m > [22m[2mshows login text when not authenticated[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AlertBell> 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+
+[90mstderr[2m | src/components/__tests__/AppHeader.spec.ts[2m > [22m[2mAppHeader.vue[2m > [22m[2mshows username when authenticated[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AlertBell> 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+
+[90mstderr[2m | src/components/__tests__/AppHeader.spec.ts[2m > [22m[2mAppHeader.vue[2m > [22m[2mnavigates to login on logout[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AlertBell> 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+
+[90mstderr[2m | src/components/__tests__/AppHeader.spec.ts[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+
+[90mstderr[2m | src/components/__tests__/AppLayout.spec.ts[22m[39m
+[Vue warn]: Failed to resolve component: CaretBottom
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Search
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: User
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: Setting
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: SwitchButton
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader> 
+  at <AppLayout ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue Router warn]: No match found for location with path "/stocks"
+[Vue Router warn]: No match found for location with path "/watchlist"
+[Vue Router warn]: No match found for location with path "/news"
+[Vue Router warn]: No match found for location with path "/chat"
+[Vue Router warn]: No match found for location with path "/layers"
+[Vue Router warn]: No match found for location with path "/hot-reason"
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 16 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22m初始状态
+[31m[1mAssertionError[22m: expected undefined to be null[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m16:32[22m[39m
+    [90m 14| [39m  [34mit[39m([32m'初始状态'[39m[33m,[39m () [33m=>[39m {
+    [90m 15| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 16| [39m    [34mexpect[39m(store[33m.[39mcurrentStock)[33m.[39m[34mtoBeNull[39m()
+    [90m   | [39m                               [31m^[39m
+    [90m 17| [39m    [34mexpect[39m(store[33m.[39mklineData)[33m.[39m[34mtoEqual[39m([])
+    [90m 18| [39m    [34mexpect[39m(store[33m.[39mwatchlist)[33m.[39m[34mtoEqual[39m([])
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22msetCurrentStock - 设置当前股票
+[31m[1mTypeError[22m: store.setCurrentStock is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m24:11[22m[39m
+    [90m 22| [39m  [34mit[39m([32m'setCurrentStock - 设置当前股票'[39m[33m,[39m () [33m=>[39m {
+    [90m 23| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 24| [39m    store[33m.[39m[34msetCurrentStock[39m(mockStock1)
+    [90m   | [39m          [31m^[39m
+    [90m 25| [39m    [34mexpect[39m(store[33m.[39mcurrentStock)[33m.[39m[34mtoEqual[39m(mockStock1)
+    [90m 26| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22msetKlineData - 设置K线数据
+[31m[1mTypeError[22m: store.setKlineData is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m31:11[22m[39m
+    [90m 29| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 30| [39m    [35mconst[39m kline [33m=[39m [{ stockCode[33m:[39m [32m'000001'[39m[33m,[39m tradeDate[33m:[39m [32m'2025-01-01'[39m[33m,[39m clo…
+    [90m 31| [39m    store[33m.[39m[34msetKlineData[39m(kline [35mas[39m any)
+    [90m   | [39m          [31m^[39m
+    [90m 32| [39m    [34mexpect[39m(store[33m.[39mklineData)[33m.[39m[34mtoEqual[39m(kline)
+    [90m 33| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22mtoggleStockInWatchlist - 添加到自选
+[31m[1mTypeError[22m: store.toggleStockInWatchlist is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m37:11[22m[39m
+    [90m 35| [39m  [34mit[39m([32m'toggleStockInWatchlist - 添加到自选'[39m[33m,[39m () [33m=>[39m {
+    [90m 36| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 37| [39m    store[33m.[39m[34mtoggleStockInWatchlist[39m(mockStock1)
+    [90m   | [39m          [31m^[39m
+    [90m 38| [39m    [34mexpect[39m(store[33m.[39mwatchlist)[33m.[39m[34mtoHaveLength[39m([34m1[39m)
+    [90m 39| [39m    [34mexpect[39m(store[33m.[39mwatchlist[[34m0[39m][33m.[39mstockCode)[33m.[39m[34mtoBe[39m([32m'000001'[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22mtoggleStockInWatchlist - 从自选移除
+[31m[1mTypeError[22m: store.toggleStockInWatchlist is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m44:11[22m[39m
+    [90m 42| [39m  [34mit[39m([32m'toggleStockInWatchlist - 从自选移除'[39m[33m,[39m () [33m=>[39m {
+    [90m 43| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 44| [39m    store[33m.[39m[34mtoggleStockInWatchlist[39m(mockStock1)
+    [90m   | [39m          [31m^[39m
+    [90m 45| [39m    [34mexpect[39m(store[33m.[39mwatchlist)[33m.[39m[34mtoHaveLength[39m([34m1[39m)
+    [90m 46| [39m    store[33m.[39m[34mtoggleStockInWatchlist[39m(mockStock1)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22mtoggleStockInWatchlist - 添加多只互不影响的股票
+[31m[1mTypeError[22m: store.toggleStockInWatchlist is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m52:11[22m[39m
+    [90m 50| [39m  [34mit[39m([32m'toggleStockInWatchlist - 添加多只互不影响的股票'[39m[33m,[39m () [33m=>[39m {
+    [90m 51| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 52| [39m    store[33m.[39m[34mtoggleStockInWatchlist[39m(mockStock1)
+    [90m   | [39m          [31m^[39m
+    [90m 53| [39m    store[33m.[39m[34mtoggleStockInWatchlist[39m(mockStock2)
+    [90m 54| [39m    [34mexpect[39m(store[33m.[39mwatchlist)[33m.[39m[34mtoHaveLength[39m([34m2[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/stock.test.ts[2m > [22museStockStore[2m > [22misInWatchlist - 检查是否在自选
+[31m[1mTypeError[22m: store.isInWatchlist is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/stock.test.ts:[2m63:18[22m[39m
+    [90m 61| [39m  [34mit[39m([32m'isInWatchlist - 检查是否在自选'[39m[33m,[39m () [33m=>[39m {
+    [90m 62| [39m    [35mconst[39m store [33m=[39m [34museStockStore[39m()
+    [90m 63| [39m    [34mexpect[39m(store[33m.[39m[34misInWatchlist[39m([32m'000001'[39m))[33m.[39m[34mtoBe[39m([35mfalse[39m)
+    [90m   | [39m                 [31m^[39m
+    [90m 64| [39m    store[33m.[39m[34mtoggleStockInWatchlist[39m(mockStock1)
+    [90m 65| [39m    [34mexpect[39m(store[33m.[39m[34misInWatchlist[39m([32m'000001'[39m))[33m.[39m[34mtoBe[39m([35mtrue[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22mfetchWatchlist - 获取自选列表
+[31m[1mAssertionError[22m: expected { records: [ { id: 1, …(4) } ], …(3) } to have property 'length'[39m
+[36m [2m❯[22m src/__tests__/stores/watchlist.test.ts:[2m27:25[22m[39m
+    [90m 25| [39m    [35mconst[39m store [33m=[39m [34museWatchlistStore[39m()
+    [90m 26| [39m    [35mawait[39m store[33m.[39m[34mfetchWatchlist[39m([34m1[39m)
+    [90m 27| [39m    [34mexpect[39m(store[33m.[39mitems)[33m.[39m[34mtoHaveLength[39m([34m1[39m)
+    [90m   | [39m                        [31m^[39m
+    [90m 28| [39m    [34mexpect[39m(store[33m.[39mitems[[34m0[39m][33m.[39massetCode)[33m.[39m[34mtoBe[39m([32m'000001'[39m)
+    [90m 29| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22maddToWatchlist - 添加自选
+[31m[1mTypeError[22m: store.addToWatchlist is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/watchlist.test.ts:[2m33:17[22m[39m
+    [90m 31| [39m  [34mit[39m([32m'addToWatchlist - 添加自选'[39m[33m,[39m [35masync[39m () [33m=>[39m {
+    [90m 32| [39m    [35mconst[39m store [33m=[39m [34museWatchlistStore[39m()
+    [90m 33| [39m    [35mawait[39m store[33m.[39m[34maddToWatchlist[39m({ userId[33m:[39m [34m1[39m[33m,[39m assetCode[33m:[39m [32m'600519'[39m[33m,[39m asset…
+    [90m   | [39m                [31m^[39m
+    [90m 34| [39m    [34mexpect[39m(store[33m.[39mitems[33m.[39mlength)[33m.[39m[34mtoBeGreaterThanOrEqual[39m([34m0[39m)
+    [90m 35| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/stores/watchlist.test.ts[2m > [22museWatchlistStore[2m > [22mremoveFromWatchlist - 移除自选
+[31m[1mTypeError[22m: store.removeFromWatchlist is not a function[39m
+[36m [2m❯[22m src/__tests__/stores/watchlist.test.ts:[2m40:17[22m[39m
+    [90m 38| [39m    [35mconst[39m store [33m=[39m [34museWatchlistStore[39m()
+    [90m 39| [39m    [35mawait[39m store[33m.[39m[34mfetchWatchlist[39m([34m1[39m)
+    [90m 40| [39m    [35mawait[39m store[33m.[39m[34mremoveFromWatchlist[39m([34m1[39m)
+    [90m   | [39m                [31m^[39m
+    [90m 41| [39m  })
+    [90m 42| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeNum[2m > [22mnull/undefined 返回 -
+[31m[1mAssertionError[22m: expected '0.00' to be '-' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- -[39m
+[31m+ 0.00[39m
+
+[36m [2m❯[22m src/__tests__/utils/format.test.ts:[2m20:29[22m[39m
+    [90m 18| [39m
+    [90m 19| [39m    [34mit[39m([32m'null/undefined 返回 -'[39m[33m,[39m () [33m=>[39m {
+    [90m 20| [39m      [34mexpect[39m([34msafeNum[39m([35mnull[39m))[33m.[39m[34mtoBe[39m([32m'-'[39m)
+    [90m   | [39m                            [31m^[39m
+    [90m 21| [39m      [34mexpect[39m([34msafeNum[39m(undefined))[33m.[39m[34mtoBe[39m([32m'-'[39m)
+    [90m 22| [39m    })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22msafeVal[2m > [22mnull 返回默认值
+[31m[1mAssertionError[22m: expected +0 to be -1 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- -1[39m
+[31m+ 0[39m
+
+[36m [2m❯[22m src/__tests__/utils/format.test.ts:[2m47:33[22m[39m
+    [90m 45| [39m    [34mit[39m([32m'null 返回默认值'[39m[33m,[39m () [33m=>[39m {
+    [90m 46| [39m      [34mexpect[39m([34msafeVal[39m([35mnull[39m))[33m.[39m[34mtoBe[39m([34m0[39m)
+    [90m 47| [39m      [34mexpect[39m([34msafeVal[39m([35mnull[39m[33m,[39m [33m-[39m[34m1[39m))[33m.[39m[34mtoBe[39m([33m-[39m[34m1[39m)
+    [90m   | [39m                                [31m^[39m
+    [90m 48| [39m    })
+    [90m 49| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPrice[2m > [22mnull/undefined 返回 -
+[31m[1mAssertionError[22m: expected '0.00' to be '-' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- -[39m
+[31m+ 0.00[39m
+
+[36m [2m❯[22m src/__tests__/utils/format.test.ts:[2m103:33[22m[39m
+    [90m101| [39m
+    [90m102| [39m    [34mit[39m([32m'null/undefined 返回 -'[39m[33m,[39m () [33m=>[39m {
+    [90m103| [39m      [34mexpect[39m([34mformatPrice[39m([35mnull[39m))[33m.[39m[34mtoBe[39m([32m'-'[39m)
+    [90m   | [39m                                [31m^[39m
+    [90m104| [39m      [34mexpect[39m([34mformatPrice[39m(undefined))[33m.[39m[34mtoBe[39m([32m'-'[39m)
+    [90m105| [39m    })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/utils/format.test.ts[2m > [22mformat utils[2m > [22mformatPercent[2m > [22mnull 返回 -
+[31m[1mAssertionError[22m: expected '0.00%' to be '-' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- -[39m
+[31m+ 0.00%[39m
+
+[36m [2m❯[22m src/__tests__/utils/format.test.ts:[2m133:35[22m[39m
+    [90m131| [39m
+    [90m132| [39m    [34mit[39m([32m'null 返回 -'[39m[33m,[39m () [33m=>[39m {
+    [90m133| [39m      [34mexpect[39m([34mformatPercent[39m([35mnull[39m))[33m.[39m[34mtoBe[39m([32m'-'[39m)
+    [90m   | [39m                                  [31m^[39m
+    [90m134| [39m    })
+    [90m135| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/LayerStatusBadge.spec.ts[2m > [22mLayerStatusBadge.vue[2m > [22mrenders in_progress status correctly
+[31m[1mAssertionError[22m: expected '开发中' to contain '进行中'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 进行中[39m
+[31m+ 开发中[39m
+
+[36m [2m❯[22m src/components/__tests__/LayerStatusBadge.spec.ts:[2m19:28[22m[39m
+    [90m 17| [39m      props[33m:[39m { status[33m:[39m [32m'in_progress'[39m }[33m,[39m
+    [90m 18| [39m    })
+    [90m 19| [39m    [34mexpect[39m(wrapper[33m.[39m[34mtext[39m())[33m.[39m[34mtoContain[39m([32m'进行中'[39m)
+    [90m   | [39m                           [31m^[39m
+    [90m 20| [39m    [34mexpect[39m(wrapper[33m.[39m[34mclasses[39m())[33m.[39m[34mtoContain[39m([32m'status-in-progress'[39m)
+    [90m 21| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/16]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/LayerStatusBadge.spec.ts[2m > [22mLayerStatusBadge.vue[2m > [22mrenders pending status correctly
+[31m[1mAssertionError[22m: expected '待开始' to contain '待处理'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 待处理[39m
+[31m+ 待开始[39m
+
+[36m [2m❯[22m src/components/__tests__/LayerStatusBadge.spec.ts:[2m35:28[22m[39m
+    [90m 33| [39m      props[33m:[39m { status[33m:[39m [32m'pending'[39m }[33m,[39m
+    [90m 34| [39m    })
+    [90m 35| [39m    [34mexpect[39m(wrapper[33m.[39m[34mtext[39m())[33m.[39m[34mtoContain[39m([32m'待处理'[39m)
+    [90m   | [39m                           [31m^[39m
+    [90m 36| [39m    [34mexpect[39m(wrapper[33m.[39m[34mclasses[39m())[33m.[39m[34mtoContain[39m([32m'status-pending'[39m)
+    [90m 37| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/16]⎯[22m[39m
+
