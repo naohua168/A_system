@@ -1,5 +1,7 @@
 package com.stock.service;
 
+import com.stock.entity.AnalysisResult;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +13,13 @@ import java.util.Map;
 public interface AnalysisService {
     /** 保存分析结果 */
     boolean save(com.stock.entity.AnalysisResult result);
+
+    /** 查询分析结果列表 */
+    java.util.List<com.stock.entity.AnalysisResult> list(
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.stock.entity.AnalysisResult> wrapper);
+
+    /** 按 ID 删除分析结果 */
+    boolean removeById(Long id);
 
     /**
      * 获取股票年收益率

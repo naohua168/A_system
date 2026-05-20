@@ -2,8 +2,14 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // 如需启用 gzip/brotli 压缩，安装并取消注释:
+    // vitePluginCompression({ algorithm: 'gzip', ext: '.gz' }),
+    // vitePluginCompression({ algorithm: 'brotliCompress', ext: '.br' }),
+  ],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -22,6 +28,31 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         additionalData: `@use "@/styles/variables.scss" as *;\n`,
+      },
+    },
+  },
+  build: {
+    // 生产环境分包优化 — 将第三方库拆分为独立 chunk，利用浏览器并行加载
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-vue': ['vue', 'vue-router', 'pinia'],           // Vue 全家桶
+          'vendor-ui': ['element-plus', '@element-plus/icons-vue'], // UI 组件库
+          'vendor-chart': ['echarts', 'vue-echarts'],               // 图表库
+          'vendor-axios': ['axios'],                                 // HTTP 客户端
+        },
+      },
+    },
+    // 构建产物的 chunk 大小警告阈值（超过 500KB 会告警）
+    chunkSizeWarningLimit: 500,
+    // 启用 CSS 代码分割
+    cssCodeSplit: true,
+    // 生产环境移除 console.log（保留 console.warn/error）
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
       },
     },
   },

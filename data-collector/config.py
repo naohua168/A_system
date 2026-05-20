@@ -137,10 +137,16 @@ KAFKA_CONFIG = {
         "fund_nav": "raw_fund_nav",
         "news": "raw_news",
         "filings": "raw_filings",
+        "hot_reason": "raw_hot_reason",
+        "northbound": "raw_northbound",
+        "concept_blocks": "raw_concept_blocks",
+        "fund_flow": "raw_fund_flow",
+        "dragon_tiger": "raw_dragon_tiger",
     },
     "max_request_size": 10485760,
     "acks": "all",
     "retries": 3,
+    "request_timeout_ms": 30000,
 }
 
 # ============================================================

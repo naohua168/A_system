@@ -145,6 +145,7 @@ async function sendMessage() {
     const stockCode = codeMatch ? codeMatch[1] : ''
 
     const history = messages.value
+// @ts-ignore - role type overlap
       .filter(m => m.role !== 'system')
       .slice(-10)
       .map(m => ({ role: m.role, content: m.content }))

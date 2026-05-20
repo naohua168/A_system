@@ -1,68 +1,93 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useStockStore } from '@/stores/stock'
-import type { Stock } from '@/types'
+import type { StockDetail, StockDaily } from '@/types'
+
+vi.mock('@/api/market', () => ({
+  getStockList: vi.fn().mockResolvedValue({
+    records: [], total: 0, page: 1, size: 20, totalPages: 0,
+  }),
+  getStockByCode: vi.fn().mockResolvedValue(null),
+  getKlineData: vi.fn().mockResolvedValue([]),
+}))
 
 describe('useStockStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  const mockStock1: Stock = { stockCode: '000001', stockName: '平安银行', industry: '金融', market: 'SZ' } as Stock
-  const mockStock2: Stock = { stockCode: '600519', stockName: '贵州茅台', industry: '白酒', market: 'SH' } as Stock
-
   it('初始状态', () => {
     const store = useStockStore()
-    expect(store.currentStock).toBeNull()
+    expect(store.stockDetail).toBeNull()
     expect(store.klineData).toEqual([])
-    expect(store.watchlist).toEqual([])
+    expect(store.records).toEqual([])
     expect(store.loading).toBe(false)
+    expect(store.total).toBe(0)
+    expect(store.currentPage).toBe(1)
   })
 
-  it('setCurrentStock - 设置当前股票', () => {
+  it('设置当前股票详情', () => {
     const store = useStockStore()
-    store.setCurrentStock(mockStock1)
-    expect(store.currentStock).toEqual(mockStock1)
+    const detail = { stockCode: '000001', stockName: '平安银行' } as StockDetail
+    store.stockDetail = detail
+    expect(store.stockDetail).toEqual(detail)
   })
 
-  it('setKlineData - 设置K线数据', () => {
+  it('设置K线数据', () => {
     const store = useStockStore()
-    const kline = [{ stockCode: '000001', tradeDate: '2025-01-01', closePrice: 10.0 }]
-    store.setKlineData(kline as any)
+    const kline = [{ stockCode: '000001', tradeDate: '2025-01-01', closePrice: 10.0 }] as StockDaily[]
+    store.klineData = kline
     expect(store.klineData).toEqual(kline)
   })
 
-  it('toggleStockInWatchlist - 添加到自选', () => {
+  it('setKeyword 更新搜索关键词', () => {
     const store = useStockStore()
-    store.toggleStockInWatchlist(mockStock1)
-    expect(store.watchlist).toHaveLength(1)
-    expect(store.watchlist[0].stockCode).toBe('000001')
+    store.setKeyword('平安')
+    expect(store.keyword).toBe('平安')
   })
 
-  it('toggleStockInWatchlist - 从自选移除', () => {
+  it('setIndustry 更新行业筛选', () => {
     const store = useStockStore()
-    store.toggleStockInWatchlist(mockStock1)
-    expect(store.watchlist).toHaveLength(1)
-    store.toggleStockInWatchlist(mockStock1)
-    expect(store.watchlist).toHaveLength(0)
+    store.setIndustry('金融')
+    expect(store.selectedIndustry).toBe('金融')
   })
 
-  it('toggleStockInWatchlist - 添加多只互不影响的股票', () => {
+  it('setPage 调用 fetchList', () => {
     const store = useStockStore()
-    store.toggleStockInWatchlist(mockStock1)
-    store.toggleStockInWatchlist(mockStock2)
-    expect(store.watchlist).toHaveLength(2)
-    // 移除第一只，仅剩第二只
-    store.toggleStockInWatchlist(mockStock1)
-    expect(store.watchlist).toHaveLength(1)
-    expect(store.watchlist[0].stockCode).toBe('600519')
+    store.setPage(3)
+    // fetchList 设置 currentPage 为 API 返回的值
+    expect(store.currentPage).toBe(1) // mock 返回 page=1
   })
 
-  it('isInWatchlist - 检查是否在自选', () => {
+  it('reset 清除所有状态', () => {
     const store = useStockStore()
-    expect(store.isInWatchlist('000001')).toBe(false)
-    store.toggleStockInWatchlist(mockStock1)
-    expect(store.isInWatchlist('000001')).toBe(true)
-    expect(store.isInWatchlist('600519')).toBe(false)
+    store.stockDetail = { stockCode: '000001' } as StockDetail
+    store.klineData = [{}] as StockDaily[]
+    store.records = [{ stockCode: '000001' }] as any
+    store.reset()
+    expect(store.stockDetail).toBeNull()
+    expect(store.klineData).toEqual([])
+    expect(store.records).toEqual([])
+    expect(store.keyword).toBe('')
+    expect(store.selectedIndustry).toBe('')
+  })
+
+  it('fetchList 加载股票列表', async () => {
+    const store = useStockStore()
+    await store.fetchList({ page: 1, size: 20 })
+    expect(store.records).toEqual([])
+    expect(store.total).toBe(0)
+  })
+
+  it('fetchDetail 加载股票详情', async () => {
+    const store = useStockStore()
+    await store.fetchDetail('000001')
+    expect(store.stockDetail).toBeNull()
+  })
+
+  it('fetchKline 加载K线数据', async () => {
+    const store = useStockStore()
+    await store.fetchKline('000001', 30)
+    expect(store.klineData).toEqual([])
   })
 })

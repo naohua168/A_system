@@ -83,13 +83,13 @@ function handleClickAlert(alert: AlertItem) {
 // Click outside directive
 const vClickOutside = {
   mounted(el: HTMLElement, binding: any) {
-    el.__clickOutside = (event: MouseEvent) => {
+    (el as any).__clickOutside = (event: MouseEvent) => {
       if (!el.contains(event.target as Node)) binding.value()
     }
-    document.addEventListener('click', el.__clickOutside)
+    document.addEventListener('click', (el as any).__clickOutside)
   },
   unmounted(el: HTMLElement) {
-    document.removeEventListener('click', el.__clickOutside)
+    document.removeEventListener('click', (el as any).__clickOutside)
   },
 }
 </script>

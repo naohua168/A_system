@@ -1,5 +1,6 @@
 """RSI — 全向量化，Wilder 平滑用 EWMA 替代 Python 循环"""
 import pandas as pd
+import numpy as np
 
 
 def RSI(df: pd.DataFrame, periods: list = None) -> pd.DataFrame:
@@ -7,6 +8,7 @@ def RSI(df: pd.DataFrame, periods: list = None) -> pd.DataFrame:
 
     Wilder 平滑 = EWMA(alpha=1/p, adjust=False)
     比原始 for-loop 快 100~500x
+    修复: avg_loss=0 时正确处理单调上涨/平坦场景
     """
     if periods is None:
         periods = [6, 12, 24]
@@ -21,8 +23,17 @@ def RSI(df: pd.DataFrame, periods: list = None) -> pd.DataFrame:
         avg_gain = gain.ewm(alpha=1 / p, adjust=False, min_periods=p).mean()
         avg_loss = loss.ewm(alpha=1 / p, adjust=False, min_periods=p).mean()
 
-        rs = avg_gain / avg_loss.replace(0, float("nan"))
-        result[f"RSI{p}"] = (100 - (100 / (1 + rs))).round(2)
+        # 安全计算 RS：avg_loss=0 时分母替换为极小值
+        avg_loss_safe = avg_loss.replace(0, 1e-10)
+        rs = avg_gain / avg_loss_safe
+
+        # avg_gain=0 & avg_loss=0 (完全平坦) → 中性 RSI=50
+        both_zero = (avg_loss == 0) & (avg_gain == 0)
+        result[f"RSI{p}"] = np.where(
+            both_zero,
+            50.0,
+            (100 - (100 / (1 + rs))).round(2),
+        ).round(2)
 
     return result
 

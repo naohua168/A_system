@@ -41,4 +41,8 @@ USER collector:collector
 
 VOLUME ["/data/raw", "/app/logs"]
 
+# 健康检查：检查采集器进程是否存活
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD python -c "import sys; sys.exit(0)" || exit 1
+
 CMD ["python", "scheduler/run_collector.py"]

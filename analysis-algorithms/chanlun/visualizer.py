@@ -20,42 +20,44 @@ class ChanlunVisualizer:
 
     @staticmethod
     def to_dict(df: pd.DataFrame) -> dict:
-        """将缠论分析结果转为字典"""
+        """将缠论分析结果转为字典（优化版: iterrows → itertuples）"""
         result = identify_fractals(df)
         result = identify_pens(result)
         result = identify_segments(result)
         result = identify_centrals(result)
         signals = generate_signals(df)
 
-        # K线数据
+        # K线数据 — itertuples 替代 iterrows（~10x 更快）
         kline_data = []
-        for _, row in result.iterrows():
-            kline_data.append({
-                "date": str(row.get("date", "")),
-                "open": float(row.get("open", 0)),
-                "high": float(row.get("high", 0)),
-                "low": float(row.get("low", 0)),
-                "close": float(row.get("close", 0)),
-                "volume": int(row.get("volume", 0)),
-                "fractal_type": str(row.get("fractal_type", "")),
-                "fractal_price": float(row.get("fractal_price", 0)),
-                "pen_direction": str(row.get("pen_direction", "")),
-                "pen_height": float(row.get("pen_height", 0)),
-                "segment_direction": str(row.get("segment_direction", "")),
-                "central_ZG": float(row.get("central_ZG", 0)),
-                "central_ZD": float(row.get("central_ZD", 0)),
+        kline_append = kline_data.append  # 方法引用缓存
+        for row in result.itertuples(index=False):
+            kline_append({
+                "date": str(getattr(row, "date", "")),
+                "open": float(getattr(row, "open", 0)),
+                "high": float(getattr(row, "high", 0)),
+                "low": float(getattr(row, "low", 0)),
+                "close": float(getattr(row, "close", 0)),
+                "volume": int(getattr(row, "volume", 0)),
+                "fractal_type": str(getattr(row, "fractal_type", "")),
+                "fractal_price": float(getattr(row, "fractal_price", 0)),
+                "pen_direction": str(getattr(row, "pen_direction", "")),
+                "pen_height": float(getattr(row, "pen_height", 0)),
+                "segment_direction": str(getattr(row, "segment_direction", "")),
+                "central_ZG": float(getattr(row, "central_ZG", 0)),
+                "central_ZD": float(getattr(row, "central_ZD", 0)),
             })
 
-        # 分型点
+        # 分型点 — itertuples 替代 iterrows
         fractals = []
-        for _, row in result.iterrows():
-            ftype = str(row.get("fractal_type", ""))
+        fractal_append = fractals.append
+        for row in result.itertuples(index=False):
+            ftype = str(getattr(row, "fractal_type", ""))
             if ftype:
-                fractals.append({
+                fractal_append({
                     "type": ftype,
-                    "date": str(row["date"]),
-                    "price": float(row["fractal_price"]),
-                    "strength": float(row.get("fractal_strength", 0)),
+                    "date": str(getattr(row, "date", "")),
+                    "price": float(getattr(row, "fractal_price", 0)),
+                    "strength": float(getattr(row, "fractal_strength", 0)),
                 })
 
         # 中枢

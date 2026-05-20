@@ -170,4 +170,17 @@ public class MarketController {
         String date = stockDailyMapper.selectMaxTradeDate();
         return ApiResponse.ok(Map.of("tradeDate", date));
     }
+
+    /**
+     * 获取板块K线数据（通过行业成分股均价聚合计算）
+     * <p>
+     * 数据来自 L1 stock_daily 表，按行业分组求每日均价。
+     */
+    @GetMapping("/sector-kline")
+    public ApiResponse getSectorKline(
+            @RequestParam String industry,
+            @RequestParam(defaultValue = "60") int days) {
+        List<Map<String, Object>> kline = stockDailyMapper.selectSectorKline(industry, days);
+        return ApiResponse.ok(kline);
+    }
 }

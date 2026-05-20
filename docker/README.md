@@ -1,14 +1,17 @@
 # Docker 大数据环境配置
 
-## 🚀 已部署服务（11个容器）
+## 🚀 已部署服务（18个容器，含基础设施+应用+采集+监控）
+
+### 基础设施（9个）
 
 | 服务 | 镜像 | Web UI | 端口 | Health |
 |:---|:---|:---:|:---:|:---:|
 | **NameNode** | bde2020/hadoop-namenode:2.0.0 | 9870 | 9000 | ✅ |
-| **DataNode × 2** | bde2020/hadoop-datanode:2.0.0 | 9864 | - | ✅ |
+| **DataNode1** | bde2020/hadoop-datanode:2.0.0 | 9864 | - | ✅ |
+| **DataNode2** | bde2020/hadoop-datanode:2.0.0 | - | - | ✅ (V2.2 新增) |
 | **ResourceManager** | bde2020/hadoop-resourcemanager:2.0.0 | 8088 | - | ✅ |
 | **NodeManager** | bde2020/hadoop-nodemanager:2.0.0 | - | - | ✅ |
-| **MySQL 8.0** | mysql:8.0 | - | 3307 | ✅ |
+| **MySQL 8.0** | mysql:8.0 | - | 3306 | ✅ |
 | **Redis 7** | redis:7-alpine | - | 6379 | ✅ |
 | **Hive Server2** | bde2020/hive:2.3.2 | 10002 | 10000 | ✅ |
 | **Spark Master** | apache/spark:3.5.0 | 8080 | 7077 | ✅ |
@@ -23,6 +26,14 @@
 | **AI Service** | stock-ai-service | 8000 | `docker compose build ai-service` |
 | **Backend** | stock-backend | 8082 | `docker compose build backend` |
 | **Frontend** | stock-frontend | 80 | `docker compose build frontend` |
+
+## 采集层服务（独立编排 docker-compose.collector.yml）
+
+| 服务 | 容器名 | 端口 | Health |
+|:---|:---|:---:|:---:|
+| **Zookeeper** | collector-zookeeper | 2181 | ✅ |
+| **Kafka** | collector-kafka | 9092/29092/39092 | ✅ |
+| **Data Collector** | data-collector | — | ✅ (V2.2 新增) |
 
 ## 快速启动
 
@@ -55,7 +66,7 @@ docker compose build
 docker exec namenode hdfs dfs -ls /
 ```
 
-### 2. MySQL（10张业务表已创建）
+### 2. MySQL（23张业务表已创建）
 ```powershell
 docker exec mysql mysql -uroot -phadoop123 -e "USE stock_analysis; SHOW TABLES;"
 ```
@@ -84,26 +95,37 @@ docker compose ps
 
 | 数据库 | 类型 | 用途 |
 |:---|:---|:---|
-| `stock_analysis` | MySQL:3307 | 业务数据（10张表） |
+| `stock_analysis` | MySQL:3306 | 业务数据（23张表） |
 | `hive_metastore` | MySQL (Hive 内部) | Hive 元数据 |
 
-### MySQL 表结构
+### MySQL 表结构（23张表）
 - `user` - 用户管理
 - `stock` - 股票基础信息（20只示例股票）
 - `stock_daily` - 日K线数据
 - `fund` - 基金基础信息（10只示例基金）
 - `fund_nav` - 基金净值历史
+- `fund_holding` - 基金持仓
 - `watchlist` - 自选管理
 - `analysis_result` - 分析结果
+- `precomputed_result` - 预计算结果
 - `ai_chat` - AI对话记录
-- `signal_hot_reason` - 题材归因
-- `signal_dragon_tiger` - 龙虎榜
-- `signal_northbound` - 北向资金
-- `signal_lockup` - 限售解禁
-- `signal_daily_industry` - 行业每日数据
-- `fund_holding` - 基金持仓
 - `market_index` - 市场指数
 - `index_daily` - 指数日线
+- `signal_hot_reason` - 题材归因
+- `signal_dragon_tiger` - 龙虎榜
+- `signal_dragon_tiger_detail` - 龙虎榜明细
+- `signal_northbound` - 北向资金
+- `signal_lockup` - 限售解禁
+- `signal_lockup_detail` - 解禁明细
+- `signal_daily_industry` - 行业每日数据
+- `signal_fund_flow` - 资金流向
+- `signal_concept_block` - 概念板块
+- `info_research_report` - 券商研报
+- `info_consensus_eps` - 一致预期
+- `info_stock_news` - 个股新闻
+- `info_cls_news` - 财联社快讯
+- `info_global_news` - 全球资讯
+- `info_filing` - 巨潮公告
 
 ## 生产环境优化
 

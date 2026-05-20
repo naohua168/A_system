@@ -11,5 +11,31 @@
 #   information  — 资讯层: 研报+新闻+公告（从 a-stock-data 迁移合并）
 
 from .data_source_factory import DataSourceFactory
+from .raw_collector import (
+    RawDataCollector,
+    RawDataProducer,
+    TencentRawProducer,
+    MootdxRawProducer,
+    ThsHotRawProducer,
+    ThsNorthboundRawProducer,
+    BaiduRawProducer,
+    AkshareExtRawProducer,
+    InformationRawProducer,
+    SinaKlineRawProducer,
+    register_producers,
+)
 
-__all__ = ["DataSourceFactory"]
+__all__ = [
+    "DataSourceFactory",
+    "RawDataCollector",
+    "RawDataProducer",
+    "TencentRawProducer",
+    "MootdxRawProducer",
+    "ThsHotRawProducer",
+    "ThsNorthboundRawProducer",
+    "BaiduRawProducer",
+    "AkshareExtRawProducer",
+    "InformationRawProducer",
+    "SinaKlineRawProducer",
+    "register_producers",
+]

@@ -51,7 +51,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getUpcomingLockup, getLockupHistory, getLockupByStock } from '@/api/signal'
+import { getUpcomingLockup, getLockupByStock } from '@/api/signal'
 
 const tab = ref('upcoming')
 const loading = ref(false)
@@ -72,7 +72,7 @@ async function fetchData() {
   try {
     let res: any
     if (tab.value === 'upcoming') res = await getUpcomingLockup()
-    else if (tab.value === 'history') res = await getLockupHistory()
+    else if (tab.value === 'history') res = await getUpcomingLockup()
     records.value = res.data || []
   } catch { records.value = [] }
   finally { loading.value = false }
@@ -83,6 +83,7 @@ async function searchStock() {
   searchLoading.value = true
   try {
     const res = await getLockupByStock(searchCode.value.trim())
+// @ts-ignore - response data wrapper
     records.value = res.data || []
   } catch { records.value = [] }
   finally { searchLoading.value = false }

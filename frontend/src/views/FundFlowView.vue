@@ -61,30 +61,26 @@
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { TrendCharts } from '@element-plus/icons-vue'
+import { getFundFlow } from '@/api/signal'
+import type { FundFlow } from '@/types'
+
+/** 资金流向展示行（含前端计算的累计字段） */
+interface FundFlowDisplay {
+  date: string
+  close: number
+  changePct: number
+  mainIn: number
+  superNetIn: number
+  largeNetIn: number
+  mediumNetIn: number
+  littleNetIn: number
+}
 
 const loading = ref(false)
 const stockCode = ref('000858')
-const records = ref<any[]>([])
+const records = ref<FundFlowDisplay[]>([])
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
-
-// 模拟数据 — 真实场景下调用后端API
-const mockData: Record<string, any[]> = {
-  '000858': [
-    { date: '2026-04-29', close: 160.42, changePct: 1.89, superNetIn: 3562, largeNetIn: 1289, mediumNetIn: -892, littleNetIn: -2156, mainIn: 4851 },
-    { date: '2026-04-30', close: 153.84, changePct: -4.10, superNetIn: -4521, largeNetIn: -1896, mediumNetIn: 1235, littleNetIn: 2135, mainIn: -6417 },
-    { date: '2026-05-06', close: 160.66, changePct: 4.43, superNetIn: 5621, largeNetIn: 2345, mediumNetIn: -1120, littleNetIn: -2560, mainIn: 7966 },
-    { date: '2026-05-07', close: 157.09, changePct: -2.22, superNetIn: -3356, largeNetIn: -1120, mediumNetIn: 890, littleNetIn: 1560, mainIn: -4476 },
-    { date: '2026-05-08', close: 157.17, changePct: 0.05, superNetIn: 1256, largeNetIn: 890, mediumNetIn: -456, littleNetIn: -780, mainIn: 2146 },
-  ],
-  '600519': [
-    { date: '2026-04-29', close: 1713.67, changePct: 1.35, superNetIn: 8956, largeNetIn: 3456, mediumNetIn: -2135, littleNetIn: -4210, mainIn: 12412 },
-    { date: '2026-04-30', close: 1693.97, changePct: -1.15, superNetIn: -5621, largeNetIn: -2230, mediumNetIn: 1560, littleNetIn: 2456, mainIn: -7851 },
-    { date: '2026-05-06', close: 1671.29, changePct: -1.34, superNetIn: -3345, largeNetIn: -1125, mediumNetIn: 892, littleNetIn: 1580, mainIn: -4470 },
-    { date: '2026-05-07', close: 1699.50, changePct: 1.69, superNetIn: 6789, largeNetIn: 2560, mediumNetIn: -1120, littleNetIn: -2560, mainIn: 9349 },
-    { date: '2026-05-08', close: 1695.27, changePct: -0.25, superNetIn: -1230, largeNetIn: -560, mediumNetIn: 320, littleNetIn: 890, mainIn: -1790 },
-  ],
-}
 
 const stats = computed(() => {
   if (!records.value.length) return []
@@ -117,17 +113,28 @@ function renderChart(data: any[]) {
   })
 }
 
+/** 从后端 API 加载资金流向数据 */
 async function fetchData() {
   const code = stockCode.value.trim()
   if (!code) return
   loading.value = true
   try {
-    // 真实场景调用后端API
-    // const res = await getFundFlowHistory(code, 20)
-    // records.value = res.data || []
-    records.value = mockData[code] || mockData['000858']
+    const raw = await getFundFlow(code, 20) as FundFlow[]
+    records.value = raw.map((item) => ({
+      date: item.tradeDate,
+      close: item.close,
+      changePct: 0, // 后端 FundFlow 表不含涨跌幅，后续可从 K 线关联
+      mainIn: Number(item.mainIn) || 0,
+      superNetIn: Number(item.superNetIn) || 0,
+      largeNetIn: 0,
+      mediumNetIn: 0,
+      littleNetIn: 0,
+    }))
     await nextTick()
     renderChart(records.value)
+  } catch (e) {
+    console.warn('[FundFlow] fetchData failed:', e)
+    records.value = []
   } finally { loading.value = false }
 }
 

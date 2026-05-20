@@ -126,7 +126,7 @@ def identify_segments(df: pd.DataFrame) -> pd.DataFrame:
     pens = find_pens(filtered)
     segments = find_segments(pens)
 
-    # 2. 标记线段
+    # 2. 标记线段 — 向量化切片赋值替代逐行循环
     result["segment_direction"] = ""
     result["segment_height"] = 0.0
     result["segment_destroyed"] = ""
@@ -134,10 +134,11 @@ def identify_segments(df: pd.DataFrame) -> pd.DataFrame:
     for seg in segments:
         start_idx = seg.pens[0].start_fractal.k2.idx
         end_idx = seg.pens[-1].end_fractal.k2.idx
-        for idx in range(start_idx, end_idx + 1):
-            if idx < len(result):
-                result.loc[result.index[idx], "segment_direction"] = seg.direction
-                result.loc[result.index[idx], "segment_height"] = seg.height
-                result.loc[result.index[idx], "segment_destroyed"] = seg.destroyed_by or ""
+        if start_idx < len(result) and end_idx < len(result):
+            idx_slice = result.index[start_idx:end_idx + 1]
+            n = len(idx_slice)
+            result.loc[idx_slice, "segment_direction"] = [seg.direction] * n
+            result.loc[idx_slice, "segment_height"] = [seg.height] * n
+            result.loc[idx_slice, "segment_destroyed"] = [seg.destroyed_by or ""] * n
 
     return result

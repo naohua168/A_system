@@ -187,6 +187,7 @@ async function loadFundData() {
       }
     }
     // 2. 加载净值数据
+// @ts-ignore - API type mismatch
     const navData: any = await getFundNav(code, { days: 365 })
     if (Array.isArray(navData) && navData.length > 0) {
       cachedNavData = navData

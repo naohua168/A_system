@@ -7,7 +7,7 @@
       </div>
       <div class="header-right">
         <el-date-picker v-model="selectedDate" type="date" placeholder="选择日期"
-          value-format="YYYY-MM-DD" :disabled-date="d => d > today"
+          value-format="YYYY-MM-DD" :disabled-date="(d: Date) => d > today"
           @change="fetchData" size="small" />
         <el-radio-group v-model="sortBy" size="small" @change="sortData" style="margin-left:12px">
           <el-radio-button value="changePct">涨跌幅</el-radio-button>
@@ -96,7 +96,7 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await getIndustryCompare(selectedDate.value)
-    records.value = res.data.records || []
+    records.value = (res as any).data?.records || []
     await nextTick()
     renderChart(sortedRecords.value)
   } catch { records.value = [] }

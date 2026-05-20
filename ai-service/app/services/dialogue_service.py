@@ -60,9 +60,9 @@ class DialogueService:
                     logger.warning(f"获取 {path} 失败: {e}")
                     return {}
 
-            stock_task = _fetch(f"/stock/{code}")
-            analysis_task = _fetch(f"/analysis/technical/{code}")
-            signal_task = _fetch(f"/signal/overview/{code}")
+            stock_task = _fetch(f"/market/{code}")
+            analysis_task = _fetch(f"/analysis/{code}")
+            signal_task = _fetch(f"/signal/northbound/latest")
             results = await asyncio.gather(
                 stock_task, analysis_task, signal_task,
                 return_exceptions=True,

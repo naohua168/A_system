@@ -94,7 +94,7 @@ def identify_pens(df: pd.DataFrame) -> pd.DataFrame:
     filtered = filter_fractals(all_fractals)
     pens = find_pens(filtered)
 
-    # 3. 标记笔
+    # 3. 标记笔 — 向量化切片赋值替代逐行循环
     result["pen_direction"] = ""
     result["pen_height"] = 0.0
     result["pen_change_pct"] = 0.0
@@ -104,11 +104,11 @@ def identify_pens(df: pd.DataFrame) -> pd.DataFrame:
         end_idx = pen.end_fractal.k2.idx
 
         if start_idx < len(result) and end_idx < len(result):
-            # 在笔的范围内标记方向
-            for idx in range(start_idx, end_idx + 1):
-                if idx < len(result):
-                    result.loc[result.index[idx], "pen_direction"] = pen.direction
-                    result.loc[result.index[idx], "pen_height"] = pen.height
-                    result.loc[result.index[idx], "pen_change_pct"] = pen.change_pct
+            # 批量赋值：用切片替代 range 循环
+            idx_slice = result.index[start_idx:end_idx + 1]
+            n = len(idx_slice)
+            result.loc[idx_slice, "pen_direction"] = [pen.direction] * n
+            result.loc[idx_slice, "pen_height"] = [pen.height] * n
+            result.loc[idx_slice, "pen_change_pct"] = [pen.change_pct] * n
 
     return result

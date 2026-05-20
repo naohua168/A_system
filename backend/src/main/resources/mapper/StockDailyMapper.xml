@@ -76,6 +76,24 @@
         ORDER BY avgChangePct DESC
     </select>
 
+    <!-- 板块K线聚合（按行业成分股每日收盘均价计算） -->
+    <select id="selectSectorKline" resultType="java.util.Map">
+        SELECT
+            d.trade_date AS tradeDate,
+            ROUND(AVG(d.open_price), 2) AS openPrice,
+            ROUND(AVG(d.high_price), 2) AS highPrice,
+            ROUND(AVG(d.low_price), 2) AS lowPrice,
+            ROUND(AVG(d.close_price), 2) AS closePrice,
+            SUM(d.volume) AS volume,
+            SUM(d.amount) AS amount
+        FROM stock_daily d
+        JOIN stock s ON d.stock_code = s.stock_code
+        WHERE s.industry = #{industry}
+          AND d.trade_date >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY d.trade_date
+        ORDER BY d.trade_date ASC
+    </select>
+
     <!-- 查询最近交易日 -->
     <select id="selectMaxTradeDate" resultType="java.lang.String">
         SELECT MAX(trade_date) FROM stock_daily

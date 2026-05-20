@@ -1,5 +1,6 @@
 import request from './request'
 import type { StockListItem, StockDetail, StockDaily, SectorRanking } from '@/types'
+import type { MarketListParams, PageResult, StockFilterParams } from './types'
 
 /**
  * 行情层 API — 对应后端 MarketController (/api/market)
@@ -7,31 +8,16 @@ import type { StockListItem, StockDetail, StockDaily, SectorRanking } from '@/ty
  * 数据来源: data-collector → Kafka → Spark Streaming → MySQL
  * 前端从此接口读取，与采集层完全解耦
  */
-
-export interface MarketListParams {
-  page?: number
-  size?: number
-  keyword?: string
-  industry?: string
-  sortField?: string
-  sortOrder?: 'asc' | 'desc'
+export function getStockList(params?: MarketListParams, signal?: AbortSignal): Promise<PageResult<StockListItem>> {
+  return request.get('/market/list', { params, signal })
 }
 
-export function getStockList(params?: MarketListParams): Promise<{
-  records: StockListItem[]
-  total: number
-  page: number
-  size: number
-}> {
-  return request.get('/market/list', { params })
+export function getStockByCode(code: string, signal?: AbortSignal): Promise<StockDetail> {
+  return request.get(`/market/${code}`, { signal })
 }
 
-export function getStockByCode(code: string): Promise<StockDetail> {
-  return request.get(`/market/${code}`)
-}
-
-export function getKlineData(code: string, days?: number): Promise<StockDaily[]> {
-  return request.get(`/market/kline/${code}`, { params: { days } })
+export function getKlineData(code: string, days?: number, signal?: AbortSignal): Promise<StockDaily[]> {
+  return request.get(`/market/kline/${code}`, { params: { days }, signal })
 }
 
 export function getKlineRange(code: string, startDate?: string, endDate?: string): Promise<StockDaily[]> {
@@ -50,16 +36,15 @@ export function getSectorRanking(tradeDate?: string): Promise<{ tradeDate: strin
   return request.get('/market/sector-ranking', { params: { tradeDate } })
 }
 
-export function filterStocks(params: {
-  industry?: string
-  minPrice?: number
-  maxPrice?: number
-  minChange?: number
-  limit?: number
-}): Promise<any[]> {
+export function filterStocks(params: StockFilterParams): Promise<StockDetail[]> {
   return request.get('/market/filter', { params })
 }
 
 export function getMaxTradeDate(): Promise<{ tradeDate: string }> {
   return request.get('/market/max-date')
+}
+
+/** 获取板块K线数据（行业成分股均价聚合） */
+export function getSectorKline(industry: string, days = 60): Promise<StockDaily[]> {
+  return request.get('/market/sector-kline', { params: { industry, days } })
 }

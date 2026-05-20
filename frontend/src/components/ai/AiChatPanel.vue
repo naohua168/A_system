@@ -43,7 +43,7 @@ async function send() {
   try {
     const res = await chatAI({
       message: question,
-      stock_code: props.stockCode || '',
+      stockCode: props.stockCode || '',
       history: messages.value.slice(0, -1),
     })
     messages.value.push({ role: 'assistant', content: res.reply })

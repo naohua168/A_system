@@ -35,14 +35,19 @@ public class StockDailyServiceImpl extends ServiceImpl<StockDailyMapper, StockDa
         return baseMapper.selectPage(new Page<>(page, size), wrapper);
     }
 
+    /**
+     * 获取某股票最近 N 天的K线数据
+     * <p>
+     * 使用 MyBatis-Plus Page 对象实现分页，
+     * 替代字符串拼接 LIMIT，消除 SQL 注入风险。
+     */
     @Override
     @Cacheable(key = "'latest:' + #stockCode + ':' + #days", unless = "#result == null || #result.isEmpty()")
     public List<StockDaily> getLatestDays(String stockCode, int days) {
         LambdaQueryWrapper<StockDaily> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(StockDaily::getStockCode, stockCode);
         wrapper.orderByDesc(StockDaily::getTradeDate);
-        wrapper.last("LIMIT " + days);
-        List<StockDaily> list = baseMapper.selectList(wrapper);
+        List<StockDaily> list = baseMapper.selectPage(new Page<>(1, days), wrapper).getRecords();
         java.util.Collections.reverse(list);
         return list;
     }

@@ -6,6 +6,9 @@ import com.stock.service.AIDialogueService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 @RestController
 @RequestMapping("/api/ai")
 public class AiDialogueController {
@@ -14,13 +17,14 @@ public class AiDialogueController {
     private AIDialogueService aiDialogueService;
 
     @PostMapping("/chat")
-    public AIResponse chat(@RequestBody AIRequest request) {
+    public CompletableFuture<AIResponse> chat(@RequestBody AIRequest request) {
+        // Spring MVC 自动等待 CompletableFuture 完成后返回
         return aiDialogueService.chat(request);
     }
 
     @GetMapping("/status")
-    public java.util.Map<String, Object> status() {
-        return java.util.Map.of(
+    public Map<String, Object> status() {
+        return Map.of(
             "service", "ai-dialogue",
             "aiServiceUrl", "http://localhost:8000",
             "status", "running"

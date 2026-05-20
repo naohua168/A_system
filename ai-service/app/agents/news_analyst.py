@@ -36,7 +36,7 @@ class NewsAnalyst(BaseAgent):
 
         # 调用后端新闻 API
         # 修复: settings.backend_api_url 已包含 /api，endpoint 不再重复加 /api/
-        news_data = await self._fetch_backend_data(f"/news/{stock_code}")
+        news_data = await self._fetch_backend_data(f"/info/news/{stock_code}")
 
         if not news_data:
             news_data = self._mock_news_data(stock_code)

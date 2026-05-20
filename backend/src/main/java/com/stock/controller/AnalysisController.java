@@ -12,11 +12,6 @@ import java.util.Map;
 /**
  * 分析层控制器 — 技术指标 + 缠论 + 量化策略 + 排名筛选
  *
- * 新架构:
- *   本地: analysis-algorithms/analysis_orchestrator.py (Pandas 计算)
- *   预计算: Spark Streaming → MySQL precomputed_* 表
- *   后端: 优先读预计算结果，无则提示
- *
  * 路由前缀: /api/analysis
  */
 @RestController
@@ -49,6 +44,14 @@ public class AnalysisController {
         return saved ? ApiResponse.created(result) : ApiResponse.error("保存失败");
     }
 
+    // ==================== 新增 DELETE 端点 ====================
+
+    @DeleteMapping("/{id}")
+    public ApiResponse deleteAnalysis(@PathVariable Long id) {
+        boolean removed = analysisService.removeById(id);
+        return removed ? ApiResponse.ok("删除成功") : ApiResponse.error("分析记录不存在");
+    }
+
     // ==================== 收益率 ====================
 
     @GetMapping("/{stockCode}/yearly-return")
@@ -71,7 +74,6 @@ public class AnalysisController {
     public ApiResponse getTrend(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "30") int days) {
-        // 修复: 增加 null 判断，避免 trend.isEmpty() 触发 NullPointerException
         Map<String, Object> trend = analysisService.getTrendAnalysis(stockCode, days);
         if (trend == null || trend.isEmpty()) {
             return ApiResponse.error("无数据");

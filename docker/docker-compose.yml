@@ -88,6 +88,11 @@ services:
       - datanode2-data:/hadoop/dfs/data
     environment:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9864/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
     networks:
       - bigdata-net
@@ -120,7 +125,9 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
-      - bigdata-net
+      bigdata-net:
+        aliases:
+          - mysql
     labels:
       tier: "storage"
       description: "MySQL 8.0 — 业务数据存储"
@@ -314,6 +321,8 @@ services:
       - AI_SERVICE_HOST=0.0.0.0
       - AI_SERVICE_PORT=8000
       - BACKEND_API_URL=http://backend:8082/api
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY:-}
+      - SILICONFLOW_MODEL=${SILICONFLOW_MODEL:-Qwen/Qwen2.5-72B-Instruct}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - AI_API_KEY=${AI_API_KEY:-}
       - MYSQL_HOST=mysql
@@ -342,9 +351,7 @@ services:
   backend:
     build:
       context: ../backend
-      dockerfile: ../docker/backend/Dockerfile
-      args:
-        - APP_VERSION=${APP_VERSION:-latest}
+      dockerfile: ../docker/backend/Dockerfile.dev
     image: stock-backend:${APP_VERSION:-latest}
     container_name: backend
     hostname: backend
@@ -367,7 +374,7 @@ services:
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - AI_SERVICE_URL=http://ai-service:8000
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8082/api/stock/list?page=1&size=1"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/api/market/list?page=1&size=1"]
       interval: 30s
       timeout: 10s
       retries: 5

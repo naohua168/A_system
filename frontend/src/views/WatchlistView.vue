@@ -101,11 +101,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Star, Coin, Delete } from '@element-plus/icons-vue'
-import { getStockList } from '@/api/stock'
+import { getStockList } from '@/api/market'
 import { getFundList, getFundNav } from '@/api/fund'
 import { getWatchlist, removeWatchlist as apiRemoveWatchlist } from '@/api/watchlist'
 import { useUserStore } from '@/stores/user'
-import { formatPrice, getChangeClass } from '@/utils/format'
+import { formatPrice, getChangeClass, formatVolume } from '@/utils/format'
 
 const userStore = useUserStore()
 const activeTab = ref('stock')
@@ -166,7 +166,7 @@ async function loadFunds() {
         let accNav = fundInfo ? Number(fundInfo.accumulatedNav) : nav
         let dailyReturn = 0
         try {
-          const navData: any = await getFundNav(code, { days: 2 })
+          const navData: any = await getFundNav(code, 2)
           if (Array.isArray(navData) && navData.length >= 2) {
             const last = navData[navData.length - 1]
             const prev = navData[navData.length - 2]

@@ -1,5 +1,6 @@
 package com.stock.service.impl;
 
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.stock.entity.AnalysisResult;
 import com.stock.entity.StockDaily;
 import com.stock.mapper.AnalysisResultMapper;
@@ -13,9 +14,22 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
+/**
+ * 分析服务 — 提供收益率计算、趋势判断、相关性分析等功能。
+ * <p>
+ * 数据流: L3 analysis-algorithms Python 引擎 → MySQL precomputed_* 表
+ * 回退策略: 预计算表无数据时，由本服务从 stock_daily 实时计算。
+ */
 @Service
 public class AnalysisServiceImpl implements AnalysisService {
+
+    private static final Logger log = LoggerFactory.getLogger(AnalysisServiceImpl.class);
 
     private final StockDailyMapper stockDailyMapper;
     private final AnalysisResultMapper analysisResultMapper;
@@ -29,6 +43,17 @@ public class AnalysisServiceImpl implements AnalysisService {
     @Override
     public boolean save(AnalysisResult result) {
         return analysisResultMapper.insert(result) > 0;
+    }
+
+    @Override
+    public List<AnalysisResult> list(
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AnalysisResult> wrapper) {
+        return analysisResultMapper.selectList(wrapper);
+    }
+
+    @Override
+    public boolean removeById(Long id) {
+        return analysisResultMapper.deleteById(id) > 0;
     }
 
     @Override
@@ -130,9 +155,23 @@ public class AnalysisServiceImpl implements AnalysisService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
 
+        // 计算涨跌幅: (最新收盘价 - 最早收盘价) / 最早收盘价 * 100
+        StockDaily first = dailyList.get(0);
+        StockDaily last = dailyList.get(dailyList.size() - 1);
+        BigDecimal changePct = BigDecimal.ZERO;
+        if (first.getClosePrice() != null && last.getClosePrice() != null
+                && first.getClosePrice().compareTo(BigDecimal.ZERO) != 0) {
+            changePct = last.getClosePrice().subtract(first.getClosePrice())
+                    .divide(first.getClosePrice(), 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
         Map<String, Object> result = new HashMap<>();
         result.put("stockCode", stockCode);
         result.put("trend", trend);
+        result.put("currentPrice", last.getClosePrice());
+        result.put("changePct", changePct);
         result.put("ma5", ma5.isEmpty() ? BigDecimal.ZERO : ma5.get(ma5.size() - 1));
         result.put("ma10", ma10.isEmpty() ? BigDecimal.ZERO : ma10.get(ma10.size() - 1));
         result.put("ma20", ma20.isEmpty() ? BigDecimal.ZERO : ma20.get(ma20.size() - 1));
@@ -211,6 +250,53 @@ public class AnalysisServiceImpl implements AnalysisService {
             }
         }
         return result == null ? Collections.emptyList() : result;
+    }
+
+    // ============================================================
+    // 缠论分析 — 调用 L3 Python 分析引擎
+    // ============================================================
+
+    /** Python 运行路径（从环境变量读取，默认 python） */
+    private static final String PYTHON = System.getenv().getOrDefault("ANALYSIS_PYTHON", "python");
+    private static final String BRIDGE_SCRIPT = "../analysis-algorithms/chanlun_bridge.py";
+
+    @Override
+    public Map<String, Object> getChanlunAnalysis(String stockCode, int days) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    PYTHON, "-W", "ignore", BRIDGE_SCRIPT,
+                    "--code", stockCode,
+                    "--days", String.valueOf(days)
+            );
+            pb.directory(new java.io.File(".").getAbsoluteFile().getParentFile());
+
+            Process process = pb.start();
+            String jsonOutput;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                jsonOutput = reader.lines().collect(Collectors.joining("\n"));
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                log.warn("缠论Python进程退出码={}, code={}", exitCode, stockCode);
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "Python进程退出码: " + exitCode);
+                return error;
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = new ObjectMapper().readValue(jsonOutput, Map.class);
+            log.info("缠论分析完成: code={}, bi={}, zhongshu={}",
+                    stockCode, result.getOrDefault("bi", "?"), result.getOrDefault("zhongshu", "?"));
+            return result;
+
+        } catch (Exception e) {
+            log.error("缠论分析失败: code={}", stockCode, e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "缠论分析失败: " + e.getMessage());
+            return error;
+        }
     }
 
     // ============================================================

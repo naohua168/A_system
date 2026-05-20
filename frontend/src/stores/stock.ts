@@ -1,14 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as marketApi from '@/api/market'
-import * as signalApi from '@/api/signal'
-import * as infoApi from '@/api/info'
 import type { StockListItem, StockDetail, StockDaily } from '@/types'
-
-/** 创建一个可中止的 fetch controller */
-function createAbortController(): AbortController {
-  return new AbortController()
-}
+import type { MarketListParams } from '@/types'
 
 /**
  * 行情层状态管理 — 对应后端 MarketController
@@ -39,17 +33,9 @@ export const useStockStore = defineStore('stock', () => {
   const hasMore = computed(() => currentPage.value < totalPages.value)
 
   // ── 列表操作 ──
-  async function fetchList(params?: {
-    page?: number
-    size?: number
-    keyword?: string
-    industry?: string
-    sortField?: string
-    sortOrder?: 'asc' | 'desc'
-  }) {
-    // 取消上一次请求
+  async function fetchList(params?: MarketListParams) {
     listController?.abort()
-    listController = createAbortController()
+    listController = new AbortController()
 
     loading.value = true
     error.value = null
@@ -61,15 +47,16 @@ export const useStockStore = defineStore('stock', () => {
         industry: params?.industry ?? selectedIndustry.value,
         sortField: params?.sortField,
         sortOrder: params?.sortOrder,
-      })
+      }, listController.signal)
       records.value = res.records
       total.value = res.total
       currentPage.value = res.page
       pageSize.value = res.size
-    } catch (e: any) {
-      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return // 主动取消忽略
+    } catch (e: unknown) {
+      const canceled = e instanceof Error && (e.name === 'CanceledError' || (e as any)?.code === 'ERR_CANCELED')
+      if (canceled) return
       console.error('获取股票列表失败:', e)
-      error.value = e?.message || '获取股票列表失败'
+      error.value = '获取股票列表失败'
       records.value = []
       total.value = 0
     } finally {
@@ -94,16 +81,17 @@ export const useStockStore = defineStore('stock', () => {
   // ── 详情操作 ──
   async function fetchDetail(code: string) {
     detailController?.abort()
-    detailController = createAbortController()
+    detailController = new AbortController()
 
     loading.value = true
     error.value = null
     try {
-      stockDetail.value = await marketApi.getStockByCode(code)
-    } catch (e: any) {
-      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return
+      stockDetail.value = await marketApi.getStockByCode(code, detailController.signal)
+    } catch (e: unknown) {
+      const canceled = e instanceof Error && (e.name === 'CanceledError' || (e as any)?.code === 'ERR_CANCELED')
+      if (canceled) return
       console.error('获取股票详情失败:', e)
-      error.value = e?.message || '获取股票详情失败'
+      error.value = '获取股票详情失败'
       stockDetail.value = null
     } finally {
       loading.value = false
@@ -112,16 +100,17 @@ export const useStockStore = defineStore('stock', () => {
 
   async function fetchKline(code: string, days = 60) {
     klineController?.abort()
-    klineController = createAbortController()
+    klineController = new AbortController()
 
     klineLoading.value = true
     klineError.value = null
     try {
-      klineData.value = await marketApi.getKlineData(code, days)
-    } catch (e: any) {
-      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return
+      klineData.value = await marketApi.getKlineData(code, days, klineController.signal)
+    } catch (e: unknown) {
+      const canceled = e instanceof Error && (e.name === 'CanceledError' || (e as any)?.code === 'ERR_CANCELED')
+      if (canceled) return
       console.error('获取K线数据失败:', e)
-      klineError.value = e?.message || '获取K线数据失败'
+      klineError.value = '获取K线数据失败'
       klineData.value = []
     } finally {
       klineLoading.value = false
@@ -149,81 +138,4 @@ export const useStockStore = defineStore('stock', () => {
     fetchList, setKeyword, setIndustry, setPage,
     fetchDetail, fetchKline, reset,
   }
-})
-
-// ── 信号层共享类型 ──
-interface HotReason { name: string; count: number; stocks?: string[] }
-interface NorthboundItem { date: string; netInflow: number; total: number }
-
-/**
- * 信号层状态管理 — 对应 SignalDataController
- */
-export const useSignalStore = defineStore('signal', () => {
-  const hotReasons = ref<HotReason[]>([])
-  const northboundData = ref<NorthboundItem[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
-
-  async function fetchHotReason(date?: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const res = await signalApi.getHotReason(date)
-      hotReasons.value = res.records
-    } catch (e: any) {
-      error.value = e?.message || '获取题材归因失败'
-      hotReasons.value = []
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function fetchNorthbound(days = 30) {
-    error.value = null
-    try {
-      northboundData.value = await signalApi.getNorthboundLatest(days)
-    } catch (e: any) {
-      error.value = e?.message || '获取北向资金数据失败'
-      northboundData.value = []
-    }
-  }
-
-  return { hotReasons, northboundData, loading, error, fetchHotReason, fetchNorthbound }
-})
-
-/**
- * 资讯层状态管理 — 对应 InfoController
- */
-export const useInfoStore = defineStore('info', () => {
-  const news = ref<any[]>([])
-  const filings = ref<any[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
-
-  async function fetchNews(code: string) {
-    loading.value = true
-    error.value = null
-    try {
-      const res = await infoApi.getStockNews(code)
-      news.value = res.records
-    } catch (e: any) {
-      error.value = e?.message || '获取新闻失败'
-      news.value = []
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function fetchFilings(code: string) {
-    error.value = null
-    try {
-      const res = await infoApi.getFilings(code)
-      filings.value = res.records
-    } catch (e: any) {
-      error.value = e?.message || '获取公告失败'
-      filings.value = []
-    }
-  }
-
-  return { news, filings, loading, error, fetchNews, fetchFilings }
 })

@@ -99,12 +99,12 @@
         <div class="info-card quant-card">
           <h4>量化指标</h4>
           <div class="quant-stats">
-            <div class="stat"><span class="label">MA5</span><span class="val">{{ quant.ma5.toFixed(2) }}</span></div>
-            <div class="stat"><span class="label">MA20</span><span class="val">{{ quant.ma20.toFixed(2) }}</span></div>
-            <div class="stat"><span class="label">MACD</span><span class="val" :class="quant.macd >= 0 ? 'text-rise' : 'text-fall'">{{ quant.macd.toFixed(4) }}</span></div>
-            <div class="stat"><span class="label">RSI</span><span class="val" :class="quant.rsi > 70 ? 'text-rise' : quant.rsi < 30 ? 'text-fall' : ''">{{ quant.rsi.toFixed(1) }}</span></div>
-            <div class="stat"><span class="label">KDJ-K</span><span class="val">{{ quant.kdjK.toFixed(1) }}</span></div>
-            <div class="stat"><span class="label">KDJ-D</span><span class="val">{{ quant.kdjD.toFixed(1) }}</span></div>
+            <div class="stat"><span class="label">MA5</span><span class="val">{{ (quant.ma5 ?? 0).toFixed(2) }}</span></div>
+            <div class="stat"><span class="label">MA20</span><span class="val">{{ (quant.ma20 ?? 0).toFixed(2) }}</span></div>
+            <div class="stat"><span class="label">MACD</span><span class="val" :class="(quant.macd ?? 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (quant.macd ?? 0).toFixed(4) }}</span></div>
+            <div class="stat"><span class="label">RSI</span><span class="val" :class="(quant.rsi ?? 50) > 70 ? 'text-rise' : (quant.rsi ?? 50) < 30 ? 'text-fall' : ''">{{ (quant.rsi ?? 50).toFixed(1) }}</span></div>
+            <div class="stat"><span class="label">KDJ-K</span><span class="val">{{ (quant.kdjK ?? 50).toFixed(1) }}</span></div>
+            <div class="stat"><span class="label">KDJ-D</span><span class="val">{{ (quant.kdjD ?? 50).toFixed(1) }}</span></div>
           </div>
         </div>
       </div>
@@ -325,102 +325,80 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Star, Setting } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
-import { getStockByCode, getKlineData } from '@/api/stock'
+import { getStockByCode, getKlineData } from '@/api/market'
 import { useStockStore } from '@/stores/stock'
+import { useWatchlistStore } from '@/stores/watchlist'
 import { useUserStore } from '@/stores/user'
-import { addWatchlist, removeWatchlist } from '@/api/watchlist'
 import { ElMessage } from 'element-plus'
-import { safeNum, safeVal, formatVol, parseTradeDate, formatDateShort } from '@/utils/format'
-import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI } from '@/utils/indicators'
+import { safeNum, safeVal, formatVol, parseTradeDate } from '@/utils/format'
 import { getChanlunAnalysis } from '@/api/analysis'
-import type { ChanlunBi, ChanlunZhongshu, ChanlunFengxing } from '@/api/analysis'
+import type { ChanlunBi, ChanlunZhongshu, ChanlunFengxing } from '@/types'
+import { useTechnicalChart } from '@/composables/useTechnicalChart'
+import { useIndicatorParams } from '@/composables/useIndicatorParams'
+import { useStockWebSocket } from '@/composables/useStockWebSocket'
+import type { KlineUpdateData } from '@/composables/useStockWebSocket'
 
 const route = useRoute()
 const stockCode = route.params.code as string
 const stockStore = useStockStore()
+const watchlistStore = useWatchlistStore()
 const userStore = useUserStore()
+
+// ── WebSocket 实时行情 ──
+const { wsStatus, lastKlineUpdate, connect: wsConnect, disconnect: wsDisconnect } = useStockWebSocket(stockCode)
 
 const chartRef = ref<HTMLElement>()
 const klineChartRef = ref<HTMLElement>()
 const bottomChartRef = ref<HTMLElement>()
 
-let klineChart: echarts.ECharts | null = null
-let bottomChart: echarts.ECharts | null = null
-
 const chartLoading = ref(false)
 const showChanlun = ref(false)
 const activePeriod = ref('day')
-const isWatched = computed(() => stockStore.isInWatchlist(stockCode))
+const isWatched = computed(() => watchlistStore.isInWatchlist(stockCode))
 
+// ── 共享指标参数管理（在 useTechnicalChart 之前创建，避免依赖环） ──
+const chanlunData = ref<ChanlunRawData>({ bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} as ChanlunStats })
+const indicator = useIndicatorParams()
+const {
+  periods,
+  overlayIndicators,
+  bottomIndicators,
+  bottomActive,
+  toggleOverlay,
+  selectBottomIndicator,
+  paramsDialogVisible,
+  paramsDialogTitle,
+  paramsTarget,
+  params,
+  openParams,
+  applyParams,
+} = indicator
+
+// ── K线图渲染器 ──
+const { renderChart, handleResize, dispose: disposeChart } = useTechnicalChart(
+  klineChartRef as any,
+  bottomChartRef as any,
+  {
+    getKlineData: () => getCachedKlineData(),
+    params: params as any,
+    showMA: computed(() => overlayIndicators.value.find(i => i.key === 'ma')?.active ?? true),
+    showBOLL: computed(() => overlayIndicators.value.find(i => i.key === 'boll')?.active ?? false),
+    bottomActive: bottomActive as any,
+    chanlunData: chanlunData as any,
+    showChanlun: showChanlun as any,
+  }
+)
+
+// 将渲染函数注入指标管理器，使指标切换自动触发重绘
+indicator.setRenderCallback(renderChart)
 
 // 缓存K线数据（仅由 API 填充）
 let cachedKlineData: number[][] | null = null
 function getCachedKlineData() {
   return cachedKlineData || []
-}
-
-const periods = [
-  { key: '5min', label: '5分' }, { key: '15min', label: '15分' },
-  { key: '30min', label: '30分' }, { key: '60min', label: '60分' },
-  { key: 'day', label: '日K' }, { key: 'week', label: '周K' }, { key: 'month', label: '月K' },
-]
-
-// --- 指标分组 ---
-// 叠加指标（画在K线图上）
-const overlayIndicators = ref([
-  { key: 'ma', label: 'MA', active: true },
-  { key: 'boll', label: 'BOLL', active: false },
-])
-
-// 底部指标（互斥，替换成交量区域）
-const bottomIndicators = ref([
-  { key: 'macd', label: 'MACD' },
-  { key: 'kdj', label: 'KDJ' },
-  { key: 'rsi', label: 'RSI' },
-])
-
-// bottomActive = null 表示显示VOL成交量
-const bottomActive = ref<string | null>(null)
-
-function toggleOverlay(ind: { key: string; active: boolean }) {
-  ind.active = !ind.active
-  renderChart()
-}
-
-function selectBottomIndicator(ind: { key: string }) {
-  if (bottomActive.value === ind.key) {
-    bottomActive.value = null // 切换回VOL
-  } else {
-    bottomActive.value = ind.key
-  }
-  renderChart()
-}
-
-// --- 参数设置 ---
-const paramsDialogVisible = ref(false)
-const paramsDialogTitle = ref('')
-const paramsTarget = ref('')
-const params = reactive({
-  macd: { fast: 12, slow: 26, signal: 9 },
-  kdj: { period: 9 },
-  rsi: { period: 14 },
-  ma: { periods: [5, 20] },
-  boll: { period: 20, multiplier: 2 },
-})
-
-function openParams(ind: { key: string; label: string }) {
-  paramsTarget.value = ind.key
-  paramsDialogTitle.value = ind.label
-  paramsDialogVisible.value = true
-}
-
-function applyParams() {
-  paramsDialogVisible.value = false
-  renderChart()
 }
 
 // 真实股票数据（从 API 加载）
@@ -454,344 +432,149 @@ const quant = reactive({
   kdjK: null as number | null, kdjD: null as number | null,
 })
 
-// ======== 信号层数据（资金流向/龙虎榜/解禁/财务） ========
-const signalTab = ref('flow')
-const flowData = ref<any[]>([])
-const dtData = ref<any[]>([])
-const lockupData = ref<any[]>([])
-const financialData = ref<any[]>([])
-const dtVisible = ref(false)
-const dtStock = ref<any>(null)
+import { getFundFlow, getDragonTigerByStock, getLockupByStock } from '@/api/signal'
+import type { FundFlowRow, DragonTigerStockRow, LockupDisplayRow, FinancialMetric } from '@/types'
 
-function formatShares(shares: number) {
+/** 信号层数据（资金流向/龙虎榜/解禁/财务） */
+const signalTab = ref('flow')
+const flowData = ref<FundFlowRow[]>([])
+const dtData = ref<DragonTigerStockRow[]>([])
+const lockupData = ref<LockupDisplayRow[]>([])
+const financialData = ref<FinancialMetric[]>([])
+const dtVisible = ref(false)
+const dtStock = ref<DragonTigerStockRow | null>(null)
+
+/** 格式化股票数量 */
+function formatShares(shares: number): string {
   if (!shares) return '-'
-  const s = Number(shares)
-  if (s >= 100000000) return (s / 100000000).toFixed(2) + '亿'
-  if (s >= 10000) return (s / 10000).toFixed(2) + '万'
-  return s.toString()
+  if (shares >= 100_000_000) return (shares / 100_000_000).toFixed(2) + '亿'
+  if (shares >= 10_000) return (shares / 10_000).toFixed(2) + '万'
+  return shares.toString()
 }
 
+/** 加载个股信号层数据（资金流向+龙虎榜+解禁+财务） */
 async function loadSignalData(code: string) {
   try {
-    const [dtRes, lockRes] = await Promise.allSettled([
-      import('@/api/signal').then(m => m.getDragonTigerByStock(code)),
-      import('@/api/signal').then(m => m.getLockupByStock(code)),
+    const [flowRes, dtRes, lockRes] = await Promise.allSettled([
+      getFundFlow(code, 20),
+      getDragonTigerByStock(code),
+      getLockupByStock(code),
     ])
-    if (dtRes.status === 'fulfilled') dtData.value = dtRes.value.data || []
-    if (lockRes.status === 'fulfilled') lockupData.value = lockRes.value.data || []
-    // 资金流向和财务数据使用模拟
-    flowData.value = [
-      { date: '2026-05-08', close: 157.17, changePct: 0.05, mainIn: 2146, superNetIn: 1256, largeNetIn: 890, littleNetIn: -780 },
-      { date: '2026-05-07', close: 157.09, changePct: -2.22, mainIn: -4476, superNetIn: -3356, largeNetIn: -1120, littleNetIn: 1560 },
-      { date: '2026-05-06', close: 160.66, changePct: 4.43, mainIn: 7966, superNetIn: 5621, largeNetIn: 2345, littleNetIn: -2560 },
-      { date: '2026-04-30', close: 153.84, changePct: -4.10, mainIn: -6417, superNetIn: -4521, largeNetIn: -1896, littleNetIn: 2135 },
-      { date: '2026-04-29', close: 160.42, changePct: 1.89, mainIn: 4851, superNetIn: 3562, largeNetIn: 1289, littleNetIn: -2156 },
-    ]
-    financialData.value = [
-      { label: '每股收益(EPS)', value: '1.85元' },
-      { label: '每股净资产(BVPS)', value: '12.56元' },
-      { label: '净资产收益率(ROE)', value: '14.72%' },
-      { label: '净利润', value: '125.6亿' },
-      { label: '营业收入', value: '892.3亿' },
-      { label: '总股本', value: '67.8亿股' },
-    ]
-  } catch { /* silent */ }
+    if (flowRes.status === 'fulfilled' && Array.isArray(flowRes.value)) {
+      flowData.value = flowRes.value.map((item) => ({
+        date: item.tradeDate,
+        close: item.close,
+        changePct: 0, // 后端未直接返回，由前端从 K 线关联
+        mainIn: Number(item.mainIn) || 0,
+        superNetIn: Number(item.superNetIn) || 0,
+      }))
+    }
+    if (dtRes.status === 'fulfilled') {
+      dtData.value = dtRes.value as DragonTigerStockRow[]
+    }
+    if (lockRes.status === 'fulfilled') {
+      lockupData.value = lockRes.value as LockupDisplayRow[]
+    }
+  } catch {
+    console.warn('[StockDetail] loadSignalData failed')
+  }
 }
 
-// 缠论数据（从后端 API 获取实时分析结果）
-const chanlunData = ref<{
-  bi: ChanlunBi[]; zhongshu: ChanlunZhongshu[]; fengxing: ChanlunFengxing[]
-  buy_sell_points?: any[]; stats?: any
-}>({ bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} })
+import type { ChanlunBuySellPoint, ChanlunStats } from '@/types'
 
+/** 缠论API原始数据包装 */
+interface ChanlunRawData {
+  bi: ChanlunBi[]
+  zhongshu: ChanlunZhongshu[]
+  fengxing: ChanlunFengxing[]
+  buy_sell_points: ChanlunBuySellPoint[]
+  stats: ChanlunStats
+}
+
+/** 从后端加载缠论分析数据 */
 async function fetchChanlunData() {
   if (!showChanlun.value) return
   try {
     const data = await getChanlunAnalysis(stockCode, 365)
-    // 确保字段存在，前端渲染器只读 bi/zhongshu/fengxing
-    chanlunData.value = {
-      bi: data.bi || [],
-      zhongshu: data.zhongshu || [],
-      fengxing: data.fengxing || [],
-      buy_sell_points: data.buy_sell_points || [],
-      stats: data.stats || {},
-    }
-    // 更新缠论统计面板
-    const stats = data.stats || {}
-    const bp = data.buy_sell_points || []
+    const stats = data.stats || {} as ChanlunStats
+    const bp = (data.buy_sell_points || []) as ChanlunBuySellPoint[]
     const zs = data.zhongshu || []
     const fx = data.fengxing || []
-    const buys = bp.filter((p: any) => p.type.startsWith('buy_'))
-    const sells = bp.filter((p: any) => p.type.startsWith('sell_'))
-    const dingFx = fx.filter((f: any) => f.type === 'ding')
-    const diFx = fx.filter((f: any) => f.type === 'di')
-    const hasBeiChi = buys.some((p: any) => p.type === 'buy_1') || sells.some((p: any) => p.type === 'sell_1')
+    chanlunData.value = { bi: data.bi || [], zhongshu: zs, fengxing: fx, buy_sell_points: bp, stats }
+
+    const buys = bp.filter((p) => p.type.startsWith('buy_'))
+    const sells = bp.filter((p) => p.type.startsWith('sell_'))
+    const dingFx = fx.filter((f) => f.type === 'ding')
+    const diFx = fx.filter((f) => f.type === 'di')
+    const hasBeiChi = buys.some((p) => p.type === 'buy_1') || sells.some((p) => p.type === 'sell_1')
 
     Object.assign(chanlunStats, {
-      dingCount: stats.top_fractals || fx.filter((f: any) => f.type === 'ding').length,
-      diCount: stats.bottom_fractals || fx.filter((f: any) => f.type === 'di').length,
+      dingCount: stats.top_fractals || dingFx.length,
+      diCount: stats.bottom_fractals || diFx.length,
       biCount: stats.pens || data.bi?.length || 0,
       zhongshuCount: stats.centers || zs.length,
       trendType: bp.length > 0 ? (hasBeiChi ? '趋势背驰段' : '中枢震荡') : '无信号',
       level: '日线',
       currentBi: data.bi?.length > 0 ? '向上笔' : '无',
-      zhongshuInfo: zs.map((z: any, i: number) => ({
+      zhongshuInfo: zs.map((z, i) => ({
         name: `中枢${i + 1}`,
         zg: z.high,
         zd: z.low,
       })),
-      pricePosition: zs.length > 0 ? (bp.find((p: any) => p.type === 'buy_1') ? '下方' : '内部') : '未知',
+      pricePosition: zs.length > 0 ? (bp.find((p) => p.type === 'buy_1') ? '下方' : '内部') : '未知',
       lastDingFeng: { price: dingFx[dingFx.length - 1]?.price || 0, date: '' },
       lastDiFeng: { price: diFx[diFx.length - 1]?.price || 0, date: '' },
-      buyPoints: buys.slice(0, 3).map((p: any) => ({ type: p.type, price: p.price, desc: p.description || '' })),
-      sellPoints: sells.slice(0, 3).map((p: any) => ({ type: p.type, price: p.price, desc: p.description || '' })),
+      buyPoints: buys.slice(0, 3).map((p) => ({ type: p.type, price: p.price, desc: p.description || '' })),
+      sellPoints: sells.slice(0, 3).map((p) => ({ type: p.type, price: p.price, desc: p.description || '' })),
       beichi: hasBeiChi ? (bp[0]?.type === 'buy_1' ? '底背驰' : '顶背驰') : '无背驰',
-      signals: bp.map((p: any) => ({ type: p.type.startsWith('buy') ? 'buy' : 'sell', text: p.type })),
+      signals: bp.map((p) => ({ type: p.type.startsWith('buy') ? 'buy' : 'sell', text: p.type })),
     })
     nextTick(renderChart)
   } catch {
-    chanlunData.value = { bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} }
+    chanlunData.value = { bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} as ChanlunStats }
   }
 }
 
-// --- Render ---
-function renderChart() {
-  if (!klineChartRef.value) return
-  const klineData = getCachedKlineData()
-  if (klineData.length === 0) return
-  const dates = klineData.map(d => {
-    try {
-      return new Date(d[0]).toLocaleDateString('zh-CN')
-    } catch {
-      return d[0] ? String(d[0]) : '-'
-    }
-  })
-  const volumes = klineData.map(d => d[5])
-
-  if (!klineChart) klineChart = echarts.init(klineChartRef.value)
-
-  const maData: { [key: string]: (number | null)[] } = {}
-  params.ma.periods.forEach(p => { maData[`ma${p}`] = calcMA(klineData, p) })
-  const bollData = calcBOLL(klineData, params.boll.period, params.boll.multiplier)
-
-  const series: any[] = [{
-    name: 'K线', type: 'candlestick',
-    data: klineData.map(d => [d[1], d[2], d[3], d[4]]),
-    itemStyle: { color: '#e74c3c', color0: '#27ae60', borderColor: '#e74c3c', borderColor0: '#27ae60' },
-  }]
-
-  // MA overlay
-  const maActive = overlayIndicators.value.find(i => i.key === 'ma')?.active
-  if (maActive) {
-    const maColors = ['#f39c12', '#9b59b6', '#1abc9c', '#e67e22']
-    params.ma.periods.forEach((p, idx) => {
-      series.push({
-        name: `MA${p}`, type: 'line', data: maData[`ma${p}`],
-        smooth: true, symbol: 'none',
-        lineStyle: { width: 1, color: maColors[idx % maColors.length] },
-      })
-    })
-  }
-
-  // BOLL overlay
-  const bollActive = overlayIndicators.value.find(i => i.key === 'boll')?.active
-  if (bollActive) {
-    series.push(
-      { name: 'BOLL-UP', type: 'line', data: bollData.up, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#3498db', type: 'dashed' } },
-      { name: 'BOLL-MID', type: 'line', data: bollData.mid, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#3498db' } },
-      { name: 'BOLL-DN', type: 'line', data: bollData.down, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#3498db', type: 'dashed' }, areaStyle: { color: 'rgba(52,152,219,0.05)' } },
-    )
-  }
-
-  // 缠论 (TradingView风格)
-  if (showChanlun.value && chanlunData.value) {
-    const clData = chanlunData.value
-    // 中枢 - 半透明框 + 标注区间价格
-    clData.zhongshu.forEach(zs => {
-      series.push({
-        type: 'custom',
-        renderItem: (pa: any, api: any) => {
-          const s = api.coord([zs.startX, zs.high]); const e = api.coord([zs.endX, zs.low])
-          const midX = (s[0] + e[0]) / 2
-          return {
-            type: 'group', children: [
-              { type: 'rect', shape: { x: s[0], y: s[1], width: e[0] - s[0], height: e[1] - s[1] }, style: { fill: 'rgba(41,151,255,0.12)', stroke: '#2997ff', lineWidth: 1.5, lineDash: [4, 3] } },
-            ]
-          }
-        }, data: [0], z: 10,
-      })
-    })
-    // 笔 - 红色上涨/绿色下跌 (TradingView配色)
-    clData.bi.forEach(b => {
-      const isUp = b.y1 >= b.y0
-      series.push({
-        type: 'line', data: [[b.x0, b.y0], [b.x1, b.y1]], symbol: 'none',
-        lineStyle: { width: 2, color: isUp ? '#e74c3c' : '#27ae60' }, z: 11,
-      })
-    })
-    // 分型 - 三角形标记 (TradingView风格)
-    const dings = clData.fengxing.filter(f => f.type === 'ding')
-    const dis = clData.fengxing.filter(f => f.type === 'di')
-    if (dings.length) {
-      series.push({
-        name: '顶分型', type: 'scatter',
-        data: dings.map(f => [f.x, f.price]),
-        symbol: 'triangle', symbolSize: [14, 10], symbolRotate: 180,
-        itemStyle: { color: '#e74c3c' }, z: 12,
-        label: { show: true, formatter: '顶', color: '#e74c3c', fontSize: 10, fontWeight: 'bold', position: 'top' },
-      })
-    }
-    if (dis.length) {
-      series.push({
-        name: '底分型', type: 'scatter',
-        data: dis.map(f => [f.x, f.price]),
-        symbol: 'triangle', symbolSize: [14, 10],
-        itemStyle: { color: '#27ae60' }, z: 12,
-        label: { show: true, formatter: '底', color: '#27ae60', fontSize: 10, fontWeight: 'bold', position: 'bottom' },
-      })
-    }
-  }
-
-  klineChart.setOption({
-    animation: false,
-    grid: { left: '8%', right: '8%', top: '12%', bottom: '15%' },
-    xAxis: { type: 'category', data: dates, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { fontSize: 11, color: '#999' } },
-    yAxis: { scale: true, splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } }, axisLabel: { fontSize: 11, color: '#999' } },
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, backgroundColor: 'rgba(30,30,30,0.9)', borderColor: 'rgba(255,255,255,0.1)', textStyle: { color: '#fff', fontSize: 12 } },
-    dataZoom: [{
-      type: 'inside',
-      start: 65,
-      end: 100,
-      minValueSpan: 10,
-    }, {
-      type: 'slider',
-      start: 65,
-      end: 100,
-      height: 24,
-      bottom: 2,
-      borderColor: 'rgba(0,0,0,0.08)',
-      backgroundColor: 'rgba(0,0,0,0.02)',
-      fillerColor: 'rgba(41,151,255,0.25)',
-      borderColor: 'rgba(41,151,255,0.3)',
-      handleStyle: { color: '#2997ff', borderColor: '#2997ff', borderWidth: 2, shadowBlur: 4, shadowColor: 'rgba(41,151,255,0.3)' },
-      textStyle: { fontSize: 11, color: '#666' },
-      dataBackground: { lineStyle: { color: '#ddd', width: 1 }, areaStyle: { color: 'rgba(0,0,0,0.03)' } },
-      selectedDataBackground: { lineStyle: { color: '#2997ff', width: 1 }, areaStyle: { color: 'rgba(41,151,255,0.1)' } },
-    }],
-    series,
-  }, true)
-
-  // --- 底部图 (VOL 或 指标) ---
-  if (!bottomChart) bottomChart = echarts.init(bottomChartRef.value)
-
-  let bottomOption: echarts.EChartsOption
-
-  if (bottomActive.value === 'macd') {
-    const macdData = calcMACD(klineData, params.macd.fast, params.macd.slow, params.macd.signal)
-    bottomOption = {
-      animation: false, grid: { left: '8%', right: '8%', top: '15%', bottom: '6%' },
-      xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false } },
-      yAxis: { scale: true, splitLine: { show: false }, axisLabel: { fontSize: 10, color: '#999' } },
-      series: [
-        { name: 'DIF', type: 'line', data: macdData.dif, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#3498db' } },
-        { name: 'DEA', type: 'line', data: macdData.dea, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#e67e22' } },
-        { name: 'MACD', type: 'bar', data: macdData.macd.map((v: number) => ({ value: v, itemStyle: { color: v >= 0 ? '#e74c3c' : '#27ae60', opacity: 0.6 } })), barWidth: '50%' },
-      ],
-    }
-  } else if (bottomActive.value === 'kdj') {
-    const kdjData = calcKDJ(klineData, params.kdj.period)
-    bottomOption = {
-      animation: false, grid: { left: '8%', right: '8%', top: '12%', bottom: '6%' },
-      xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false } },
-      yAxis: { scale: true, splitLine: { show: false }, axisLabel: { fontSize: 10, color: '#999' } },
-      series: [
-        { name: 'K', type: 'line', data: kdjData.k, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#3498db' } },
-        { name: 'D', type: 'line', data: kdjData.d, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#e67e22' } },
-        { name: 'J', type: 'line', data: kdjData.j, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#9b59b6' } },
-      ],
-    }
-  } else if (bottomActive.value === 'rsi') {
-    const rsiData = calcRSI(klineData, params.rsi.period)
-    bottomOption = {
-      animation: false, grid: { left: '8%', right: '8%', top: '12%', bottom: '6%' },
-      xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false } },
-      yAxis: { scale: false, min: 0, max: 100, splitLine: { show: false }, axisLabel: { fontSize: 10, color: '#999' } },
-      series: [{
-        name: 'RSI', type: 'line', data: rsiData, smooth: true, symbol: 'none',
-        lineStyle: { width: 1.5, color: '#f39c12' },
-        markLine: { silent: true, symbol: 'none', data: [
-          { yAxis: 70, label: { show: true, formatter: '超买 70', color: '#e74c3c', position: 'insideEndTop' }, lineStyle: { color: '#e74c3c', type: 'dashed', width: 1 } },
-          { yAxis: 30, label: { show: true, formatter: '超卖 30', color: '#27ae60', position: 'insideEndBottom' }, lineStyle: { color: '#27ae60', type: 'dashed', width: 1 } },
-        ] },
-      }],
-    }
-  } else {
-    // 默认: 成交量 VOL
-    bottomOption = {
-      animation: false, grid: { left: '8%', right: '8%', top: '10%', bottom: '4%' },
-      xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false } },
-      yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { fontSize: 10, color: '#999' } },
-      series: [{
-        type: 'bar',
-        data: volumes.map((v, i) => ({ value: v, itemStyle: { color: klineData[i][2] >= klineData[i][1] ? '#e74c3c' : '#27ae60', opacity: 0.5 } })),
-        barWidth: '60%',
-      }],
-    }
-  }
-
-  bottomChart.setOption(bottomOption, true)
-}
-
-// --- Technical Indicator Calculations ---
+// 缓存K线数据（仅由 API 填充）
 async function toggleWatch() {
   if (!userStore.isLoggedIn || !userStore.userInfo) {
     ElMessage.warning('请先登录')
     return
   }
-  const isAdd = !stockStore.isInWatchlist(stockCode)
+  const isAdd = !watchlistStore.isInWatchlist(stockCode)
   try {
     if (isAdd) {
-      await addWatchlist(userStore.userInfo.id, stockCode, 0)
+      await watchlistStore.add(userStore.userInfo.id, stockCode, 0)
       ElMessage.success('已添加自选')
     } else {
-      await removeWatchlist(userStore.userInfo.id, stockCode, 0)
+      await watchlistStore.remove(userStore.userInfo.id, stockCode, 0)
       ElMessage.success('已移除自选')
     }
-    // 更新本地状态
-    const fakeStock = { stockCode, stockName: stock.name, market: '', industry: '' } as any
-    stockStore.toggleStockInWatchlist(fakeStock)
-  } catch (_e) {
+    watchlistStore.optimisticToggle(stockCode, stock.name)
+  } catch {
     ElMessage.error('操作失败')
   }
 }
 
-function formatVol(v: number) {
-  const n = safeVal(v)
-  if (n >= 100000000) return `¥${(n / 100000000).toFixed(2)}亿`
-  if (n >= 10000) return `¥${(n / 10000).toFixed(2)}万`
-  return n > 0 ? n.toLocaleString() : '-'
-}
-
-function handleResize() { klineChart?.resize(); bottomChart?.resize() }
+function handleResizeCb() { handleResize() }
 
 async function loadData() {
   chartLoading.value = true
   try {
     // 1. 加载股票基本信息
-    const info: any = await getStockByCode(stockCode)
+    const info = await getStockByCode(stockCode)
     if (info) {
-      stock.name = info.stockName || info.name || stockCode
-      stock.pe = info.pe || '-'
-      stock.pb = info.pb || '-'
+      stock.name = info.stockName || (info as any).name || stockCode
+      stock.pe = info.pe || 0
+      stock.pb = info.pb || 0
       stock.totalMarketCap = info.totalMarketCap || 0
       stock.floatMarketCap = info.floatMarketCap || 0
     }
 
     // 2. 加载 K 线数据
-    const klineRaw: any[] | undefined = await getKlineData(stockCode, { days: 120 })
+    const klineRaw = await getKlineData(stockCode, 120)
     if (klineRaw && klineRaw.length > 10) {
-      // 后端返回 [{stockCode, tradeDate, openPrice, highPrice, lowPrice, closePrice, volume, amount, changePercent, ...}]
-      cachedKlineData = klineRaw.map((d: any) => [
+      cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
         safeVal(d.openPrice),
         safeVal(d.closePrice),
@@ -799,15 +582,14 @@ async function loadData() {
         safeVal(d.highPrice),
         safeVal(d.volume),
       ])
-      // 取最新一条作为当前行情
       const last = klineRaw[klineRaw.length - 1]
       const high = safeVal(last.highPrice)
       const low = safeVal(last.lowPrice)
       Object.assign(stock, {
         price: safeVal(last.closePrice),
         open: safeVal(last.openPrice),
-        high: high,
-        low: low,
+        high,
+        low,
         preClose: safeVal(last.preClose) || safeVal(last.closePrice) * 0.99,
         volume: safeVal(last.volume),
         amount: safeVal(last.amount),
@@ -826,23 +608,35 @@ async function loadData() {
 
 onMounted(async () => {
   await loadData()
-  nextTick(renderChart)
-  window.addEventListener('resize', handleResize)
+  nextTick(() => renderChart())
+  window.addEventListener('resize', handleResizeCb)
+  // 建立 WebSocket 连接，接收实时推送
+  wsConnect()
 })
 
-// 初始化时如果缠论开关已打开（默认是关的，保留此逻辑以备后续默认开启）
-nextTick(() => { if (showChanlun.value) fetchChanlunData() })
-
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
-  klineChart?.dispose(); bottomChart?.dispose()
+  window.removeEventListener('resize', handleResizeCb)
+  wsDisconnect()
+  disposeChart()
 })
 
 watch(showChanlun, (val) => {
   if (val) { fetchChanlunData() }
-  else { chanlunData.value = { bi: [], zhongshu: [], fengxing: [] }; nextTick(renderChart) }
+  else { chanlunData.value = { bi: [], zhongshu: [], fengxing: [], buy_sell_points: [], stats: {} as any }; nextTick(() => renderChart()) }
 })
-watch(activePeriod, () => { nextTick(renderChart) })
+watch(activePeriod, () => { nextTick(() => renderChart()) })
+
+// WebSocket 实时推送 → 更新盘口数据
+watch(lastKlineUpdate, (update: KlineUpdateData | null) => {
+  if (!update) return
+  stock.price = update.closePrice ?? stock.price
+  stock.open = update.openPrice ?? stock.open
+  stock.high = update.highPrice ?? stock.high
+  stock.low = update.lowPrice ?? stock.low
+  stock.volume = update.volume ?? stock.volume
+  stock.amount = update.amount ?? stock.amount
+  stock.changePercent = update.changePercent ?? stock.changePercent
+})
 </script>
 
 <style scoped lang="scss">

@@ -565,7 +565,7 @@ function Main {
                 "redis"     { Wait-ForHealth -ServiceName $svc -TestCommand "docker exec redis redis-cli ping" -TimeoutSec 30 }
                 "mysql"     { Wait-ForHealth -ServiceName $svc -TestCommand "docker exec mysql mysqladmin ping -h localhost -u root -phadoop123 --silent" -TimeoutSec 30 }
                 "ai-service" { Wait-ForHealth -ServiceName $svc -TestCommand "curl -sf http://localhost:8000/health" -TimeoutSec 60 }
-                "backend"   { Wait-ForHealth -ServiceName $svc -TestCommand "curl -sf http://localhost:8082/api/stock/list?page=1&size=1" -TimeoutSec 120 }
+                "backend"   { Wait-ForHealth -ServiceName $svc -TestCommand "curl -sf http://localhost:8082/api/market/list?page=1&size=1" -TimeoutSec 120 }
                 "frontend"  { Wait-ForHealth -ServiceName $svc -TestCommand "curl -sf http://localhost:80/" -TimeoutSec 60 }
                 "namenode"  { Wait-ForHealth -ServiceName $svc -TestCommand "curl -sf http://localhost:9870/" -TimeoutSec 60 }
                 "datanode1" { Wait-ForHealth -ServiceName $svc -TestCommand "curl -sf http://localhost:9864/" -TimeoutSec 60 }

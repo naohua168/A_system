@@ -19,7 +19,10 @@
 # 后端数据库
 DB_PASSWORD=your_secure_password
 
-# AI 服务
+# AI 服务（建议使用硅基流动 SiliconFlow）
+SILICONFLOW_API_KEY=your_siliconflow_api_key
+SILICONFLOW_MODEL=Qwen/Qwen2.5-72B-Instruct
+# 备用 DeepSeek
 DEEPSEEK_API_KEY=your_deepseek_api_key
 
 # MySQL 根密码（Docker）

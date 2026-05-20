@@ -83,6 +83,7 @@ const userStore = useUserStore()
 const route = useRoute()
 const router = useRouter()
 const showUserMenu = ref(false)
+const showSearch = ref(false)
 
 const userInitial = computed(() => {
   const name = userStore.userInfo?.username || 'U'
@@ -95,6 +96,7 @@ const navItems = [
   { path: '/watchlist', label: '自选', icon: 'Star' },
   { path: '/news', label: '资讯', icon: 'Reading' },
   { path: '/chat', label: 'AI分析', icon: 'ChatLineSquare' },
+  { path: '/layers', label: '架构', icon: 'Histogram' },
 ]
 
 // 信号层页面（导航栏下拉子菜单用，或独立入口）
@@ -119,15 +121,15 @@ function handleLogout() {
 // Click outside directive
 const vClickOutside = {
   mounted(el: HTMLElement, binding: any) {
-    el.__clickOutside = (event: MouseEvent) => {
+    (el as any).__clickOutside = (event: MouseEvent) => {
       if (!el.contains(event.target as Node)) {
         binding.value()
       }
     }
-    document.addEventListener('click', el.__clickOutside)
+    document.addEventListener('click', (el as any).__clickOutside)
   },
   unmounted(el: HTMLElement) {
-    document.removeEventListener('click', el.__clickOutside)
+    document.removeEventListener('click', (el as any).__clickOutside)
   },
 }
 </script>

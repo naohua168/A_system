@@ -45,4 +45,8 @@ public interface StockDailyMapper extends BaseMapper<StockDaily> {
                                                      @Param("offset") int offset,
                                                      @Param("sortField") String sortField,
                                                      @Param("sortOrder") String sortOrder);
+
+    /** 板块K线聚合（按行业成分股每日均价计算） */
+    List<Map<String, Object>> selectSectorKline(@Param("industry") String industry,
+                                                 @Param("days") int days);
 }

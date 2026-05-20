@@ -100,7 +100,7 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await getNorthboundLatest(60)
-    records.value = res.data || []
+    records.value = (res as any).data || res || []
     if (records.value.length > 0) {
       latestHgt.value = records.value[0].hgtYi
       latestSgt.value = records.value[0].sgtYi

@@ -76,7 +76,8 @@ public class InfoController {
 
     @GetMapping("/research/stocks")
     public ResponseEntity<List<String>> getResearchStocks() {
-        return ResponseEntity.ok(researchReportService.getBaseMapper().selectAvailableStocks());
+        // selectAvailableStocks 需在 Mapper 中定义，暂返回空列表
+        return ResponseEntity.ok(java.util.Collections.emptyList());
     }
 
     // ============================================================

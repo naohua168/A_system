@@ -6,12 +6,17 @@ import com.stock.security.JwtUtil;
 import com.stock.security.UserRole;
 import com.stock.service.UserService;
 import cn.hutool.crypto.digest.DigestUtil;
+import javax.validation.Valid;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/user")
@@ -23,10 +28,11 @@ public class UserController {
     @Autowired
     private JwtUtil jwtUtil;
 
-    /**
-     * 修复: 使用 JwtUtil 生成 JWT Token 替代不安全的 MD5 自造 Token
-     * 修复: 登录失败返回 ApiResponse 而非原始 ResponseEntity
-     */
+    @Autowired(required = false)
+    private StringRedisTemplate redisTemplate;
+
+    // ==================== 认证 ====================
+
     @PostMapping("/login")
     public ApiResponse login(@RequestBody Map<String, String> params) {
         String username = params.get("username");
@@ -36,7 +42,6 @@ public class UserController {
         }
         User user = userService.login(username, password);
         if (user != null) {
-            // 修复: 使用 JwtUtil 生成符合安全标准的 JWT Token
             String token = jwtUtil.generateToken(user.getId(), user.getUsername(),
                     UserRole.fromLevel(user.getRole()));
             user.setPassword(null);
@@ -61,9 +66,8 @@ public class UserController {
         return ApiResponse.created("注册成功");
     }
 
-    /**
-     * 修复: 从 SecurityContext 获取当前登录用户 ID，而非硬编码 ID=1
-     */
+    // ==================== 用户信息 ====================
+
     @GetMapping("/info")
     public ApiResponse getInfo() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -86,5 +90,112 @@ public class UserController {
         }
         user.setPassword(null);
         return ApiResponse.ok(user);
+    }
+
+    // ==================== 更新用户（新增 PUT） ====================
+
+    /** 更新用户信息请求 DTO */
+    public record UpdateUserRequest(
+            String email,
+            String phone,
+            String avatar,
+            String username
+    ) {}
+
+    @PutMapping("/update")
+    public ApiResponse updateUser(@RequestBody @Valid UpdateUserRequest request) {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!(principal instanceof String) || "anonymousUser".equals(principal)) {
+            return ApiResponse.error("未登录");
+        }
+        Long userId = ((Number) SecurityContextHolder.getContext().getAuthentication().getCredentials()).longValue();
+        User user = userService.getById(userId);
+        if (user == null) {
+            return ApiResponse.error("用户不存在");
+        }
+
+        User updateEntity = new User();
+        updateEntity.setId(userId);
+        if (request.email() != null) updateEntity.setEmail(request.email());
+        if (request.phone() != null) updateEntity.setPhone(request.phone());
+        if (request.avatar() != null) updateEntity.setAvatar(request.avatar());
+        if (request.username() != null) updateEntity.setUsername(request.username());
+        userService.updateById(updateEntity);
+
+        User updated = userService.getById(userId);
+        updated.setPassword(null);
+        return ApiResponse.ok(updated);
+    }
+
+    // ==================== 密码修改（新增 POST） ====================
+
+    public record ChangePasswordRequest(
+            @NotBlank String oldPassword,
+            @NotBlank @Size(min = 6) String newPassword
+    ) {}
+
+    @PostMapping("/change-password")
+    public ApiResponse changePassword(@RequestBody @Valid ChangePasswordRequest request) {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!(principal instanceof String) || "anonymousUser".equals(principal)) {
+            return ApiResponse.error("未登录");
+        }
+        Long userId = ((Number) SecurityContextHolder.getContext().getAuthentication().getCredentials()).longValue();
+        User user = userService.getById(userId);
+        if (user == null) {
+            return ApiResponse.error("用户不存在");
+        }
+        if (!DigestUtil.bcryptCheck(request.oldPassword(), user.getPassword())) {
+            return ApiResponse.error("原密码错误");
+        }
+        user.setPassword(DigestUtil.bcrypt(request.newPassword()));
+        userService.updateById(user);
+        return ApiResponse.ok("密码修改成功");
+    }
+
+    // ==================== Token 管理（新增 POST） ====================
+
+    @PostMapping("/logout")
+    public ApiResponse logout(@RequestHeader("Authorization") String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ApiResponse.error("无效的 Token");
+        }
+        String token = authHeader.substring(7);
+        try {
+            long remainingTtl = jwtUtil.validateToken(token).getExpiration().getTime() - System.currentTimeMillis();
+            if (remainingTtl > 0 && redisTemplate != null) {
+                redisTemplate.opsForValue().set("blacklist:" + token, "1",
+                        remainingTtl, TimeUnit.MILLISECONDS);
+            }
+        } catch (Exception ignored) {
+            // Token 已过期无需加入黑名单
+        }
+        return ApiResponse.ok("已登出");
+    }
+
+    @PostMapping("/refresh")
+    public ApiResponse refreshToken(@RequestHeader("Authorization") String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ApiResponse.error("无效的 Token");
+        }
+        String token = authHeader.substring(7);
+        try {
+            // 检查黑名单
+            if (redisTemplate != null && Boolean.TRUE.equals(
+                    redisTemplate.hasKey("blacklist:" + token))) {
+                return ApiResponse.error("Token 已失效");
+            }
+
+            var claims = jwtUtil.validateToken(token);
+            Long userId = Long.parseLong(claims.getSubject());
+            String username = claims.get("username", String.class);
+            String roleStr = claims.get("role", String.class);
+
+            String newToken = jwtUtil.generateToken(userId, username,
+                    UserRole.fromConfigId(roleStr));
+            return ApiResponse.ok(Map.of("token", newToken));
+        } catch (Exception e) {
+            return ApiResponse.error("Token 无效或已过期");
+        }
     }
 }

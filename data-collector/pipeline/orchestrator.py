@@ -49,6 +49,10 @@ PARALLEL_GROUPS: List[List[str]] = [
 
     # mootdx 通达信 TCP（独立，逐股迭代）
     ["history_kline"],
+
+    # 原始数据层（同一 RawDataCollector 实例，串行执行避免线程冲突）
+    ["raw_realtime", "raw_kline", "raw_hot_reason",
+     "raw_northbound", "raw_signal", "raw_news"],
 ]
 
 # 构建反向映射：data_type → group_index

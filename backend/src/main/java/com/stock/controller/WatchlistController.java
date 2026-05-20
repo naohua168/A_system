@@ -2,9 +2,10 @@ package com.stock.controller;
 
 import com.stock.entity.Watchlist;
 import com.stock.service.WatchlistService;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import javax.validation.Valid;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Positive;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +40,13 @@ public class WatchlistController {
             @NotNull @Positive Integer assetType
     ) {}
 
+    /** 自选更新请求 DTO（新增） */
+    public record UpdateRequest(
+            @NotNull @Positive Long id,
+            String remark,
+            Integer sortOrder
+    ) {}
+
     @GetMapping("/{userId}")
     public ResponseEntity<List<Watchlist>> list(@PathVariable @Positive Long userId,
                                                  @RequestParam(required = false) @Positive Integer assetType) {
@@ -61,5 +69,23 @@ public class WatchlistController {
             log.warn("自选删除失败 userId={} assetCode={}: {}", req.userId, req.assetCode, e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", "删除失败，请检查参数"));
         }
+    }
+
+    // ==================== 新增 PUT 端点 ====================
+
+    @PutMapping("/update")
+    public ResponseEntity<?> update(@RequestBody @Valid UpdateRequest req) {
+        Watchlist item = watchlistService.getById(req.id());
+        if (item == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "自选记录不存在"));
+        }
+        if (req.remark() != null) {
+            item.setRemark(req.remark());
+        }
+        if (req.sortOrder() != null) {
+            item.setSortOrder(req.sortOrder());
+        }
+        watchlistService.updateById(item);
+        return ResponseEntity.ok(Map.of("message", "更新成功", "data", item));
     }
 }

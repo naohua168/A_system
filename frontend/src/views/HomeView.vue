@@ -193,25 +193,31 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, ArrowLeft, Setting, Pointer, Plus, Close, TrendCharts, DataAnalysis, Histogram, Aim } from '@element-plus/icons-vue'
 import TreemapChart from '@/components/chart/TreemapChart.vue'
-import { getStockList, getIndustries } from '@/api/stock'
+import { getStockList } from '@/api/market'
 import { getIndexList } from '@/api/index'
 import { getSectorRanking } from '@/api/analysis'
 import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare } from '@/api/signal'
 import { formatPrice, formatPercent, formatPoints, getChangeClass } from '@/utils/format'
+import type {
+  HotReason, IndustryTopItem, IndexCard, SectorNode, HomeStockCard,
+  Northbound, HotReasonResponse, IndustryCompareResponse, DragonTigerDaily,
+  SectorRanking,
+} from '@/types'
 
 const router = useRouter()
 const scrollRef = ref<HTMLElement>()
 const scrollPos = ref(0)
 const showIndexManager = ref(false)
 
-// ======== 信号层数据 ========
+/** 信号层数据 — 业务类型见 @/types */
 const nbHgt = ref(0)
 const nbSgt = ref(0)
 const nbTotal = computed(() => Number((nbHgt.value + nbSgt.value).toFixed(2)))
-const hotReasons = ref<any[]>([])
-const industryTop = ref<any[]>([])
+const hotReasons = ref<HotReason[]>([])
+const industryTop = ref<IndustryTopItem[]>([])
 const dtCount = ref(0)
 
+/** 并行加载信号层数据（各接口独立容错） */
 async function loadSignalData() {
   try {
     const [nbRes, hotRes, indRes, dtRes] = await Promise.allSettled([
@@ -220,33 +226,33 @@ async function loadSignalData() {
       getIndustryCompare(),
       getDragonTigerDaily(),
     ])
-    if (nbRes.status === 'fulfilled' && nbRes.value.data?.length) {
-      nbHgt.value = nbRes.value.data[0].hgtYi || 0
-      nbSgt.value = nbRes.value.data[0].sgtYi || 0
+    if (nbRes.status === 'fulfilled' && Array.isArray(nbRes.value) && nbRes.value.length > 0) {
+      const nbData = nbRes.value as Northbound[]
+      nbHgt.value = nbData[0].hgtYi || 0
+      nbSgt.value = nbData[0].sgtYi || 0
     }
     if (hotRes.status === 'fulfilled') {
-      hotReasons.value = hotRes.value.data.records || []
+      const data = hotRes.value as HotReasonResponse
+      hotReasons.value = data.records || []
     }
     if (indRes.status === 'fulfilled') {
-      const all = indRes.value.data.records || []
-      industryTop.value = all.sort((a: any, b: any) => b.changePct - a.changePct).slice(0, 5)
+      const data = indRes.value as IndustryCompareResponse
+      const all = data.records || []
+      industryTop.value = all
+        .sort((a, b) => b.changePct - a.changePct)
+        .slice(0, 5)
+        .map((item) => ({ industryName: item.industryName, changePct: item.changePct }))
     }
     if (dtRes.status === 'fulfilled') {
-      dtCount.value = dtRes.value.data.total || 0
+      const data = dtRes.value as DragonTigerDaily
+      dtCount.value = data.total || 0
     }
-  } catch { /* silent */ }
+  } catch {
+    // 信号层数据非关键，静默失败
+  }
 }
 
-// ======== 大盘指数 - 从后端API实时加载 ========
-interface IndexCard {
-  code: string
-  name: string
-  price: number
-  changePercent: number
-  changePoints: number
-  isCustom: boolean
-}
-
+/** 大盘指数 — 从后端 API 实时加载 */
 const allIndexData = ref<IndexCard[]>([])
 const DEFAULT_INDICES_CODES = ['000001', '399001', '399006', '000688']
 
@@ -259,23 +265,21 @@ const availableIndices = computed(() =>
 /** 从后端加载指数数据 */
 async function loadIndices() {
   try {
-    const data: any = await getIndexList()
+    const data = await getIndexList()
     if (Array.isArray(data) && data.length > 0) {
-      // 后端返回 [{indexCode, indexName, closePoint, changePercent, category}]
-      allIndexData.value = data.map((d: any) => ({
-        code: d.indexCode,
-        name: d.indexName,
-        price: Number(d.closePoint) || 0,
-        changePercent: Number(d.changePercent) || 0,
-        changePoints: Number(d.closePoint) ? (Number(d.closePoint) * Number(d.changePercent) / 100) : 0,
-        isCustom: !DEFAULT_INDICES_CODES.includes(d.indexCode),
+      allIndexData.value = data.map((item) => ({
+        code: item.indexCode,
+        name: item.indexName,
+        price: Number(item.closePoint) || 0,
+        changePercent: Number(item.changePercent) || 0,
+        changePoints: Number(item.closePoint) ? (Number(item.closePoint) * Number(item.changePercent) / 100) : 0,
+        isCustom: !DEFAULT_INDICES_CODES.includes(item.indexCode),
       }))
-      // 默认展示前4个 + 用户自定义的
       const defaults = allIndexData.value.filter(d => DEFAULT_INDICES_CODES.includes(d.code))
       visibleIndices.value = defaults.length ? defaults : allIndexData.value.slice(0, 4)
     }
   } catch (_e) {
-    console.warn('[Home] 加载指数数据失败:', _e)
+    console.warn('[Home] loadIndices failed:', _e)
   }
 }
 
@@ -314,60 +318,57 @@ function goToIndex(code: string) {
   router.push(`/index/${code}`)
 }
 
-// ======== 板块数据 ========
+/** 板块云图数据 */
 const sectorData = ref<SectorNode[]>([])
 
-const hotStocks = ref<any[]>([])
+/** 热门股票网格 */
+const hotStocks = ref<HomeStockCard[]>([])
 
+/** 加载热门股票（首页前12只） */
 async function loadHotStocks() {
   try {
-    const res: any = await getStockList({ page: 1, size: 12 })
+    const res = await getStockList({ page: 1, size: 12 })
     if (res?.records?.length) {
-      hotStocks.value = res.records.map((r: any) => ({
+      hotStocks.value = res.records.map((r) => ({
         code: r.stockCode,
         name: r.stockName,
         price: r.price || 0,
         changePercent: r.changePct || 0,
       }))
     }
-  } catch (_e) { console.warn('[Home] 加载热门股票失败:', _e) }
+  } catch (_e) { console.warn('[Home] loadHotStocks failed:', _e) }
 }
 
-/** 计算市场整体涨跌家数 */
+/** 市场整体涨跌家数 — 从行业排行汇总 */
 const marketStats = ref({ total: 0, up: 0, down: 0, flat: 0 })
 async function loadMarketStats() {
   try {
-    const res: any = await getStockList({ page: 1, size: 1 })
-    if (res?.total > 0) {
-      // 获取全量股票涨跌幅统计
-      const all: any = await getStockList({ page: 1, size: res.total })
-      if (all?.records?.length) {
-        let up = 0, down = 0, flat = 0
-        all.records.forEach((r: any) => {
-          const pct = Number(r.changePct) || 0
-          if (pct > 0) up++
-          else if (pct < 0) down++
-          else flat++
-        })
-        marketStats.value = { total: all.records.length, up, down, flat }
-      }
+    const ranking = await getSectorRanking() as SectorRanking[]
+    if (Array.isArray(ranking) && ranking.length > 0) {
+      let total = 0, up = 0, down = 0
+      ranking.forEach((s) => {
+        total += Number(s.stockCount) || 0
+        up += Number(s.upCount) || 0
+        down += (Number(s.stockCount) || 0) - (Number(s.upCount) || 0)
+      })
+      marketStats.value = { total, up, down, flat: total - up - down }
     }
-  } catch (_e) { /* 市场统计为非关键数据，静默降级 */ }
+  } catch { /* 非关键功能，静默失败 */ }
 }
 
+/** 加载板块云图数据 */
 async function loadSectorData() {
   try {
-    const data: any = await getSectorRanking()
+    const data = await getSectorRanking() as SectorRanking[]
     if (Array.isArray(data) && data.length > 0) {
-      // 将后端行业排行数据映射为矩形树图格式（直接展示各行业，不使用"全部板块"包裹）
-      sectorData.value = data.map((d: any) => ({
+      sectorData.value = data.map((d) => ({
         name: d.industry || '其他',
         value: Number(d.stockCount) || 1,
         changePercent: Number(d.avgChangePct) || 0,
       }))
       return
     }
-  } catch (_e) { console.warn('[Home] 加载板块云图失败:', _e) }
+  } catch (_e) { console.warn('[Home] loadSectorData failed:', _e) }
 }
 
 function onSectorClick(data: { name?: string }) {

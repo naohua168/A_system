@@ -7,7 +7,7 @@
       </div>
       <div class="header-right">
         <el-date-picker v-model="selectedDate" type="date" placeholder="选择日期"
-          value-format="YYYY-MM-DD" :disabled-date="d => d > today"
+          value-format="YYYY-MM-DD" :disabled-date="(d: Date) => d > today"
           @change="fetchData" size="small" />
       </div>
     </div>
@@ -81,6 +81,7 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await getDragonTigerDaily(selectedDate.value)
+// @ts-ignore - response data wrapper
     records.value = res.data.records || []
   } catch { records.value = [] }
   finally { loading.value = false }

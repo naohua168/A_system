@@ -36,8 +36,8 @@ class SentimentAnalyst(BaseAgent):
 
         # 修复: 并行发起3个后端调用，总耗时降至最慢的一个; 同时修复双 /api/ 路径
         import asyncio
-        industry_task = self._fetch_backend_data(f"/signal/industry")
-        dragon_tiger_task = self._fetch_backend_data(f"/signal/dragon-tiger/{stock_code}")
+        industry_task = self._fetch_backend_data(f"/signal/industry-compare")
+        dragon_tiger_task = self._fetch_backend_data(f"/signal/dragon-tiger/stock/{stock_code}")
         northbound_task = self._fetch_backend_data(f"/signal/northbound")
         industry_data, dragon_tiger, northbound = await asyncio.gather(
             industry_task, dragon_tiger_task, northbound_task

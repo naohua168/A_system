@@ -42,7 +42,6 @@ public class SecurityLevelService {
     public void init() {
         try {
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-            // 优先从外部配置目录加载，回退到 classpath（classpath 文件已移出构建，参考 docs/security/）
             String externalPath = System.getProperty("security.config.path", "");
             java.io.File externalFile = externalPath.isBlank() ? null : new java.io.File(externalPath);
             if (externalFile != null && externalFile.exists()) {
@@ -52,34 +51,11 @@ public class SecurityLevelService {
                 }
             }
             ClassPathResource resource = new ClassPathResource("security/security-levels.yml");
-
             try (InputStream is = resource.getInputStream()) {
                 loadConfig(mapper, is);
-
-                // 解析全局配置
-                @SuppressWarnings("unchecked")
-                Map<String, Object> global = (Map<String, Object>) root.getOrDefault("global", new HashMap<>());
-                this.globalConfig = global;
-
-                // 解析层级配置
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> levels =
-                        (List<Map<String, Object>>) root.getOrDefault("levels", new ArrayList<>());
-
-                for (Map<String, Object> levelMap : levels) {
-                    SecurityLevelConfig config = parseLevelConfig(levelMap);
-                    levelConfigs.add(config);
-                    configCache.put(config.getId(), config);
-                    permissionCache.put(config.getId(), Permission.parseAll(config.getPermissions()));
-                }
-
-                log.info("✅ 安全层级配置加载完成: {} 个层级, {} 条权限规则",
-                        levelConfigs.size(),
-                        permissionCache.values().stream().mapToInt(Set::size).sum());
             }
         } catch (Exception e) {
             log.error("❌ 安全层级配置加载失败", e);
-            // 加载失败时使用默认配置
             loadDefaultConfigs();
         }
     }
@@ -187,7 +163,7 @@ public class SecurityLevelService {
     public PasswordStrength evaluateStrength(String password, UserRole role) {
         SecurityLevelConfig config = getConfig(role);
         PasswordPolicyValidator.PasswordPolicy policy = config.getPasswordPolicy();
-        ValidationResult result = PasswordPolicyValidator.validate(password, policy);
+        PasswordPolicyValidator.ValidationResult result = PasswordPolicyValidator.validate(password, policy);
 
         if (!result.isValid()) return PasswordStrength.WEAK;
 

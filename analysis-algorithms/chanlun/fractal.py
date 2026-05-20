@@ -57,20 +57,19 @@ def merge_klines(df: pd.DataFrame) -> List[KLine]:
     if df.empty:
         return []
 
-    # 统一列名: trade_date → date
-    work = df.copy()
-    if "trade_date" in work.columns and "date" not in work.columns:
-        work = work.rename(columns={"trade_date": "date"})
+    # 统一列名: trade_date → date；避免不必要的 copy（rename 不修改原数据）
+    work = df.rename(columns={"trade_date": "date"}, copy=False) \
+        if "trade_date" in df.columns and "date" not in df.columns else df
 
+    # 优化: 使用 itertuples 替代 iterrows（~10x 更快，不创建 Series 对象）
     klines = [
         KLine(
-            date=str(row["date"]) if not isinstance(row["date"], str)
-                 else row["date"],
-            high=float(row["high"]),
-            low=float(row["low"]),
+            date=str(row.date) if not isinstance(row.date, str) else row.date,
+            high=float(row.high),
+            low=float(row.low),
             idx=i,
         )
-        for i, (_, row) in enumerate(work.iterrows())
+        for i, row in enumerate(work.itertuples(index=False))
     ]
 
     if len(klines) <= 1:
@@ -195,9 +194,10 @@ def identify_fractals(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         带分型标记的 DataFrame (fractal_type, fractal_price)
     """
-    # 统一列名: trade_date → date
-    if "trade_date" in df.columns and "date" not in df.columns:
-        df = df.rename(columns={"trade_date": "date"})
+    # 统一列名: trade_date → date（避免 copy，rename copy=False 不修改原数据）
+    df = df.rename(columns={"trade_date": "date"}, copy=False) \
+        if "trade_date" in df.columns and "date" not in df.columns else df
+
     # 1. K线包含处理
     merged = merge_klines(df)
 
@@ -207,17 +207,21 @@ def identify_fractals(df: pd.DataFrame) -> pd.DataFrame:
     # 3. 分型过滤
     filtered = filter_fractals(all_fractals)
 
-    # 4. 映射回原始K线
+    # 4. 映射回原始K线 — 向量化批量赋值替代逐行循环
     result = df.copy()
     result["fractal_type"] = ""
     result["fractal_price"] = 0.0
     result["fractal_strength"] = 0.0
 
-    for f in filtered:
-        idx = f.k2.idx
-        if idx < len(result):
-            result.loc[result.index[idx], "fractal_type"] = f.type
-            result.loc[result.index[idx], "fractal_price"] = f.price
-            result.loc[result.index[idx], "fractal_strength"] = f.strength
+    if filtered:
+        # 一次性构建索引列表和对应的值列表
+        f_idxs = [f.k2.idx for f in filtered if f.k2.idx < len(result)]
+        if f_idxs:
+            f_types = [f.type for f in filtered if f.k2.idx in f_idxs]
+            f_prices = [f.price for f in filtered if f.k2.idx in f_idxs]
+            f_strengths = [f.strength for f in filtered if f.k2.idx in f_idxs]
+            result.loc[result.index[f_idxs], "fractal_type"] = f_types
+            result.loc[result.index[f_idxs], "fractal_price"] = f_prices
+            result.loc[result.index[f_idxs], "fractal_strength"] = f_strengths
 
     return result

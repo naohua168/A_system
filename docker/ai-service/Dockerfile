@@ -41,6 +41,9 @@ RUN mkdir -p /app/logs && \
 # 切换到非 root 用户
 USER ai:ai
 
+# 设置 HOME 环境变量（确保 Path.home() 返回可写目录）
+ENV HOME=/app
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \

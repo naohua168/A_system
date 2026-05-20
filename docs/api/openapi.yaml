@@ -1,0 +1,342 @@
+openapi: "3.0.3"
+info:
+  title: "基金股票智能分析系统 API"
+  version: "2.2.0"
+  description: |
+    六层架构金融智能分析平台 REST API。
+    层架构: L1采集 → L2大数据 → L3算法 → L4后端 → L5 AI → L6前端
+    认证方式: Bearer JWT Token
+    统一响应: { code, message, data, timestamp }
+servers:
+  - url: http://localhost:8082
+    description: 本地开发
+  - url: http://backend:8082
+    description: Docker 内部
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        code: { type: integer, example: 200 }
+        message: { type: string, example: "success" }
+        data: { type: object }
+        timestamp: { type: integer, example: 1700000000000 }
+    PageResult:
+      type: object
+      properties:
+        records: { type: array, items: { type: object } }
+        total: { type: integer, example: 100 }
+        page: { type: integer, example: 1 }
+        size: { type: integer, example: 20 }
+        totalPages: { type: integer, example: 5 }
+
+paths:
+  # ==================== 市场行情 ====================
+  /api/market/list:
+    get:
+      tags: [Market]
+      summary: 市场行情列表
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: exchange
+          in: query
+          schema: { type: string, enum: [sz, sh, bj] }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ==================== 分析 ====================
+  /api/analysis/{stockCode}/yearly-return:
+    get:
+      tags: [Analysis]
+      summary: 年化收益率
+      parameters:
+        - name: stockCode
+          in: path
+          required: true
+          schema: { type: string }
+        - name: years
+          in: query
+          schema: { type: integer, default: 3 }
+      responses:
+        '200':
+          description: 成功
+
+  /api/analysis/{stockCode}/monthly-return:
+    get:
+      tags: [Analysis]
+      summary: 月收益率
+      parameters:
+        - name: stockCode
+          in: path
+          required: true
+          schema: { type: string }
+        - name: months
+          in: query
+          schema: { type: integer, default: 12 }
+      responses:
+        '200':
+          description: 成功
+
+  /api/analysis/{stockCode}/trend:
+    get:
+      tags: [Analysis]
+      summary: 趋势分析
+      parameters:
+        - name: stockCode
+          in: path
+          required: true
+          schema: { type: string }
+        - name: days
+          in: query
+          schema: { type: integer, default: 30 }
+      responses:
+        '200':
+          description: 成功
+
+  /api/analysis/{assetCode}:
+    get:
+      tags: [Analysis]
+      summary: 查询分析结果
+      parameters:
+        - name: assetCode
+          in: path
+          required: true
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 成功
+    delete:
+      tags: [Analysis]
+      summary: 删除分析结果
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/analysis/correlation:
+    get:
+      tags: [Analysis]
+      summary: 相关性分析
+      parameters:
+        - name: codeA
+          in: query
+          required: true
+          schema: { type: string }
+        - name: codeB
+          in: query
+          required: true
+          schema: { type: string }
+        - name: days
+          in: query
+          schema: { type: integer, default: 60 }
+      responses:
+        '200':
+          description: 成功
+
+  # ==================== 用户 ====================
+  /api/user/login:
+    post:
+      tags: [User]
+      summary: 用户登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: 成功返回 token + 用户信息
+
+  /api/user/register:
+    post:
+      tags: [User]
+      summary: 用户注册
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+                email: { type: string }
+      responses:
+        '200':
+          description: 注册成功
+
+  /api/user/update:
+    put:
+      tags: [User]
+      summary: 更新用户信息
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                phone: { type: string }
+                avatar: { type: string }
+                username: { type: string }
+      responses:
+        '200':
+          description: 更新成功
+
+  /api/user/change-password:
+    post:
+      tags: [User]
+      summary: 修改密码
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                oldPassword: { type: string }
+                newPassword: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: 密码修改成功
+
+  /api/user/logout:
+    post:
+      tags: [User]
+      summary: 退出登录
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 已登出
+
+  /api/user/refresh:
+    post:
+      tags: [User]
+      summary: 刷新 Token
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 返回新 Token
+
+  # ==================== 自选 ====================
+  /api/watchlist/{userId}:
+    get:
+      tags: [Watchlist]
+      summary: 获取用户自选列表
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: assetType
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: 成功
+
+  /api/watchlist/add:
+    post:
+      tags: [Watchlist]
+      summary: 添加自选
+      responses:
+        '200':
+          description: 添加成功
+
+  /api/watchlist/update:
+    put:
+      tags: [Watchlist]
+      summary: 更新自选（排序/备注）
+      responses:
+        '200':
+          description: 更新成功
+
+  /api/watchlist/remove:
+    delete:
+      tags: [Watchlist]
+      summary: 删除自选
+      responses:
+        '200':
+          description: 删除成功
+
+  # ==================== 系统架构 ====================
+  /api/layers:
+    get:
+      tags: [Layers]
+      summary: 获取 L1-L6 全部层元数据
+      responses:
+        '200':
+          description: 返回 6 层架构信息
+
+  /api/layers/{layerId}:
+    get:
+      tags: [Layers]
+      summary: 获取指定层详情
+      parameters:
+        - name: layerId
+          in: path
+          required: true
+          schema: { type: string, example: L1 }
+      responses:
+        '200':
+          description: 成功
+        '404':
+          description: 层不存在
+
+  /api/layers/flows:
+    get:
+      tags: [Layers]
+      summary: 获取层间数据流定义
+      responses:
+        '200':
+          description: 返回所有数据流
+
+  /api/layers/health:
+    get:
+      tags: [Layers]
+      summary: 获取各层运行状态
+      responses:
+        '200':
+          description: 返回各层 online/offline 状态

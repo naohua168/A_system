@@ -73,6 +73,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/FundDetailView.vue'),
         meta: { title: '基金详情' },
       },
+      {
+        path: 'funds',
+        name: 'FundList',
+        component: () => import('@/views/FundListView.vue'),
+        meta: { title: '基金列表' },
+      },
       // ====== 信号层页面（a-stock-data 新增）======
       {
         path: 'hot-reason',
@@ -115,6 +121,13 @@ const routes: RouteRecordRaw[] = [
         name: 'ConsensusEps',
         component: () => import('@/views/ConsensusEpsView.vue'),
         meta: { title: '一致预期' },
+      },
+      // ====== 系统架构详情页（L1~L6）======
+      {
+        path: 'layers',
+        name: 'LayerDetail',
+        component: () => import('@/views/LayerDetailView.vue'),
+        meta: { title: '系统架构' },
       },
     ],
   },

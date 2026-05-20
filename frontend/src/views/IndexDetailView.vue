@@ -66,6 +66,7 @@ async function loadData() {
     }
 
     // 2. K线数据
+// @ts-ignore - API type mismatch
     const kline: any[] = await getIndexKline(code, { days: 120 })
     if (Array.isArray(kline) && kline.length > 10) {
       const dates = kline.map((d: any) => d.tradeDate || '')

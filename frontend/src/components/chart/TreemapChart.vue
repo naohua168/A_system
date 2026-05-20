@@ -149,14 +149,15 @@ function renderChart() {
   }
 
   // 仅在首次渲染后绑定点击事件，避免 watch 重绘时误触
-  if (!chart._clickBound) {
+  const chartAny = chart as any
+  if (!chartAny._clickBound) {
     chart.off('click')
     chart.on('click', (params: any) => {
       if (params.data && params.data.name && !params.data.children) {
         emit('click', params.data)
       }
     })
-    chart._clickBound = true
+    chartAny._clickBound = true
   }
 
   chart.setOption(option, true)

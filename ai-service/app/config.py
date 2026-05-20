@@ -8,17 +8,23 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # 日志级别（DEBUG / INFO / WARNING / ERROR）
+    log_level: str = "INFO"
+
     # DeepSeek API
     deepseek_api_key: str = ""
     deepseek_api_url: str = "https://api.deepseek.com/v1/chat/completions"
     deepseek_model: str = "deepseek-chat"
 
-    # Kimi API
-    kimi_api_key: str = ""
-    kimi_api_url: str = "https://api.moonshot.cn/v1/chat/completions"
+    # ── 硅基流动 SiliconFlow API（OpenAI 兼容协议） ──
+    siliconflow_api_key: str = ""
+    siliconflow_api_url: str = "https://api.siliconflow.cn/v1/chat/completions"
+    # 推荐模型: Qwen/Qwen2.5-32B-Instruct, Pro/deepseek-ai/DeepSeek-V3,
+    #            deepseek-ai/DeepSeek-R1, Qwen/Qwen2.5-72B-Instruct
+    siliconflow_model: str = "Qwen/Qwen2.5-32B-Instruct"
 
-    # 后端行情 API
-    backend_api_url: str = "http://localhost:8080/api"
+    # 后端行情 API（注意：L4 后端实际端口为 8082）
+    backend_api_url: str = "http://localhost:8082/api"
 
     # API 鉴权（可选，不配置时放行所有请求）
     ai_api_key: str = ""

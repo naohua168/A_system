@@ -118,7 +118,7 @@ class E2ETester:
         """5. 后端 API 可达性"""
         import requests
         try:
-            resp = requests.get("http://localhost:8080/api/stock/list",
+            resp = requests.get("http://localhost:8080/api/market/list",
                                 timeout=5, params={"page": 1, "size": 5})
             if resp.status_code == 200:
                 data = resp.json()

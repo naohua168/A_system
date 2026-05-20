@@ -1,7 +1,12 @@
 """AI Agent单元测试"""
+import os
 import pytest
 from app.agents.base_agent import BaseAgent
 from app.models.simulation import SimulationEngine
+
+# 条件跳过：无 API Key 时跳过需要调用 LLM 的测试
+has_api_key = bool(os.environ.get("SILICONFLOW_API_KEY") or os.environ.get("DEEPSEEK_API_KEY"))
+skip_no_api = pytest.mark.skipif(not has_api_key, reason="需要配置 API Key")
 
 
 class TestBaseAgent:
@@ -30,6 +35,7 @@ class TestFundamentalsAnalyst:
     def test_role(self, fundamentals_analyst):
         assert "基本面" in fundamentals_analyst.role
 
+    @skip_no_api
     def test_analyze_returns_dict(self, fundamentals_analyst, mock_context):
         import asyncio
         result = asyncio.run(fundamentals_analyst.analyze(mock_context))
@@ -59,9 +65,13 @@ class TestRiskManager:
         assert risk_manager.name == "risk_manager"
 
     def test_assess_risk(self, risk_manager):
-        assert risk_manager._assess_risk("买入", 8) == "低"
-        assert risk_manager._assess_risk("买入", 6) == "中"
-        assert risk_manager._assess_risk("买入", 4) == "高"
+        # risk_score = volatility*0.6 + (1-confidence/10)*0.4
+        # confidence=8, vol=0.15 → risk_score=0.15*0.6+0.2*0.4=0.17 → "较低"
+        # confidence=6, vol=0.25 → risk_score=0.25*0.6+0.4*0.4=0.31 → "中"
+        # confidence=4, vol=0.35 → risk_score=0.35*0.6+0.6*0.4=0.45 → "较高"
+        assert risk_manager._assess_risk("买入", 8, 0.15) == "较低"
+        assert risk_manager._assess_risk("买入", 6, 0.25) == "中"
+        assert risk_manager._assess_risk("买入", 4, 0.35) == "较高"
 
 
 class TestSimulationEngine:

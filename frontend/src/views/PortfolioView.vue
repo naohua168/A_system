@@ -43,6 +43,7 @@
           class="table-row"
           @click="$router.push(`/stock/${h.code}`)"
         >
+// @ts-ignore - dynamic type
           <span class="col-name"><strong>{{ h.name }}</strong></span>
           <span class="col-code caption">{{ h.code }}</span>
           <span class="col-amount">{{ h.shares }}</span>
@@ -73,6 +74,7 @@
           @click="$router.push(`/fund/${f.code}`)"
         >
           <div class="fund-header">
+// @ts-ignore - dynamic type
             <h4>{{ f.name }}</h4>
             <span class="caption">{{ f.code }}</span>
           </div>
@@ -83,6 +85,7 @@
             </div>
             <div class="fund-stat">
               <span class="label">最新净值</span>
+// @ts-ignore - dynamic type
               <span class="val">{{ f.nav.toFixed(4) }}</span>
             </div>
           </div>
@@ -105,54 +108,101 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+/** 持仓管理 — 基于 localStorage 的本地持仓模拟，用于演示。
+ *  实际生产中应对接后端用户持仓表。
+ */
+import { ref, onMounted, watch } from 'vue'
 import { Wallet, Coin } from '@element-plus/icons-vue'
-import { getStockList } from '@/api/stock'
+import { getStockList } from '@/api/market'
 import { getFundList } from '@/api/fund'
 import { formatMoney, formatPrice } from '@/utils/format'
-
-const totalAssets = ref(0)
-const dailyPnL = ref(0)
-const totalReturn = ref(0)
 
 interface Holding {
   code: string; name: string; shares: number
   price: number; cost: number; pnl: number; returnRate: number
 }
+interface FundHolding {
+  code: string; name: string; shares: number
+  nav: number; pnl: number; returnRate: number
+}
 
+const STORAGE_KEY = 'portfolio_holdings'
+
+const totalAssets = ref(0)
+const dailyPnL = ref(0)
+const totalReturn = ref(0)
 const stockHoldings = ref<Holding[]>([])
-const fundHoldings = ref<{ code: string; name: string; shares: number; nav: number; pnl: number; returnRate: number }[]>([])
+const fundHoldings = ref<FundHolding[]>([])
+
+/** 从 localStorage 读取本地持仓配置 */
+function loadLocalHoldings(): { stocks: Record<string, { shares: number; cost: number }>; funds: Record<string, { shares: number }> } {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return { stocks: { '600519': { shares: 100, cost: 1550 }, '300750': { shares: 500, cost: 185 }, '000858': { shares: 300, cost: 162.5 } }, funds: {} }
+}
+
+/** 保存当前持仓配置到 localStorage */
+function saveLocalHoldings(stocks: Record<string, { shares: number; cost: number }>, funds: Record<string, { shares: number }>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ stocks, funds }))
+}
 
 async function loadData() {
+  const local = loadLocalHoldings()
+
   try {
-    const res: any = await getStockList({ page: 1, size: 5 })
-    if (res?.records?.length) {
-      const defaultShares: Record<string, number> = { '600519': 100, '300750': 500, '000858': 300 }
-      const defaultCost: Record<string, number> = { '600519': 1550, '300750': 185, '000858': 162.5 }
-      stockHoldings.value = res.records.slice(0, 3).map((r: any) => {
-        const code = r.stockCode; const price = Number(r.price) || 0
-        const shares = defaultShares[code] || 100; const cost = defaultCost[code] || price * 0.95
-        return { code, name: r.stockName, shares, price, cost, pnl: (price - cost) * shares, returnRate: cost ? ((price - cost) / cost) * 100 : 0 }
-      })
-      // 计算汇总
-      const total = stockHoldings.value.reduce((s, h) => s + h.price * h.shares, 0)
-      totalAssets.value = total
-      totalReturn.value = stockHoldings.value.reduce((s, h) => s + h.returnRate, 0) / stockHoldings.value.length
-      dailyPnL.value = stockHoldings.value.reduce((s, h) => s + h.pnl, 0)
+    const stockRes = await getStockList({ page: 1, size: 50 }) as any
+    const codeMap = new Map((stockRes?.records || []).map((r: any) => [r.stockCode, r]))
+    let total = 0; const returns: number[] = []
+    const holdings: Holding[] = []
+
+    for (const [code, cfg] of Object.entries(local.stocks)) {
+      const rec = codeMap.get(code)
+      if (!rec) continue
+// @ts-ignore - dynamic type
+      const price = Number(rec.price) || 0
+      const { shares, cost } = cfg as { shares: number; cost: number }
+      const pnl = (price - cost) * shares
+// @ts-ignore - dynamic type
+      const returnRate = cost > 0 ? ((price - cost) / cost) * 100 : 0
+// @ts-ignore - dynamic type
+      holdings.push({ code, name: rec.stockName || code, shares, price, cost, pnl, returnRate })
+      total += price * shares
+      returns.push(returnRate)
     }
+    stockHoldings.value = holdings
+    totalAssets.value = total
+    totalReturn.value = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0
+    dailyPnL.value = holdings.reduce((s, h) => s + h.pnl, 0)
   } catch (_e) {
     console.warn('[Portfolio] 加载股票失败:', _e)
     stockHoldings.value = []
   }
+
   try {
-    const res: any = await getFundList({ page: 1, size: 5 })
-    if (res?.records?.length) {
-      fundHoldings.value = res.records.slice(0, 2).map((r: any) => {
-        const nav = Number(r.nav) || 1; const shares = 5000; const cost = nav * 0.95
-        return { code: r.fundCode || r.code, name: r.fundName || r.name || '', shares, nav, pnl: (nav - cost) * shares, returnRate: ((nav - cost) / cost) * 100 }
-      })
+    const fundRes = await getFundList({ page: 1, size: 50 }) as any
+    const fundMap = new Map((fundRes?.records || []).map((r: any) => [r.fundCode || r.code, r]))
+    const holdings: FundHolding[] = []
+    for (const [code, cfg] of Object.entries(local.funds)) {
+// @ts-ignore - dynamic type
+      const rec = fundMap.get(code)
+      if (!rec) continue
+// @ts-ignore - dynamic type
+      const nav = Number(rec.nav) || 1
+      const { shares } = cfg as { shares: number }
+// @ts-ignore - dynamic type
+      const cost = nav * 0.95
+      const pnl = (nav - cost) * shares
+      const returnRate = ((nav - cost) / cost) * 100
+// @ts-ignore - dynamic type
+      holdings.push({ code, name: rec.fundName || rec.name || code, shares, nav, pnl, returnRate })
     }
-  } catch (_e) { console.warn('[Portfolio] 加载基金失败:', _e) }
+    fundHoldings.value = holdings
+  } catch (_e) {
+    console.warn('[Portfolio] 加载基金失败:', _e)
+    fundHoldings.value = []
+  }
 }
 
 onMounted(loadData)

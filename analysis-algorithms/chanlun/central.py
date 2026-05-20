@@ -156,7 +156,7 @@ def identify_centrals(df: pd.DataFrame) -> pd.DataFrame:
     segments = find_segments(pens)
     centrals = find_centrals(segments)
 
-    # 标记中枢区间
+    # 标记中枢区间 — 向量化切片赋值替代逐行循环
     result["central_ZG"] = 0.0
     result["central_ZD"] = 0.0
     result["central_ZF"] = 0.0
@@ -167,13 +167,14 @@ def identify_centrals(df: pd.DataFrame) -> pd.DataFrame:
     for central in centrals:
         start_idx = central.segments[0].pens[0].start_fractal.k2.idx
         end_idx = central.segments[-1].pens[-1].end_fractal.k2.idx
-        for idx in range(start_idx, end_idx + 1):
-            if idx < len(result):
-                result.loc[result.index[idx], "central_ZG"] = central.ZG
-                result.loc[result.index[idx], "central_ZD"] = central.ZD
-                result.loc[result.index[idx], "central_ZF"] = central.ZF
-                result.loc[result.index[idx], "central_mid"] = central.mid_price
-                result.loc[result.index[idx], "central_level"] = central.level
-                result.loc[result.index[idx], "central_extended"] = central.extended
+        if start_idx < len(result) and end_idx < len(result):
+            idx_slice = result.index[start_idx:end_idx + 1]
+            n = len(idx_slice)
+            result.loc[idx_slice, "central_ZG"] = [central.ZG] * n
+            result.loc[idx_slice, "central_ZD"] = [central.ZD] * n
+            result.loc[idx_slice, "central_ZF"] = [central.ZF] * n
+            result.loc[idx_slice, "central_mid"] = [central.mid_price] * n
+            result.loc[idx_slice, "central_level"] = [central.level] * n
+            result.loc[idx_slice, "central_extended"] = [central.extended] * n
 
     return result

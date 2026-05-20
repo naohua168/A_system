@@ -1,10 +1,26 @@
 """研究员辩论 Agent — 多轮看涨vs看跌辩论"""
 import asyncio
+from loguru import logger
 
 from app.agents.base_agent import BaseAgent
 
-BULLISH_PROMPT = "你是一名看涨分析师，请从基本面、技术面、资金面三个角度论证该股票会上涨。"
-BEARISH_PROMPT = "你是一名看跌分析师，请从基本面、技术面、资金面三个角度论证该股票会下跌。"
+BULLISH_PROMPT = """你是一名看涨分析师，请从基本面、技术面、资金面三个角度论证该股票会上涨。
+请给出具体的数据支撑和逻辑推理，包括：
+1. 估值是否合理或被低估
+2. 技术形态是否支持上涨
+3. 资金面是否有增量资金流入
+4. 行业和宏观环境是否有利
+
+请结构化输出你的论证。"""
+
+BEARISH_PROMPT = """你是一名看跌分析师，请从基本面、技术面、资金面三个角度论证该股票会下跌。
+请给出具体的数据支撑和逻辑推理，包括：
+1. 估值是否偏高
+2. 技术形态是否走弱或出现顶背离
+3. 资金面是否有流出迹象
+4. 行业和宏观环境是否存在风险因素
+
+请结构化输出你的论证。"""
 
 
 class BullishView(BaseAgent):
@@ -12,7 +28,16 @@ class BullishView(BaseAgent):
         super().__init__("bullish_view", "看涨分析师", BULLISH_PROMPT)
 
     async def analyze(self, context: dict) -> dict:
-        return {"view": "bullish", "reason": "基于技术面多头排列和资金流入"}
+        """使用 AI 生成看涨论据"""
+        stock_code = context.get("stock_code", "")
+        try:
+            reply = await self.chat([
+                {"role": "user", "content": f"请为股票 {stock_code} 做全面的看涨分析"}
+            ])
+            return {"view": "bullish", "analysis": reply, "stock_code": stock_code}
+        except Exception as e:
+            logger.warning(f"看涨 AI 分析失败: {e}, 使用模拟降级")
+            return {"view": "bullish", "analysis": self._mock_reply([]), "stock_code": stock_code}
 
     def _mock_reply(self, messages) -> str:
         return (
@@ -30,7 +55,16 @@ class BearishView(BaseAgent):
         super().__init__("bearish_view", "看跌分析师", BEARISH_PROMPT)
 
     async def analyze(self, context: dict) -> dict:
-        return {"view": "bearish", "reason": "基于技术面顶背离和资金流出"}
+        """使用 AI 生成看跌论据"""
+        stock_code = context.get("stock_code", "")
+        try:
+            reply = await self.chat([
+                {"role": "user", "content": f"请为股票 {stock_code} 做全面的看跌分析"}
+            ])
+            return {"view": "bearish", "analysis": reply, "stock_code": stock_code}
+        except Exception as e:
+            logger.warning(f"看跌 AI 分析失败: {e}, 使用模拟降级")
+            return {"view": "bearish", "analysis": self._mock_reply([]), "stock_code": stock_code}
 
     def _mock_reply(self, messages) -> str:
         return (

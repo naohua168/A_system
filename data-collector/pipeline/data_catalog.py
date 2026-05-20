@@ -255,6 +255,84 @@ DATA_CATALOG: List[DataTypeDef] = [
             retention_days=365,
         ),
     ),
+
+    # ==================== 原始数据层 ====================
+    DataTypeDef(
+        data_type="raw_realtime",
+        display_name="原始实时行情",
+        layer="raw",
+        description="腾讯财经原始 HTTP 响应体（GBK 编码），不经加工直接入 Kafka",
+        source_order=["tencent"],
+        storage=StorageTarget(
+            mysql_table=None,
+            csv_prefix="raw_realtime_",
+            hdfs_path="raw/realtime/",
+        ),
+        is_global=True,
+    ),
+    DataTypeDef(
+        data_type="raw_kline",
+        display_name="原始K线数据",
+        layer="raw",
+        description="mootdx TCP 二进制 + 新浪 HTTP CSV 原始 K 线数据",
+        source_order=["mootdx", "sina_kline"],
+        storage=StorageTarget(
+            mysql_table=None,
+            csv_prefix="raw_kline_",
+            hdfs_path="raw/kline/",
+        ),
+    ),
+    DataTypeDef(
+        data_type="raw_hot_reason",
+        display_name="原始题材归因",
+        layer="raw",
+        description="同花顺强势股题材归因原始 JSON 响应体",
+        source_order=["ths_hot"],
+        storage=StorageTarget(
+            mysql_table=None,
+            csv_prefix="raw_hot_reason_",
+            hdfs_path="raw/signals/hot_reason/",
+        ),
+        is_global=True,
+    ),
+    DataTypeDef(
+        data_type="raw_northbound",
+        display_name="原始北向资金",
+        layer="raw",
+        description="同花顺北向资金实时分钟流向原始 JSON 响应体",
+        source_order=["ths_northbound"],
+        storage=StorageTarget(
+            mysql_table=None,
+            csv_prefix="raw_northbound_",
+            hdfs_path="raw/signals/northbound/",
+        ),
+        is_global=True,
+    ),
+    DataTypeDef(
+        data_type="raw_signal",
+        display_name="原始信号数据",
+        layer="raw",
+        description="akshare 扩展与百度 PAE 协议原始响应体（概念板块/资金流向/龙虎榜/解禁）",
+        source_order=["akshare_ext", "baidu"],
+        storage=StorageTarget(
+            mysql_table=None,
+            csv_prefix="raw_signal_",
+            hdfs_path="raw/signals/",
+        ),
+    ),
+    DataTypeDef(
+        data_type="raw_news",
+        display_name="原始资讯数据",
+        layer="raw",
+        description="资讯层研报/新闻/公告/财联社/全球资讯的原始 HTTP 响应体",
+        source_order=["information"],
+        storage=StorageTarget(
+            mysql_table=None,
+            csv_prefix="raw_news_",
+            hdfs_path="raw/info/",
+        ),
+        is_global=True,
+    ),
 ]
 
 

@@ -1,11 +1,12 @@
 package com.stock.controller;
 
+import com.stock.config.MockWebMvcTest;
 import com.stock.service.AnalysisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -22,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * AnalysisController Web MVC 测试
  * 仅测试 Controller 层的请求映射、参数绑定、异常处理
  */
-@WebMvcTest(AnalysisController.class)
+@MockWebMvcTest(AnalysisController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class AnalysisControllerTest {
 
     @Autowired
@@ -53,8 +55,8 @@ class AnalysisControllerTest {
                         .param("years", "3")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].year").value(2025))
-                .andExpect(jsonPath("$[0].yearlyReturn").value(5.00));
+                .andExpect(jsonPath("$.data[0].year").value(2025))
+                .andExpect(jsonPath("$.data[0].yearlyReturn").value(5.00));
     }
 
     @Test
@@ -76,7 +78,7 @@ class AnalysisControllerTest {
                         .param("months", "12")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].year").value(2025));
+                .andExpect(jsonPath("$.data[0].year").value(2025));
     }
 
     @Test
@@ -103,7 +105,7 @@ class AnalysisControllerTest {
                         .param("days", "30")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.trend").value("上升趋势"));
+                .andExpect(jsonPath("$.data.trend").value("上升趋势"));
     }
 
     @Test
@@ -121,7 +123,7 @@ class AnalysisControllerTest {
                         .content("{\"industry\":\"金融\",\"minPrice\":10}")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].stockCode").value("000001"));
+                .andExpect(jsonPath("$.data[0].stockCode").value("000001"));
     }
 
     @Test
@@ -136,7 +138,7 @@ class AnalysisControllerTest {
                         .param("days", "60")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.correlation").value(0.85));
+                .andExpect(jsonPath("$.data.correlation").value(0.85));
     }
 
     @Test
@@ -154,7 +156,7 @@ class AnalysisControllerTest {
                         .param("tradeDate", "2025-01-10")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].industry").value("金融"));
+                .andExpect(jsonPath("$.data[0].industry").value("金融"));
     }
 
     @Test
@@ -176,6 +178,33 @@ class AnalysisControllerTest {
                         .content("{\"assetCode\":\"000001\",\"analysisType\":\"trend\"}")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value(true));
+                .andExpect(jsonPath("$.code").value(201))
+                .andExpect(jsonPath("$.message").value("created"));
+    }
+
+    // ==================== 新增 DELETE 端点测试 ====================
+
+    @Test
+    @DisplayName("DELETE /api/analysis/{id} - 删除分析结果 - 成功")
+    void testDeleteAnalysis_Success() throws Exception {
+        when(analysisService.removeById(1L)).thenReturn(true);
+
+        mockMvc.perform(delete("/api/analysis/1")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/analysis/{id} - 删除分析结果 - 不存在")
+    void testDeleteAnalysis_NotFound() throws Exception {
+        when(analysisService.removeById(999L)).thenReturn(false);
+
+        mockMvc.perform(delete("/api/analysis/999")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("分析记录不存在"));
     }
 }

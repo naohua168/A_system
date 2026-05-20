@@ -62,41 +62,32 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { DataLine } from '@element-plus/icons-vue'
+import { getConsensusEps } from '@/api/info'
+import type { ConsensusEps } from '@/types'
+
+/** 一致预期展示行（含前端补全字段） */
+interface EpsDisplayRow {
+  year: string
+  forecastCount: number
+  min: number
+  avg: number
+  max: number
+  industryAvg: string
+}
 
 const loading = ref(false)
 const searchCode = ref('688017')
 const samples = ['688017', '600519', '300750', '000858']
-const records = ref<any[]>([])
+const records = ref<EpsDisplayRow[]>([])
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
-
-// 模拟数据（真实场景调用后端API）
-const mockData: Record<string, any[]> = {
-  '688017': [
-    { year: '2026E', forecastCount: 18, min: 1.85, avg: 2.15, max: 2.45, industryAvg: 1.52 },
-    { year: '2027E', forecastCount: 15, min: 2.45, avg: 2.82, max: 3.20, industryAvg: 1.85 },
-    { year: '2028E', forecastCount: 10, min: 3.10, avg: 3.56, max: 4.05, industryAvg: 2.20 },
-  ],
-  '600519': [
-    { year: '2026E', forecastCount: 35, min: 62.50, avg: 68.80, max: 72.00, industryAvg: 42.50 },
-    { year: '2027E', forecastCount: 30, min: 72.00, avg: 78.50, max: 85.00, industryAvg: 48.00 },
-  ],
-  '300750': [
-    { year: '2026E', forecastCount: 25, min: 12.50, avg: 14.20, max: 16.00, industryAvg: 8.50 },
-    { year: '2027E', forecastCount: 20, min: 15.80, avg: 17.50, max: 19.50, industryAvg: 10.20 },
-  ],
-  '000858': [
-    { year: '2026E', forecastCount: 22, min: 8.50, avg: 9.60, max: 10.80, industryAvg: 5.60 },
-    { year: '2027E', forecastCount: 18, min: 10.20, avg: 11.50, max: 13.00, industryAvg: 6.50 },
-  ],
-}
 
 const avgEps = computed(() => {
   if (!records.value.length) return '0.00'
   return records.value[0].avg.toFixed(2)
 })
 
-function renderChart(data: any[]) {
+function renderChart(data: EpsDisplayRow[]) {
   if (!chartRef.value || !data.length) return
   if (!chart) chart = echarts.init(chartRef.value)
   chart.setOption({
@@ -113,15 +104,26 @@ function renderChart(data: any[]) {
   })
 }
 
+/** 从后端 API 加载一致预期数据 */
 async function fetchData() {
   const code = searchCode.value.trim()
   if (!code) return
   loading.value = true
   try {
-    // 真实场景: const res = await getConsensusEps(code); records.value = res.data || [];
-    records.value = mockData[code] || mockData['688017']
+    const raw = await getConsensusEps(code) as ConsensusEps[]
+    records.value = raw.map((item) => ({
+      year: item.year,
+      forecastCount: item.forecastCount,
+      min: item.minEps,
+      avg: item.avgEps,
+      max: item.maxEps,
+      industryAvg: '-', // 后端暂不返回行业平均
+    }))
     await nextTick()
     renderChart(records.value)
+  } catch (e) {
+    console.warn('[ConsensusEps] fetchData failed:', e)
+    records.value = []
   } finally { loading.value = false }
 }
 
