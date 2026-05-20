@@ -47,13 +47,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
     // 启用 CSS 代码分割
     cssCodeSplit: true,
-    // 生产环境移除 console.log（保留 console.warn/error）
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-      },
-    },
+    // 生产环境使用 esbuild 压缩（内置，无需额外依赖）
+    minify: 'esbuild',
   },
 })

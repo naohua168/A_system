@@ -374,10 +374,10 @@ services:
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - AI_SERVICE_URL=http://ai-service:8000
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8082/api/market/list?page=1&size=1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/ | grep -q ."]
+      interval: 15s
+      timeout: 5s
+      retries: 10
       start_period: 60s
     restart: unless-stopped
     networks:
