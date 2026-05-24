@@ -149,15 +149,16 @@ class MysqlStorage(StorageBackend):
         # stock_daily 表（来自K线数据）
         "stock_daily": {
             "date": "trade_date",
-            "code": "stock_code",
+            "stock_code": "stock_code",
             "open": "open_price",
             "close": "close_price",
             "high": "high_price",
             "low": "low_price",
+            "volume": "volume",
+            "amount": "amount",
             "pre_close": "pre_close",
             "change_pct": "change_percent",
             "turnover_pct": "turnover_rate",
-            "amount_wan": "amount",
         },
         # signal_hot_reason（同花顺热点）
         "signal_hot_reason": {
@@ -232,6 +233,35 @@ class MysqlStorage(StorageBackend):
             "内容摘要": "content_summary",
             "来源": "source",
         },
+        # signal_concept_block（概念板块归属 — 百度源）
+        "signal_concept_block": {
+            "stock_code": "stock_code",
+            "block_type": "block_type",
+            "block_name": "block_name",
+            "change_pct": "change_pct",
+        },
+        # signal_fund_flow（个股资金流向 — 百度源）
+        "signal_fund_flow": {
+            "stock_code": "stock_code",
+            "trade_date": "trade_date",
+            "close": "close",
+            "change_pct": "change_pct",
+            "super_net_in": "super_net_in",
+            "large_net_in": "large_net_in",
+            "medium_net_in": "medium_net_in",
+            "little_net_in": "little_net_in",
+            "main_in": "main_in",
+        },
+        # signal_lockup_detail（限售解禁明细 — akshare源）
+        "signal_lockup_detail": {
+            "stock_code": "stock_code",
+            "lockup_date": "lockup_date",
+            "lockup_type": "lockup_type",
+            "shares": "shares",
+            "float_ratio": "float_ratio",
+            "type_tag": "type_tag",
+        },
+        # signal_dragon_tiger_detail（龙虎榜明细 — akshare源，已定义）
     }
 
     # ============================================================

@@ -13,5 +13,5 @@ export function addWatchlist(userId: number, assetCode: string, assetType: numbe
 
 /** 移除自选 */
 export function removeWatchlist(userId: number, assetCode: string, assetType: number): Promise<void> {
-  return request.delete('/watchlist/remove', { params: { userId, assetCode, assetType } })
+  return request.delete('/watchlist/remove', { data: { userId, assetCode, assetType } })
 }

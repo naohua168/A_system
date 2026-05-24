@@ -1,6 +1,19 @@
 # 变更日志
 
-## [2.3.0] - 2026-05-20 — 增强优化补丁
+## [2.4.0] - 2026-05-21 — 缺陷修复与配置优化
+
+### 修复
+- **后端**: 新增 `security-levels.yml` 安全层级配置文件（USER/PREMIUM_USER/ADMIN/SUPER_ADMIN 四级权限 + 密码策略 + 登录策略）
+- **后端**: pom.xml 移除 `maven-resources-plugin` 对 `security/**` 的排除，使 YAML 配置文件可打包
+- **后端**: `ApiResponseWrapper` 跳过 `ResponseEntity` 返回值类型，保留 HTTP 状态码语义（404 不再被转换为 200）
+- **后端**: MySQL 容器名 `mysql_new` 重命名为 `mysql`，修复 Docker 网络 DNS 解析
+- **后端**: JDBC URL 增加 `useSSL=false`，解决 MySQL 8.0 强制 SSL 证书验证导致的连接失败
+- **后端**: `User` 实体新增 7 个缺失数据库字段（`mfa_enabled`, `password_changed_at` 等），修复 MyBatis-Plus selectOne 查询异常
+- **后端**: 用户 `status` 字段值与实体 `isActive()` 逻辑对齐（DB: 0=启用）
+- **前端**: `layer.ts` BASE 路径去掉重复的 `/api` 前缀（与 `request.ts` baseURL 叠加导致 `//api/api/layers`）
+- **前端**: `useStockWebSocket.ts` 支持 `VITE_WS_HOST` 环境变量，开发环境可指向后端端口
+- **前端**: `watchlist.ts` 删除接口改为 `data` 方式传递 JSON body，与后端 `@RequestBody` 匹配
+- **前端**: `App.vue` `<router-view>` 使用 Vue 3.4+ 推荐的 `v-slot` 模式，移除废弃用法
 
 ### 新增
 - **前端**: WebSocket composable (`useStockWebSocket`) — 自动重连 + ping/pong 保活

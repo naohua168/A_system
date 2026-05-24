@@ -8,39 +8,68 @@
       <div class="header-right">
         <el-date-picker v-model="selectedDate" type="date" placeholder="选择日期"
           value-format="YYYY-MM-DD" :disabled-date="(d: Date) => d > today"
-          @change="fetchData" size="small" />
+          @change="onDateChange" size="small" />
+        <el-button v-if="error" type="warning" size="small" @click="fetchData" :loading="loading">
+          重试
+        </el-button>
       </div>
     </div>
 
-    <el-table v-loading="loading" :data="records" stripe style="width:100%" @row-click="goToStock">
-      <el-table-column prop="stockCode" label="代码" width="100">
-        <template #default="{ row }">
-          <span class="stock-code">{{ row.stockCode }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="stockName" label="名称" width="100" />
-      <el-table-column prop="reason" label="题材归因" min-width="300">
-        <template #default="{ row }">
-          <div class="reason-tags">
-            <el-tag v-for="tag in parseTags(row.reason)" :key="tag" size="small" class="reason-tag">
-              {{ tag }}
-            </el-tag>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="changePct" label="涨幅%" width="100" align="right">
-        <template #default="{ row }">
-          <span :class="row.changePct >= 0 ? 'text-rise' : 'text-fall'">
-            {{ row.changePct >= 0 ? '+' : '' }}{{ row.changePct }}%
-          </span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="turnoverPct" label="换手率%" width="100" align="right" />
-    </el-table>
+    <!-- 加载骨架 -->
+    <template v-if="loading">
+      <SkeletonLoader type="table" :rows="8" :col-widths="['10%','10%','40%','10%','10%']" />
+    </template>
 
-    <div class="stats-bar">
-      <span>共 <strong>{{ records.length }}</strong> 只个股出现强势题材信号</span>
-    </div>
+    <!-- 错误状态 -->
+    <template v-else-if="error">
+      <EmptyState type="error" :title="error" description="点击重试或切换日期" size="lg">
+        <template #actions>
+          <el-button type="primary" size="small" @click="fetchData">重新加载</el-button>
+        </template>
+      </EmptyState>
+    </template>
+
+    <!-- 空数据 -->
+    <template v-else-if="!records.length">
+      <EmptyState type="empty" title="暂无题材热点数据" :sub="selectedDate">
+        <template #actions>
+          <el-button size="small" @click="selectedDate = yesterday; onDateChange()">查看最近交易日</el-button>
+        </template>
+      </EmptyState>
+    </template>
+
+    <!-- 正常数据 -->
+    <template v-else>
+      <el-table :data="records" stripe style="width:100%" @row-click="goToStock">
+        <el-table-column prop="stockCode" label="代码" width="100">
+          <template #default="{ row }">
+            <span class="stock-code">{{ safeStr(row.stockCode) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="stockName" label="名称" width="100" />
+        <el-table-column prop="reason" label="题材归因" min-width="300">
+          <template #default="{ row }">
+            <div class="reason-tags">
+              <el-tag v-for="tag in parseTags(row.reason)" :key="tag" size="small" class="reason-tag">
+                {{ tag }}
+              </el-tag>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="changePct" label="涨幅%" width="100" align="right">
+          <template #default="{ row }">
+            <span :class="(row.changePct || 0) >= 0 ? 'text-rise' : 'text-fall'">
+              {{ (row.changePct || 0) >= 0 ? '+' : '' }}{{ safeNum(row.changePct, 2) }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="turnoverPct" label="换手率%" width="100" align="right" />
+      </el-table>
+
+      <div class="stats-bar">
+        <span>共 <strong>{{ records.length }}</strong> 只个股出现强势题材信号</span>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -48,30 +77,31 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getHotReason } from '@/api/signal'
+import { useApiRetry, safeRecords, safeNum, safeStr } from '@/composables/useApiRetry'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const router = useRouter()
 const today = new Date()
-const loading = ref(false)
-const selectedDate = ref(today.toISOString().slice(0, 10))
-const records = ref<any[]>([])
+const yesterday = new Date(today.getTime() - 86400000).toISOString().slice(0, 10)
+const selectedDate = ref(yesterday)
+
+const { data: rawData, loading, error, fetch: fetchData } = useApiRetry(
+  () => getHotReason(selectedDate.value),
+  { maxRetries: 1, showError: false, errorMessage: '题材热点数据加载失败' }
+)
+
+const records = computed(() => safeRecords(rawData.value, 'records'))
 
 function parseTags(reason: string): string[] {
   if (!reason) return []
   return reason.split(/[+＋,，、]/).filter(Boolean)
 }
 
-async function fetchData() {
-  loading.value = true
-  try {
-    const res = await getHotReason(selectedDate.value)
-// @ts-ignore - response data wrapper
-    records.value = res.data.records || []
-  } catch { records.value = [] }
-  finally { loading.value = false }
-}
+function onDateChange() { fetchData() }
 
 function goToStock(row: any) {
-  router.push(`/stock/${row.stockCode}`)
+  if (row.stockCode) router.push(`/stock/${row.stockCode}`)
 }
 
 onMounted(fetchData)

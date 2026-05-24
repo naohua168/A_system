@@ -3,6 +3,7 @@ package com.stock.config;
 import com.stock.dto.ApiResponse;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -32,6 +33,10 @@ public class ApiResponseWrapper implements ResponseBodyAdvice<Object> {
         }
         // String 类型特殊处理 (需单独 MessageConverter)
         if (returnType.getParameterType() == String.class) {
+            return false;
+        }
+        // ResponseEntity 类型 — 保留原始 HTTP 状态码和结构  (如 404 Not Found)
+        if (returnType.getParameterType() == ResponseEntity.class) {
             return false;
         }
         return true;

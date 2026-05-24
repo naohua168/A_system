@@ -19,4 +19,7 @@ public interface SignalLockupDetailMapper extends BaseMapper<SignalLockupDetail>
 
     @Select("SELECT * FROM signal_lockup_detail WHERE stock_code = #{code} AND type_tag = #{tag} ORDER BY lockup_date DESC")
     List<SignalLockupDetail> selectByStockAndTag(@Param("code") String code, @Param("tag") String tag);
+
+    @Select("SELECT * FROM signal_lockup_detail WHERE type_tag = #{tag} ORDER BY lockup_date DESC LIMIT #{limit}")
+    List<SignalLockupDetail> selectByTag(@Param("tag") String tag, @Param("limit") int limit);
 }

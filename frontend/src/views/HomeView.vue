@@ -2,24 +2,34 @@
   <div class="home-view">
     <!-- 市场概览 -->
     <section class="section market-overview">
-      <div class="stats-bar">
-        <div class="stat-item">
-          <span class="stat-label">总股票数</span>
-          <span class="stat-value">{{ marketStats.total }}</span>
+      <template v-if="!homeLoaded">
+        <div class="stats-bar skeleton-bar">
+          <div v-for="i in 4" :key="i" class="stat-item">
+            <div class="skeleton-line" style="width:50px;height:12px" />
+            <div class="skeleton-line" style="width:70px;height:20px;margin-top:4px" />
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">上涨</span>
-          <span class="stat-value rise">{{ marketStats.up }}</span>
+      </template>
+      <template v-else>
+        <div class="stats-bar">
+          <div class="stat-item">
+            <span class="stat-label">总股票数</span>
+            <span class="stat-value">{{ marketStats.total }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">上涨</span>
+            <span class="stat-value rise">{{ marketStats.up }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">下跌</span>
+            <span class="stat-value fall">{{ marketStats.down }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">平盘</span>
+            <span class="stat-value flat">{{ marketStats.flat }}</span>
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">下跌</span>
-          <span class="stat-value fall">{{ marketStats.down }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">平盘</span>
-          <span class="stat-value flat">{{ marketStats.flat }}</span>
-        </div>
-      </div>
+      </template>
     </section>
 
     <!-- 大盘指数 - 东方财富风格 -->
@@ -27,11 +37,30 @@
       <div class="section-header">
         <h4>大盘指数</h4>
         <div class="section-actions">
-          <el-button text type="primary" size="small" @click="showIndexManager = true">
+          <el-button v-if="!homeLoaded" disabled text size="small"><Setting /> 管理指数</el-button>
+          <el-button v-else text type="primary" size="small" @click="showIndexManager = true">
             <el-icon><Setting /></el-icon> 管理指数
           </el-button>
         </div>
       </div>
+      <template v-if="!homeLoaded">
+        <div class="indices-carousel">
+          <div class="indices-viewport">
+            <div class="indices-track skeleton-indices">
+              <div v-for="i in 4" :key="i" class="skeleton-index-card">
+                <div>
+                  <div class="skeleton-line" style="width:60px;height:14px" />
+                  <div class="skeleton-line" style="width:80px;height:22px;margin-top:6px" />
+                </div>
+                <div style="text-align:right">
+                  <div class="skeleton-line" style="width:50px;height:16px;margin-left:auto" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template v-else>
       <div class="indices-carousel">
         <button class="scroll-arrow left" @click="scrollIndices(-1)" :disabled="scrollAtStart">
           <el-icon><ArrowLeft /></el-icon>
@@ -61,6 +90,7 @@
           <el-icon><ArrowRight /></el-icon>
         </button>
       </div>
+      </template>
     </section>
 
     <!-- 指数管理弹窗 -->
@@ -93,51 +123,68 @@
     <!-- 信号层快捷卡片 -->
     <section class="section signal-cards">
       <div class="signal-grid">
-        <div class="signal-card signal-card-nb" @click="$router.push('/northbound')">
-          <el-icon class="card-icon" :size="24"><TrendCharts /></el-icon>
+        <div class="signal-card signal-card-nb" @click="signalLoaded.nb ? $router.push('/northbound') : undefined"
+          :style="{ opacity: signalLoaded.nb ? 1 : 0.5 }">
+          <div class="card-header">
+            <el-icon class="card-icon"><TrendCharts /></el-icon>
+            <span class="card-title">北向资金</span>
+          </div>
           <div class="card-body">
-            <div class="card-title">北向资金</div>
-            <div class="card-value" :class="nbTotal >= 0 ? 'text-rise' : 'text-fall'">
+            <div v-if="signalLoaded.nb" class="card-value" :class="nbTotal >= 0 ? 'text-rise' : 'text-fall'">
               {{ nbTotal >= 0 ? '+' : '' }}{{ nbTotal }}<small>亿</small>
             </div>
-            <div class="card-detail">
-              沪 {{ nbHgt }} 深 {{ nbSgt }}
-            </div>
+            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:60%;height:22px" /></div>
+            <div class="card-detail" v-if="signalLoaded.nb">沪 {{ safeNum(nbHgt) }} 深 {{ safeNum(nbSgt) }}</div>
+            <div v-else class="card-detail">加载中...</div>
           </div>
         </div>
-        <div class="signal-card signal-card-hot" @click="$router.push('/hot-reason')">
-          <el-icon class="card-icon" :size="24"><DataAnalysis /></el-icon>
+        <div class="signal-card signal-card-hot" @click="signalLoaded.hot ? $router.push('/hot-reason') : undefined"
+          :style="{ opacity: signalLoaded.hot ? 1 : 0.5 }">
+          <div class="card-header">
+            <el-icon class="card-icon"><DataAnalysis /></el-icon>
+            <span class="card-title">题材热点</span>
+          </div>
           <div class="card-body">
-            <div class="card-title">题材热点</div>
-            <div class="card-tags" v-if="hotReasons.length">
+            <div v-if="signalLoaded.hot && hotReasons.length" class="card-tags">
               <el-tag v-for="r in hotReasons.slice(0,3)" :key="r.stockCode" size="small" class="hot-tag"
                 @click.stop="$router.push(`/stock/${r.stockCode}`)">
                 {{ r.stockName }}
               </el-tag>
             </div>
-            <div class="card-detail">{{ hotReasons.length }} 只个股今日强势</div>
+            <div v-else-if="signalLoaded.hot" class="card-empty">暂无数据</div>
+            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:80%;height:20px" /></div>
+            <div class="card-detail">{{ signalLoaded.hot ? (hotReasons.length + ' 只个股今日强势') : '加载中...' }}</div>
           </div>
         </div>
-        <div class="signal-card signal-card-ind" @click="$router.push('/industry-compare')">
-          <el-icon class="card-icon" :size="24"><Histogram /></el-icon>
+        <div class="signal-card signal-card-ind" @click="signalLoaded.ind ? $router.push('/industry-compare') : undefined"
+          :style="{ opacity: signalLoaded.ind ? 1 : 0.5 }">
+          <div class="card-header">
+            <el-icon class="card-icon"><Histogram /></el-icon>
+            <span class="card-title">行业排行</span>
+          </div>
           <div class="card-body">
-            <div class="card-title">行业排行</div>
-            <div class="card-ind-list" v-if="industryTop.length">
+            <div v-if="industryTop.length" class="card-ind-list">
               <div v-for="ind in industryTop.slice(0,3)" :key="ind.industryName" class="ind-row">
                 <span class="ind-name">{{ ind.industryName }}</span>
-                <span :class="ind.changePct >= 0 ? 'text-rise' : 'text-fall'">
-                  {{ ind.changePct >= 0 ? '+' : '' }}{{ ind.changePct }}%
+                <span :class="(ind.changePct || 0) >= 0 ? 'text-rise' : 'text-fall'">
+                  {{ (ind.changePct || 0) >= 0 ? '+' : '' }}{{ safeNum(ind.changePct, 2) }}%
                 </span>
               </div>
             </div>
+            <div v-else-if="signalLoaded.ind" class="card-empty">暂无数据</div>
+            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:70%;height:20px" /></div>
           </div>
         </div>
-        <div class="signal-card signal-card-dt" @click="$router.push('/dragon-tiger')">
-          <el-icon class="card-icon" :size="24"><Aim /></el-icon>
+        <div class="signal-card signal-card-dt" @click="signalLoaded.dt ? $router.push('/dragon-tiger') : undefined"
+          :style="{ opacity: signalLoaded.dt ? 1 : 0.5 }">
+          <div class="card-header">
+            <el-icon class="card-icon"><Aim /></el-icon>
+            <span class="card-title">龙虎榜</span>
+          </div>
           <div class="card-body">
-            <div class="card-title">龙虎榜</div>
-            <div class="card-value">{{ dtCount }}</div>
-            <div class="card-detail">只个股今日上榜</div>
+            <div v-if="signalLoaded.dt" class="card-value">{{ dtCount || '0' }}</div>
+            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:40%;height:22px" /></div>
+            <div class="card-detail">{{ signalLoaded.dt ? (dtCount ? dtCount + ' 只个股今日上榜' : '暂无上榜') : '加载中...' }}</div>
           </div>
         </div>
       </div>
@@ -154,11 +201,19 @@
         </div>
       </div>
       <div class="chart-container" ref="chartRef">
-        <TreemapChart
-          ref="treemapRef"
-          :data="sectorData"
-          @click="onSectorClick"
-        />
+        <template v-if="homeLoaded && sectorData.length">
+          <TreemapChart
+            ref="treemapRef"
+            :data="sectorData"
+            @click="onSectorClick"
+          />
+        </template>
+        <template v-else-if="homeLoaded && !sectorData.length">
+          <EmptyState type="empty" title="暂无板块数据" inline />
+        </template>
+        <template v-else>
+          <SkeletonLoader type="chart" height="600px" />
+        </template>
       </div>
     </section>
 
@@ -168,28 +223,45 @@
         <h4>热门股票</h4>
         <router-link to="/stocks" class="view-all">查看所有股票 <el-icon><ArrowRight /></el-icon></router-link>
       </div>
-      <div class="stock-grid">
-        <div
-          v-for="stock in hotStocks"
-          :key="stock.code"
-          class="stock-card"
-          :class="getChangeClass(stock.changePercent)"
-          @click="$router.push(`/stock/${stock.code}`)"
-        >
-          <div class="stock-info">
-            <div class="stock-name">{{ stock.name }}</div>
-            <div class="stock-code">{{ stock.code }}</div>
+      <template v-if="homeLoaded && hotStocks.length">
+        <div class="stock-grid">
+          <div
+            v-for="stock in hotStocks"
+            :key="stock.code"
+            class="stock-card"
+            :class="getChangeClass(stock.changePercent)"
+            @click="$router.push(`/stock/${stock.code}`)"
+          >
+            <div class="stock-info">
+              <div class="stock-name">{{ stock.name }}</div>
+              <div class="stock-code">{{ stock.code }}</div>
+            </div>
+            <div class="stock-price">{{ formatPrice(stock.price) }}</div>
+            <div class="stock-change">{{ formatPercent(stock.changePercent) }}</div>
           </div>
-          <div class="stock-price">{{ formatPrice(stock.price) }}</div>
-          <div class="stock-change">{{ formatPercent(stock.changePercent) }}</div>
         </div>
-      </div>
+      </template>
+      <template v-else-if="homeLoaded && !hotStocks.length">
+        <EmptyState type="empty" title="暂无热门股票数据" inline size="sm" />
+      </template>
+      <template v-else>
+        <div class="stock-grid">
+          <div v-for="i in 4" :key="i" class="stock-card skeleton-stock-card">
+            <div class="stock-info">
+              <div class="skeleton-line" style="width:80px;height:15px" />
+              <div class="skeleton-line" style="width:60px;height:12px;margin-top:4px" />
+            </div>
+            <div style="margin:0 24px"><div class="skeleton-line" style="width:60px;height:18px" /></div>
+            <div><div class="skeleton-line" style="width:50px;height:15px" /></div>
+          </div>
+        </div>
+      </template>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, ArrowLeft, Setting, Pointer, Plus, Close, TrendCharts, DataAnalysis, Histogram, Aim } from '@element-plus/icons-vue'
 import TreemapChart from '@/components/chart/TreemapChart.vue'
@@ -198,6 +270,9 @@ import { getIndexList } from '@/api/index'
 import { getSectorRanking } from '@/api/analysis'
 import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare } from '@/api/signal'
 import { formatPrice, formatPercent, formatPoints, getChangeClass } from '@/utils/format'
+import { safeNum } from '@/composables/useApiRetry'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import type {
   HotReason, IndustryTopItem, IndexCard, SectorNode, HomeStockCard,
   Northbound, HotReasonResponse, IndustryCompareResponse, DragonTigerDaily,
@@ -209,46 +284,69 @@ const scrollRef = ref<HTMLElement>()
 const scrollPos = ref(0)
 const showIndexManager = ref(false)
 
+/** 主页面数据加载完成标记 */
+const homeLoaded = ref(false)
+
+/** 各信号卡片加载状态 */
+const signalLoaded = reactive({ nb: false, hot: false, ind: false, dt: false })
+
 /** 信号层数据 — 业务类型见 @/types */
 const nbHgt = ref(0)
 const nbSgt = ref(0)
-const nbTotal = computed(() => Number((nbHgt.value + nbSgt.value).toFixed(2)))
+const nbTotal = computed(() => Number((safeNum(nbHgt.value) + safeNum(nbSgt.value)).toFixed(2)))
 const hotReasons = ref<HotReason[]>([])
 const industryTop = ref<IndustryTopItem[]>([])
 const dtCount = ref(0)
 
-/** 并行加载信号层数据（各接口独立容错） */
+/** 并行加载信号层数据（各接口独立容错，无论成功失败都标记加载完成） */
 async function loadSignalData() {
-  try {
-    const [nbRes, hotRes, indRes, dtRes] = await Promise.allSettled([
-      getNorthboundLatest(1),
-      getHotReason(),
-      getIndustryCompare(),
-      getDragonTigerDaily(),
-    ])
-    if (nbRes.status === 'fulfilled' && Array.isArray(nbRes.value) && nbRes.value.length > 0) {
-      const nbData = nbRes.value as Northbound[]
-      nbHgt.value = nbData[0].hgtYi || 0
-      nbSgt.value = nbData[0].sgtYi || 0
+  const [nbRes, hotRes, indRes, dtRes] = await Promise.allSettled([
+    getNorthboundLatest(1).catch(() => null),
+    getHotReason().catch(() => null),
+    getIndustryCompare().catch(() => null),
+    getDragonTigerDaily().catch(() => null),
+  ])
+  // 北向资金
+  signalLoaded.nb = true
+  if (nbRes.status === 'fulfilled' && nbRes.value) {
+    const nbData = nbRes.value as Northbound[]
+    if (Array.isArray(nbData) && nbData.length > 0 && nbData[0]) {
+      nbHgt.value = safeNum(nbData[0].hgtYi)
+      nbSgt.value = safeNum(nbData[0].sgtYi)
     }
-    if (hotRes.status === 'fulfilled') {
-      const data = hotRes.value as HotReasonResponse
-      hotReasons.value = data.records || []
+  }
+  // 题材热点
+  signalLoaded.hot = true
+  if (hotRes.status === 'fulfilled' && hotRes.value) {
+    const raw = hotRes.value as any
+    hotReasons.value = (raw?.records && Array.isArray(raw.records)) ? raw.records : []
+  }
+  // 行业排行
+  signalLoaded.ind = true
+  if (indRes.status === 'fulfilled' && indRes.value) {
+    const raw = indRes.value as any
+    const all = (raw?.records && Array.isArray(raw.records)) ? raw.records : []
+    if (all.length > 0) {
+      try {
+        industryTop.value = all
+          .filter((a: any) => a && a.industryName)
+          .sort((a: any, b: any) => (b.changePct || 0) - (a.changePct || 0))
+          .slice(0, 5)
+          .map((item: any) => ({ industryName: item.industryName, changePct: safeNum(item.changePct) }))
+      } catch { /* ignore individual item parse errors */ }
     }
-    if (indRes.status === 'fulfilled') {
-      const data = indRes.value as IndustryCompareResponse
-      const all = data.records || []
-      industryTop.value = all
-        .sort((a, b) => b.changePct - a.changePct)
-        .slice(0, 5)
-        .map((item) => ({ industryName: item.industryName, changePct: item.changePct }))
+  }
+  // 龙虎榜
+  signalLoaded.dt = true
+  if (dtRes.status === 'fulfilled' && dtRes.value) {
+    const raw = dtRes.value as any
+    if (raw && typeof raw.total === 'number') {
+      dtCount.value = raw.total
+    } else if (Array.isArray(raw)) {
+      dtCount.value = raw.length
+    } else {
+      dtCount.value = 0
     }
-    if (dtRes.status === 'fulfilled') {
-      const data = dtRes.value as DragonTigerDaily
-      dtCount.value = data.total || 0
-    }
-  } catch {
-    // 信号层数据非关键，静默失败
   }
 }
 
@@ -366,6 +464,15 @@ async function loadSectorData() {
         value: Number(d.stockCount) || 1,
         changePercent: Number(d.avgChangePct) || 0,
       }))
+      // 云图数据已加载，如果行业排行卡片为空则补充
+      if (industryTop.value.length === 0) {
+        const top3 = sectorData.value
+          .slice()
+          .sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))
+          .slice(0, 3)
+          .map((item) => ({ industryName: item.name, changePct: item.changePercent || 0 }))
+        if (top3.length > 0) industryTop.value = top3
+      }
       return
     }
   } catch (_e) { console.warn('[Home] loadSectorData failed:', _e) }
@@ -376,12 +483,15 @@ function onSectorClick(data: { name?: string }) {
   router.push({ path: `/sector/${encodeURIComponent(name)}` })
 }
 
-onMounted(() => {
-  loadIndices()
-  loadHotStocks()
-  loadSectorData()
-  loadMarketStats()
-  loadSignalData()
+onMounted(async () => {
+  await Promise.allSettled([
+    loadIndices(),
+    loadHotStocks(),
+    loadSectorData(),
+    loadMarketStats(),
+    loadSignalData(),
+  ])
+  homeLoaded.value = true
 })
 </script>
 
@@ -625,23 +735,55 @@ onMounted(() => {
 /* 信号层快捷卡片 */
 .signal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .signal-card {
-  cursor: pointer; border-radius: 12px; padding: 16px; display: flex; gap: 12px; align-items: flex-start;
+  cursor: pointer; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
   transition: all 0.2s; border: 1px solid rgba(255,255,255,0.06);
-  &:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
-  .card-icon { font-size: 24px; flex-shrink: 0; }
-  .card-body { flex: 1; min-width: 0; }
-  .card-title { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 6px; font-weight: 500; }
-  .card-value { font-size: 22px; font-weight: 700; margin-bottom: 4px;
-    small { font-size: 12px; font-weight: 400; opacity: 0.4; margin-left: 2px; } }
-  .card-detail { font-size: 12px; color: rgba(255,255,255,0.3); }
-  .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-  .card-ind-list { .ind-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0;
-    .ind-name { color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } } }
 }
+.signal-card:hover {
+  transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.signal-card .card-header {
+  display: flex; align-items: center; gap: 8px;
+}
+.signal-card .card-header .card-icon {
+  font-size: 20px; flex-shrink: 0;
+}
+.signal-card .card-header .card-title {
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.75);
+}
+.signal-card .card-body { flex: 1; min-width: 0; }
+.signal-card .card-value { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.signal-card .card-value small { font-size: 12px; font-weight: 400; opacity: 0.4; margin-left: 2px; }
+.signal-card .card-detail { font-size: 12px; color: rgba(255,255,255,0.3); }
+.signal-card .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.signal-card .card-ind-list .ind-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+.signal-card .card-ind-list .ind-row .ind-name { color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .signal-card-nb { background: linear-gradient(135deg, rgba(41,151,255,0.08), rgba(41,151,255,0.02)); }
 .signal-card-hot { background: linear-gradient(135deg, rgba(236,77,76,0.08), rgba(236,77,76,0.02)); }
 .signal-card-ind { background: linear-gradient(135deg, rgba(82,196,26,0.08), rgba(82,196,26,0.02)); }
 .signal-card-dt { background: linear-gradient(135deg, rgba(255,140,0,0.08), rgba(255,140,0,0.02)); }
 .hot-tag { background: rgba(236,77,76,0.12); color: #ec4d4c; border: 1px solid rgba(236,77,76,0.2);
   cursor: pointer; &:hover { background: rgba(236,77,76,0.2); } }
+
+/* ======== 骨架屏 ======== */
+.skeleton-bar .stat-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; }
+.skeleton-index-card {
+  flex-shrink: 0; width: 188px; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.skeleton-stock-card {
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 12px; padding: 16px 24px;
+}
+.card-value-skeleton { margin-bottom: 4px; }
+.card-empty { font-size: 13px; color: rgba(255,255,255,0.25); padding: 6px 0; }
+
+/* 移动端点击优化 */
+@media (hover: none) and (pointer: coarse) {
+  .signal-card {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
 </style>

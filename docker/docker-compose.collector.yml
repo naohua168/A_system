@@ -116,15 +116,20 @@ services:
       kafka:
         condition: service_healthy
     networks:
-      - collector-net    # 仅连接采集层网络，无法访问大数据层
+      - collector-net
+      - bigdata-net
     environment:
       # 采集配置
       - LOG_LEVEL=INFO
       - COLLECTOR_MODE=continuous
       # Kafka 连接（采集层内网地址）
       - KAFKA_BOOTSTRAP_SERVERS=collector-kafka:29092
-      # MySQL 配置（通过共享卷间接同步，不直连）
-      - MYSQL_DISABLED=true
+      # MySQL 配置（直连写入，确保前端数据实时同步）
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=hadoop123
+      - MYSQL_DB=stock_analysis
       # 输出配置
       - OUTPUT_CSV_DIR=/data/raw
       - OUTPUT_HDFS_DISABLED=true
@@ -173,9 +178,6 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/24
-    # 采集层容器无法访问 bigdata-net 内网
-
   # 大数据层网络（外部引用，由 docker-compose.yml 创建）
   bigdata-net:
     external: true
-    name: bigdata-net

@@ -72,9 +72,11 @@
     </div>
 
     <!-- K线图 -->
-    <div class="chart-main" ref="chartRef">
-      <div class="kline-chart" ref="klineChartRef"></div>
-      <div class="bottom-chart" ref="bottomChartRef"></div>
+    <div class="chart-main" ref="chartRef" v-loading="loading">
+      <template v-if="!loading">
+        <div class="kline-chart" ref="klineChartRef"></div>
+        <div class="bottom-chart" ref="bottomChartRef"></div>
+      </template>
     </div>
 
     <!-- 底部信息 -->
@@ -192,7 +194,14 @@
       <div class="section-header">
         <h4>成分股 ({{ constituents.length }})</h4>
       </div>
-      <div class="constituent-table">
+      <template v-if="loading">
+        <SkeletonLoader type="table" :rows="5" :col-widths="['25%','15%','15%','15%','15%']" padding="0" />
+      </template>
+      <template v-else-if="!constituents.length">
+        <EmptyState type="empty" title="暂无成分股数据" inline />
+      </template>
+      <template v-else>
+        <div class="constituent-table">
         <div class="table-header">
           <span>名称</span><span>代码</span><span>现价</span><span>涨跌幅</span><span>涨跌额</span>
         </div>
@@ -200,13 +209,14 @@
           class="table-row"
           @click="$router.push(`/stock/${s.code}`)"
         >
-          <span><strong>{{ s.name }}</strong></span>
-          <span class="caption">{{ s.code }}</span>
-          <span>{{ s.price.toFixed(2) }}</span>
-          <span :class="s.changePercent >= 0 ? 'text-rise' : 'text-fall'">{{ s.changePercent >= 0 ? '+' : '' }}{{ s.changePercent.toFixed(2) }}%</span>
-          <span :class="s.changePercent >= 0 ? 'text-rise' : 'text-fall'">{{ s.change >= 0 ? '+' : '' }}{{ s.change.toFixed(2) }}</span>
+          <span><strong>{{ s.name || '-' }}</strong></span>
+          <span class="caption">{{ s.code || '-' }}</span>
+          <span>{{ (Number(s.price) || 0).toFixed(2) }}</span>
+          <span :class="(s.changePercent || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (s.changePercent || 0) >= 0 ? '+' : '' }}{{ (Number(s.changePercent) || 0).toFixed(2) }}%</span>
+          <span :class="(s.changePercent || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (s.change || 0) >= 0 ? '+' : '' }}{{ (Number(s.change) || 0).toFixed(2) }}</span>
         </div>
       </div>
+      </template>
     </section>
   </div>
 
@@ -247,6 +257,8 @@ import { getSectorRanking } from '@/api/analysis'
 import { useTechnicalChart } from '@/composables/useTechnicalChart'
 import { useIndicatorParams } from '@/composables/useIndicatorParams'
 import { safeVal, parseTradeDate } from '@/utils/format'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const route = useRoute()
 const sectorName = decodeURIComponent(route.params.name as string)

@@ -30,11 +30,12 @@ export function useStockWebSocket(stockCode: Ref<string> | string) {
   const RECONNECT_DELAY = 3000
   const PING_INTERVAL = 25000
 
-  /** 构建 WS URL */
+  /** 构建 WS URL — 生产环境同域，开发环境通过环境变量指定后端地址 */
   function getWsUrl(code: string): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
-    return `${protocol}//${host}/ws/stock/${code}`
+    // 优先使用环境变量 VITE_WS_HOST（开发环境指向后端），否则使用当前页面 host
+    const wsHost = import.meta.env.VITE_WS_HOST || window.location.host
+    return `${protocol}//${wsHost}/ws/stock/${code}`
   }
 
   /** 发起连接 */

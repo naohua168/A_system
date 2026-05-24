@@ -112,7 +112,8 @@
             ROUND(d.close_price - d.pre_close, 2) AS `change`,
             d.volume,
             d.high_price AS highPrice,
-            d.low_price AS lowPrice
+            d.low_price AS lowPrice,
+            d.turnover_rate AS turnoverRate
         FROM stock s
         LEFT JOIN stock_daily d ON s.stock_code = d.stock_code
             AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)

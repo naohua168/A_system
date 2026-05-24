@@ -11,61 +11,100 @@
         <span class="date-sep">~</span>
         <el-date-picker v-model="endDate" type="date" placeholder="结束日期"
           value-format="YYYY-MM-DD" size="small" @change="fetchData" />
+        <el-button v-if="error" type="warning" size="small" @click="fetchData" :loading="loading">
+          重试
+        </el-button>
       </div>
     </div>
 
-    <div class="summary-cards">
-      <div class="card">
-        <div class="card-label">沪股通净流入</div>
-        <div class="card-value" :class="latestHgt >= 0 ? 'text-rise' : 'text-fall'">
-          {{ latestHgt >= 0 ? '+' : '' }}{{ latestHgt }}<span class="unit">亿</span>
+    <!-- 加载骨架 -->
+    <template v-if="loading">
+      <div class="summary-cards">
+        <div v-for="i in 3" :key="i" class="card skeleton-card">
+          <div class="skeleton-line skeleton-line--short" />
+          <div class="skeleton-line skeleton-line--long" style="height:28px;margin-top:8px" />
         </div>
       </div>
-      <div class="card">
-        <div class="card-label">深股通净流入</div>
-        <div class="card-value" :class="latestSgt >= 0 ? 'text-rise' : 'text-fall'">
-          {{ latestSgt >= 0 ? '+' : '' }}{{ latestSgt }}<span class="unit">亿</span>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-label">合计净流入</div>
-        <div class="card-value" :class="(latestHgt + latestSgt) >= 0 ? 'text-rise' : 'text-fall'">
-          {{ (latestHgt + latestSgt) >= 0 ? '+' : '' }}{{ (latestHgt + latestSgt).toFixed(2) }}<span class="unit">亿</span>
-        </div>
-      </div>
-    </div>
+      <div class="chart-container"><SkeletonLoader type="chart" /></div>
+      <SkeletonLoader type="table" :rows="5" />
+    </template>
 
-    <div class="chart-container">
-      <div ref="chartRef" class="chart"></div>
-    </div>
+    <!-- 错误状态 -->
+    <template v-else-if="error">
+      <EmptyState type="error" :title="error" description="检查网络连接后重试" size="lg">
+        <template #actions>
+          <el-button type="primary" size="small" @click="fetchData">重新加载</el-button>
+        </template>
+      </EmptyState>
+    </template>
 
-    <el-table v-loading="loading" :data="records" stripe style="width:100%">
-      <el-table-column prop="tradeDate" label="日期" width="120" />
-      <el-table-column prop="hgtYi" label="沪股通(亿)" width="150" align="right">
-        <template #default="{ row }">
-          <span :class="row.hgtYi >= 0 ? 'text-rise' : 'text-fall'">{{ row.hgtYi >= 0 ? '+' : '' }}{{ row.hgtYi }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="sgtYi" label="深股通(亿)" width="150" align="right">
-        <template #default="{ row }">
-          <span :class="row.sgtYi >= 0 ? 'text-rise' : 'text-fall'">{{ row.sgtYi >= 0 ? '+' : '' }}{{ row.sgtYi }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="合计(亿)" width="150" align="right">
-        <template #default="{ row }">
-          <span :class="(row.hgtYi + row.sgtYi) >= 0 ? 'text-rise' : 'text-fall'">
-            {{ (row.hgtYi + row.sgtYi) >= 0 ? '+' : '' }}{{ (row.hgtYi + row.sgtYi).toFixed(2) }}
-          </span>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- 空数据 -->
+    <template v-else-if="!records.length">
+      <EmptyState type="empty" title="暂无北向资金数据" size="lg" />
+    </template>
+
+    <!-- 正常数据 -->
+    <template v-else>
+      <div class="summary-cards">
+        <div class="card">
+          <div class="card-label">沪股通净流入</div>
+          <div class="card-value" :class="latestHgt >= 0 ? 'text-rise' : 'text-fall'">
+            {{ latestHgt >= 0 ? '+' : '' }}{{ safeNum(latestHgt, 2) }}<span class="unit">亿</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">深股通净流入</div>
+          <div class="card-value" :class="latestSgt >= 0 ? 'text-rise' : 'text-fall'">
+            {{ latestSgt >= 0 ? '+' : '' }}{{ safeNum(latestSgt, 2) }}<span class="unit">亿</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">合计净流入</div>
+          <div class="card-value" :class="(latestHgt + latestSgt) >= 0 ? 'text-rise' : 'text-fall'">
+            {{ (latestHgt + latestSgt) >= 0 ? '+' : '' }}{{ (latestHgt + latestSgt).toFixed(2) }}<span class="unit">亿</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <div ref="chartRef" class="chart"></div>
+      </div>
+
+      <el-table :data="records" stripe style="width:100%">
+        <el-table-column prop="tradeDate" label="日期" width="120" />
+        <el-table-column prop="hgtYi" label="沪股通(亿)" width="150" align="right">
+          <template #default="{ row }">
+            <span :class="(row.hgtYi || 0) >= 0 ? 'text-rise' : 'text-fall'">
+              {{ (row.hgtYi || 0) >= 0 ? '+' : '' }}{{ safeNum(row.hgtYi, 2) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sgtYi" label="深股通(亿)" width="150" align="right">
+          <template #default="{ row }">
+            <span :class="(row.sgtYi || 0) >= 0 ? 'text-rise' : 'text-fall'">
+              {{ (row.sgtYi || 0) >= 0 ? '+' : '' }}{{ safeNum(row.sgtYi, 2) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="合计(亿)" width="150" align="right">
+          <template #default="{ row }">
+            <span :class="(safeNum(row.hgtYi) + safeNum(row.sgtYi)) >= 0 ? 'text-rise' : 'text-fall'">
+              {{ (safeNum(row.hgtYi) + safeNum(row.sgtYi)) >= 0 ? '+' : '' }}{{ (safeNum(row.hgtYi) + safeNum(row.sgtYi)).toFixed(2) }}
+            </span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { getNorthboundLatest } from '@/api/signal'
 import * as echarts from 'echarts'
+import { useApiRetry, safeNum } from '@/composables/useApiRetry'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const loading = ref(false)
 const records = ref<any[]>([])
@@ -76,13 +115,16 @@ const startDate = ref(new Date(today.getFullYear(), today.getMonth() - 1, today.
 const endDate = ref(today.toISOString().slice(0, 10))
 const latestHgt = ref(0)
 const latestSgt = ref(0)
+const error = ref<string | null>(null)
 
 function renderChart(data: any[]) {
-  if (!chartRef.value) return
+  if (!chartRef.value || !data.length) return
   if (!chart) chart = echarts.init(chartRef.value)
-  const dates = data.map(d => d.tradeDate).reverse()
-  const hgt = data.map(d => d.hgtYi).reverse()
-  const sgt = data.map(d => d.sgtYi).reverse()
+  const safeData = data.filter(d => d && d.tradeDate)
+  if (!safeData.length) return
+  const dates = safeData.map(d => d.tradeDate).reverse()
+  const hgt = safeData.map(d => d.hgtYi || 0).reverse()
+  const sgt = safeData.map(d => d.sgtYi || 0).reverse()
   chart.setOption({
     tooltip: { trigger: 'axis' },
     legend: { data: ['沪股通', '深股通'], textStyle: { color: 'rgba(255,255,255,0.6)' } },
@@ -98,17 +140,20 @@ function renderChart(data: any[]) {
 
 async function fetchData() {
   loading.value = true
+  error.value = null
   try {
     const res = await getNorthboundLatest(60)
-    records.value = (res as any).data || res || []
-    if (records.value.length > 0) {
-      latestHgt.value = records.value[0].hgtYi
-      latestSgt.value = records.value[0].sgtYi
+    records.value = res || []
+    if (records.value.length > 0 && records.value[0]) {
+      latestHgt.value = safeNum(records.value[0].hgtYi)
+      latestSgt.value = safeNum(records.value[0].sgtYi)
     }
     await nextTick()
     renderChart(records.value)
-  } catch { records.value = [] }
-  finally { loading.value = false }
+  } catch (e: any) {
+    error.value = e?.message || '北向资金数据加载失败'
+    records.value = []
+  } finally { loading.value = false }
 }
 
 function handleResize() { chart?.resize() }

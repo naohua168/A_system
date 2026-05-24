@@ -6,7 +6,7 @@ import type { LayerInfo, LayerFlow } from '@/types'
 import request from './request'
 
 /** 后端基础路径 */
-const BASE = '/api/layers'
+const BASE = '/layers'
 
 /**
  * 获取全部层列表

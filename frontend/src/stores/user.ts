@@ -27,7 +27,10 @@ export const useUserStore = defineStore('user', () => {
       try {
         userInfo.value = await getUserInfo()
       } catch {
-        // ignore
+        // 后端返回错误（如 token 过期/无效），清除登录状态
+        token.value = null
+        userInfo.value = null
+        localStorage.removeItem('token')
       }
     }
   }

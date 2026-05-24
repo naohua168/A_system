@@ -7,4 +7,14 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
+
+onMounted(() => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    const userStore = useUserStore()
+    userStore.fetchUserInfo()
+  }
+})
 </script>

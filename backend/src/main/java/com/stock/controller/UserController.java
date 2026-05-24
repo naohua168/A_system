@@ -14,6 +14,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -69,17 +70,17 @@ public class UserController {
     // ==================== 用户信息 ====================
 
     @GetMapping("/info")
-    public ApiResponse getInfo() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof String username && !"anonymousUser".equals(username)) {
-            User user = userService.getById(
-                    ((Number) SecurityContextHolder.getContext().getAuthentication().getCredentials()).longValue());
-            if (user != null) {
-                user.setPassword(null);
-                return ApiResponse.ok(user);
-            }
+    public ApiResponse getInfo(HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            return ApiResponse.error("未登录");
         }
-        return ApiResponse.error("未登录");
+        User user = userService.getById(userId);
+        if (user != null) {
+            user.setPassword(null);
+            return ApiResponse.ok(user);
+        }
+        return ApiResponse.error("用户不存在");
     }
 
     @GetMapping("/{id}")
@@ -103,12 +104,11 @@ public class UserController {
     ) {}
 
     @PutMapping("/update")
-    public ApiResponse updateUser(@RequestBody @Valid UpdateUserRequest request) {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof String) || "anonymousUser".equals(principal)) {
+    public ApiResponse updateUser(HttpServletRequest servletRequest, @RequestBody @Valid UpdateUserRequest request) {
+        Long userId = (Long) servletRequest.getAttribute("userId");
+        if (userId == null) {
             return ApiResponse.error("未登录");
         }
-        Long userId = ((Number) SecurityContextHolder.getContext().getAuthentication().getCredentials()).longValue();
         User user = userService.getById(userId);
         if (user == null) {
             return ApiResponse.error("用户不存在");
@@ -135,12 +135,11 @@ public class UserController {
     ) {}
 
     @PostMapping("/change-password")
-    public ApiResponse changePassword(@RequestBody @Valid ChangePasswordRequest request) {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof String) || "anonymousUser".equals(principal)) {
+    public ApiResponse changePassword(HttpServletRequest servletRequest, @RequestBody @Valid ChangePasswordRequest request) {
+        Long userId = (Long) servletRequest.getAttribute("userId");
+        if (userId == null) {
             return ApiResponse.error("未登录");
         }
-        Long userId = ((Number) SecurityContextHolder.getContext().getAuthentication().getCredentials()).longValue();
         User user = userService.getById(userId);
         if (user == null) {
             return ApiResponse.error("用户不存在");

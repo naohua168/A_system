@@ -1,0 +1,112 @@
+# ============================================================
+# 安全层级配置 — 定义各角色的安全策略与权限边界
+# ============================================================
+
+global:
+  jwt_secret: ${JWT_SECRET:your-secret-key-change-in-production}
+  jwt_expiration_ms: 86400000   # 24小时
+  password_history_count: 5     # 密码历史记录数
+
+levels:
+  - id: USER
+    name: 普通用户
+    level: 1
+    description: 基础用户，可查看行情、使用AI对话
+    permissions:
+      - stock:list
+      - stock:detail
+      - market:list
+      - fund:list
+      - fund:detail
+      - index:list
+      - index:detail
+      - signal:list
+      - signal:detail
+      - info:list
+      - info:detail
+      - analysis:basic
+      - ai:chat
+      - watchlist:manage
+    password_policy:
+      min_length: 6
+      max_length: 32
+      require_uppercase: false
+      require_lowercase: true
+      require_digit: false
+      require_special: false
+      max_consecutive_repeat: 3
+      expiry_days: 90
+      history_count: 3
+
+  - id: PREMIUM_USER
+    name: 高级用户
+    level: 2
+    description: 可访问高级分析、量化策略
+    permissions:
+      - stock:*
+      - market:*
+      - fund:*
+      - index:*
+      - signal:*
+      - info:*
+      - analysis:*
+      - ai:*
+      - watchlist:manage
+      - strategy:backtest
+      - strategy:custom
+    password_policy:
+      min_length: 8
+      max_length: 64
+      require_uppercase: true
+      require_lowercase: true
+      require_digit: true
+      require_special: false
+      max_consecutive_repeat: 2
+      expiry_days: 60
+      history_count: 5
+
+  - id: ADMIN
+    name: 管理员
+    level: 3
+    description: 系统管理权限，可管理用户和配置
+    permissions:
+      - "*:*"
+    password_policy:
+      min_length: 10
+      max_length: 128
+      require_uppercase: true
+      require_lowercase: true
+      require_digit: true
+      require_special: true
+      max_consecutive_repeat: 2
+      expiry_days: 30
+      history_count: 5
+    login_policy:
+      max_retry: 5
+      lockout_minutes: 30
+      session_timeout_minutes: 120
+      max_sessions: 3
+      require_mfa: true
+
+  - id: SUPER_ADMIN
+    name: 超级管理员
+    level: 4
+    description: 最高权限，可访问所有系统功能
+    permissions:
+      - "*:*"
+    password_policy:
+      min_length: 12
+      max_length: 128
+      require_uppercase: true
+      require_lowercase: true
+      require_digit: true
+      require_special: true
+      max_consecutive_repeat: 1
+      expiry_days: 30
+      history_count: 10
+    login_policy:
+      max_retry: 3
+      lockout_minutes: 60
+      session_timeout_minutes: 60
+      max_sessions: 2
+      require_mfa: true

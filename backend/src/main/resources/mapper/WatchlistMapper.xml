@@ -26,7 +26,7 @@
         LEFT JOIN stock_daily d ON w.asset_code = d.stock_code
             AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
         WHERE w.user_id = #{userId}
-          AND w.asset_type = 1
+          AND w.asset_type = 0
         ORDER BY w.sort_order ASC, w.created_at ASC
     </select>
 
@@ -58,7 +58,7 @@
             )
         ) fn ON w.asset_code = fn.fund_code
         WHERE w.user_id = #{userId}
-          AND w.asset_type = 2
+          AND w.asset_type = 1
         ORDER BY w.sort_order ASC, w.created_at ASC
     </select>
 
@@ -72,21 +72,21 @@
             w.remark,
             w.sort_order AS sortOrder,
             CASE w.asset_type
-                WHEN 1 THEN s.stock_name
-                WHEN 2 THEN f.fund_name
+                WHEN 0 THEN s.stock_name
+                WHEN 1 THEN f.fund_name
             END AS assetName,
             CASE w.asset_type
-                WHEN 1 THEN s.industry
+                WHEN 0 THEN s.industry
                 ELSE f.fund_type
             END AS assetCategory,
             CASE w.asset_type
-                WHEN 1 THEN CAST(d.close_price AS CHAR)
+                WHEN 0 THEN CAST(d.close_price AS CHAR)
                 ELSE CAST(fn.nav AS CHAR)
             END AS currentPrice
         FROM watchlist w
-        LEFT JOIN stock s ON w.asset_type = 1 AND w.asset_code = s.stock_code
-        LEFT JOIN fund f ON w.asset_type = 2 AND w.asset_code = f.fund_code
-        LEFT JOIN stock_daily d ON w.asset_type = 1 AND w.asset_code = d.stock_code
+        LEFT JOIN stock s ON w.asset_type = 0 AND w.asset_code = s.stock_code
+        LEFT JOIN fund f ON w.asset_type = 1 AND w.asset_code = f.fund_code
+        LEFT JOIN stock_daily d ON w.asset_type = 0 AND w.asset_code = d.stock_code
             AND d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
         LEFT JOIN (
             SELECT fn1.*
@@ -96,7 +96,7 @@
                 FROM fund_nav fn2
                 WHERE fn2.fund_code = fn1.fund_code
             )
-        ) fn ON w.asset_type = 2 AND w.asset_code = fn.fund_code
+        ) fn ON w.asset_type = 1 AND w.asset_code = fn.fund_code
         WHERE w.user_id = #{userId}
         ORDER BY w.asset_type ASC, w.sort_order ASC, w.created_at ASC
     </select>

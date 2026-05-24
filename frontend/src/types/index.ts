@@ -74,6 +74,7 @@ export interface StockListItem {
   highPrice?: number
   lowPrice?: number
   pe?: number
+  turnoverRate?: number
 }
 
 export interface StockDetail extends Stock {

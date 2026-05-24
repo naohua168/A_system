@@ -9,6 +9,7 @@ import io.jsonwebtoken.Claims;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,6 +30,9 @@ public class JwtFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired(required = false)
+    private StringRedisTemplate redisTemplate;
 
     /** 白名单路径 — 无需认证即可访问 */
     private static final List<String> WHITE_LIST = Arrays.asList(
@@ -61,6 +65,15 @@ public class JwtFilter extends OncePerRequestFilter {
                 // 修复: 只解析 JWT 一次，提取所有 Claims 后复用
                 // 原代码每次请求解析 JWT 四次 (isTokenExpired/getUserId/getUsername/getUserRole)
                 io.jsonwebtoken.Claims claims = jwtUtil.validateToken(token);
+
+                // 检查 Redis 黑名单（登出的 token 立即失效）
+                if (redisTemplate != null && Boolean.TRUE.equals(
+                        redisTemplate.hasKey("blacklist:" + token))) {
+                    SecurityContextHolder.clearContext();
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
                 Long userId = Long.parseLong(claims.getSubject());
                 String username = claims.get("username", String.class);
                 String roleStr = claims.get("role", String.class);

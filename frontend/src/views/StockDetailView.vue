@@ -202,7 +202,10 @@
     <div class="signal-section">
       <el-tabs v-model="signalTab" class="signal-tabs">
         <el-tab-pane label="资金流向" name="flow">
-          <div v-if="!flowData.length" class="signal-empty">暂无资金流向数据，请先运行数据采集</div>
+          <template v-if="signalLoading">
+            <SkeletonLoader type="table" :rows="3" :col-widths="['14%','12%','12%','16%','12%','12%','12%']" />
+          </template>
+          <div v-else-if="!flowData.length" class="signal-empty">暂无资金流向数据，请先运行数据采集</div>
           <el-table v-else :data="flowData" size="small" stripe style="width:100%">
             <el-table-column prop="date" label="日期" width="100" />
             <el-table-column prop="close" label="收盘价" width="90" align="right" />
@@ -218,7 +221,10 @@
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="龙虎榜" name="dt">
-          <div v-if="!dtData.length" class="signal-empty">暂无龙虎榜数据</div>
+          <template v-if="signalLoading">
+            <SkeletonLoader type="table" :rows="3" :col-widths="['14%','26%','16%','12%']" />
+          </template>
+          <div v-else-if="!dtData.length" class="signal-empty">暂无龙虎榜数据</div>
           <el-table v-else :data="dtData" size="small" stripe style="width:100%" @row-click="dtStock = $event; dtVisible = true">
             <el-table-column prop="tradeDate" label="日期" width="100" />
             <el-table-column prop="reason" label="上榜原因" min-width="180" show-overflow-tooltip />
@@ -231,7 +237,10 @@
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="限售解禁" name="lockup">
-          <div v-if="!lockupData.length" class="signal-empty">暂无解禁数据</div>
+          <template v-if="signalLoading">
+            <SkeletonLoader type="table" :rows="3" :col-widths="['16%','20%','18%','16%','12%']" />
+          </template>
+          <div v-else-if="!lockupData.length" class="signal-empty">暂无解禁数据</div>
           <el-table v-else :data="lockupData" size="small" stripe style="width:100%">
             <el-table-column prop="lockupDate" label="解禁日期" width="110" />
             <el-table-column prop="lockupType" label="类型" min-width="140" show-overflow-tooltip />
@@ -245,7 +254,10 @@
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="财务指标" name="financial">
-          <div v-if="!financialData.length" class="signal-empty">暂无财务数据</div>
+          <template v-if="signalLoading">
+            <SkeletonLoader type="card" :rows="2" :cols="4" />
+          </template>
+          <div v-else-if="!financialData.length" class="signal-empty">暂无财务数据</div>
           <div v-else class="financial-grid">
             <div v-for="f in financialData" :key="f.label" class="fi-card">
               <div class="fi-label">{{ f.label }}</div>
@@ -334,6 +346,8 @@ import { useWatchlistStore } from '@/stores/watchlist'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { safeNum, safeVal, formatVol, parseTradeDate } from '@/utils/format'
+import { safeNum as safeNumVal, safeStr } from '@/composables/useApiRetry'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import { getChanlunAnalysis } from '@/api/analysis'
 import type { ChanlunBi, ChanlunZhongshu, ChanlunFengxing } from '@/types'
 import { useTechnicalChart } from '@/composables/useTechnicalChart'
@@ -437,6 +451,7 @@ import type { FundFlowRow, DragonTigerStockRow, LockupDisplayRow, FinancialMetri
 
 /** 信号层数据（资金流向/龙虎榜/解禁/财务） */
 const signalTab = ref('flow')
+const signalLoading = ref(true)
 const flowData = ref<FundFlowRow[]>([])
 const dtData = ref<DragonTigerStockRow[]>([])
 const lockupData = ref<LockupDisplayRow[]>([])
@@ -454,30 +469,41 @@ function formatShares(shares: number): string {
 
 /** 加载个股信号层数据（资金流向+龙虎榜+解禁+财务） */
 async function loadSignalData(code: string) {
+  signalLoading.value = true
   try {
     const [flowRes, dtRes, lockRes] = await Promise.allSettled([
-      getFundFlow(code, 20),
-      getDragonTigerByStock(code),
-      getLockupByStock(code),
+      getFundFlow(code, 20).catch(() => []),
+      getDragonTigerByStock(code).catch(() => []),
+      getLockupByStock(code).catch(() => []),
     ])
     if (flowRes.status === 'fulfilled' && Array.isArray(flowRes.value)) {
       flowData.value = flowRes.value.map((item) => ({
-        date: item.tradeDate,
-        close: item.close,
-        changePct: 0, // 后端未直接返回，由前端从 K 线关联
-        mainIn: Number(item.mainIn) || 0,
-        superNetIn: Number(item.superNetIn) || 0,
+        date: safeStr(item.tradeDate),
+        close: safeNum(item.close, 2),
+        changePct: safeNum(item.changePct, 2),
+        mainIn: safeNum(item.mainIn),
+        superNetIn: safeNum(item.superNetIn),
+        largeNetIn: safeNum(item.largeNetIn),
+        littleNetIn: safeNum(item.littleNetIn),
       }))
     }
-    if (dtRes.status === 'fulfilled') {
-      dtData.value = dtRes.value as DragonTigerStockRow[]
+    if (dtRes.status === 'fulfilled' && Array.isArray(dtRes.value)) {
+      dtData.value = dtRes.value.map((item) => ({
+        ...item,
+        netBuyWan: safeNum(item.netBuyWan, 2),
+        changePct: safeNum(item.changePct, 2),
+      })) as DragonTigerStockRow[]
     }
-    if (lockRes.status === 'fulfilled') {
-      lockupData.value = lockRes.value as LockupDisplayRow[]
+    if (lockRes.status === 'fulfilled' && Array.isArray(lockRes.value)) {
+      lockupData.value = lockRes.value.map((item) => ({
+        ...item,
+        shares: safeNum(item.shares),
+        floatRatio: safeNum(item.floatRatio, 2),
+      })) as LockupDisplayRow[]
     }
   } catch {
     console.warn('[StockDetail] loadSignalData failed')
-  }
+  } finally { signalLoading.value = false }
 }
 
 import type { ChanlunBuySellPoint, ChanlunStats } from '@/types'

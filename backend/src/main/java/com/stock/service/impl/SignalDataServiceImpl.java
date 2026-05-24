@@ -72,25 +72,25 @@ public class SignalDataServiceImpl implements SignalDataService {
     @Cacheable(key = "'dragonTigerDaily:' + #date", unless = "#result == null")
     public Map<String, Object> getDragonTigerDaily(String date) {
         String targetDate = (date != null) ? date : LocalDate.now().toString();
-        List<SignalDragonTiger> list = dragonTigerMapper.selectDailyByDate(targetDate);
+        List<SignalDragonTigerDetail> list = dragonTigerDetailMapper.selectByDate(targetDate);
         return Map.of("date", targetDate, "records", list, "total", list.size());
     }
 
     @Override
     @Cacheable(key = "'dragonTigerByStock:' + #code", unless = "#result == null || #result.isEmpty()")
-    public List<SignalDragonTiger> getDragonTigerByStock(String code) {
-        return dragonTigerMapper.selectByStock(code);
+    public List<SignalDragonTigerDetail> getDragonTigerByStock(String code) {
+        return dragonTigerDetailMapper.selectByStock(code);
     }
 
     @Override
-    public SignalDragonTiger getDragonTigerDetail(String date, String code) {
-        return dragonTigerMapper.selectByDateAndStock(date, code);
+    public SignalDragonTigerDetail getDragonTigerDetail(String date, String code) {
+        return dragonTigerDetailMapper.selectByDateAndStock(date, code);
     }
 
     @Override
     @Cacheable(key = "'dragonTigerDates'", unless = "#result == null || #result.isEmpty()")
     public List<String> getDragonTigerDates() {
-        return dragonTigerMapper.selectAvailableDates();
+        return dragonTigerDetailMapper.selectAvailableDates();
     }
 
     @Override
@@ -113,20 +113,20 @@ public class SignalDataServiceImpl implements SignalDataService {
 
     @Override
     @Cacheable(key = "'lockupByStock:' + #code", unless = "#result == null || #result.isEmpty()")
-    public List<SignalLockup> getLockupByStock(String code) {
-        return lockupMapper.selectByStock(code);
+    public List<SignalLockupDetail> getLockupByStock(String code) {
+        return lockupDetailMapper.selectByStock(code);
     }
 
     @Override
     @Cacheable(key = "'lockupUpcoming'", unless = "#result == null || #result.isEmpty()")
-    public List<SignalLockup> getUpcomingLockup() {
-        return lockupMapper.selectUpcoming();
+    public List<SignalLockupDetail> getUpcomingLockup() {
+        return lockupDetailMapper.selectUpcoming(30);
     }
 
     @Override
     @Cacheable(key = "'lockupHistory'", unless = "#result == null || #result.isEmpty()")
-    public List<SignalLockup> getLockupHistory() {
-        return lockupMapper.selectHistory();
+    public List<SignalLockupDetail> getLockupHistory() {
+        return lockupDetailMapper.selectByTag("history", 30);
     }
 
     @Override

@@ -11,53 +11,88 @@
           <el-radio-button value="history">历史已解禁</el-radio-button>
           <el-radio-button value="search">个股查询</el-radio-button>
         </el-radio-group>
+        <el-button v-if="error && tab !== 'search'" type="warning" size="small" @click="fetchData" :loading="loading">
+          重试
+        </el-button>
       </div>
     </div>
 
     <!-- 搜索模式 -->
     <div v-if="tab === 'search'" class="search-bar">
-      <el-input v-model="searchCode" placeholder="输入股票代码查询" size="small" style="width:200px;margin-right:8px" />
+      <el-input v-model="searchCode" placeholder="输入股票代码查询" size="small" style="width:200px;margin-right:8px"
+        @keyup.enter="searchStock" />
       <el-button type="primary" size="small" @click="searchStock" :loading="searchLoading">查询</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="records" stripe style="width:100%">
-      <el-table-column prop="stockCode" label="代码" width="100">
-        <template #default="{ row }">
-          <span class="stock-code" @click="$router.push(`/stock/${row.stockCode}`)">{{ row.stockCode }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="lockupDate" label="解禁日期" width="120" sortable />
-      <el-table-column prop="lockupType" label="限售股类型" min-width="160" show-overflow-tooltip />
-      <el-table-column prop="shares" label="解禁数量" width="140" align="right">
-        <template #default="{ row }">{{ formatShares(row.shares) }}</template>
-      </el-table-column>
-      <el-table-column prop="floatRatio" label="占流通股%" width="120" align="right">
-        <template #default="{ row }">{{ row.floatRatio }}%</template>
-      </el-table-column>
-      <el-table-column label="状态" width="100" align="center">
-        <template #default="{ row }">
-          <el-tag :type="row.isUpcoming ? 'warning' : 'info'" size="small">
-            {{ row.isUpcoming ? '待解禁' : '已解禁' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- 加载骨架 -->
+    <template v-if="loading && tab !== 'search'">
+      <SkeletonLoader type="table" :rows="8" :col-widths="['10%','14%','24%','14%','12%','10%']" />
+    </template>
 
-    <div class="stats-bar">
-      <span>共 <strong>{{ records.length }}</strong> 条解禁记录</span>
-    </div>
+    <!-- 错误状态 -->
+    <template v-else-if="error">
+      <EmptyState type="error" :title="error" description="检查网络后重试" size="lg">
+        <template #actions>
+          <el-button type="primary" size="small" @click="fetchData">重新加载</el-button>
+        </template>
+      </EmptyState>
+    </template>
+
+    <!-- 空数据 -->
+    <template v-else-if="!records.length">
+      <EmptyState type="empty" :title="tab === 'search' ? '未找到该股票的解禁数据' : '暂无解禁记录'" size="lg">
+        <template v-if="tab !== 'search'" #actions>
+          <el-button size="small" @click="tab = 'search'">搜索个股解禁</el-button>
+        </template>
+      </EmptyState>
+    </template>
+
+    <!-- 正常数据 -->
+    <template v-else>
+      <el-table :data="records" stripe style="width:100%">
+        <el-table-column prop="stockCode" label="代码" width="100">
+          <template #default="{ row }">
+            <span class="stock-code" @click="$router.push(`/stock/${row.stockCode}`)">{{ safeStr(row.stockCode) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="lockupDate" label="解禁日期" width="120" sortable />
+        <el-table-column prop="lockupType" label="限售股类型" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="shares" label="解禁数量" width="140" align="right">
+          <template #default="{ row }">{{ formatShares(row.shares) }}</template>
+        </el-table-column>
+        <el-table-column prop="floatRatio" label="占流通股%" width="120" align="right">
+          <template #default="{ row }">{{ safeStr(row.floatRatio) }}%</template>
+        </el-table-column>
+        <el-table-column label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="(row.typeTag === 'upcoming') ? 'warning' : 'info'" size="small">
+              {{ row.typeTag === 'upcoming' ? '待解禁' : '已解禁' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="stats-bar">
+        <span>共 <strong>{{ records.length }}</strong> 条解禁记录</span>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getUpcomingLockup, getLockupByStock } from '@/api/signal'
+import { safeStr } from '@/composables/useApiRetry'
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { ElMessage } from 'element-plus'
 
 const tab = ref('upcoming')
 const loading = ref(false)
 const searchLoading = ref(false)
 const searchCode = ref('')
 const records = ref<any[]>([])
+const error = ref<string | null>(null)
 
 function formatShares(shares: number) {
   if (!shares) return '-'
@@ -69,25 +104,40 @@ function formatShares(shares: number) {
 
 async function fetchData() {
   loading.value = true
+  error.value = null
   try {
     let res: any
     if (tab.value === 'upcoming') res = await getUpcomingLockup()
     else if (tab.value === 'history') res = await getUpcomingLockup()
-    records.value = res.data || []
-  } catch { records.value = [] }
-  finally { loading.value = false }
+    records.value = Array.isArray(res) ? res : []
+  } catch (e: any) {
+    error.value = e?.message || '解禁数据加载失败'
+    records.value = []
+  } finally { loading.value = false }
 }
 
 async function searchStock() {
-  if (!searchCode.value.trim()) return
+  if (!searchCode.value.trim()) {
+    ElMessage.warning('请输入股票代码')
+    return
+  }
   searchLoading.value = true
+  error.value = null
   try {
     const res = await getLockupByStock(searchCode.value.trim())
-// @ts-ignore - response data wrapper
-    records.value = res.data || []
-  } catch { records.value = [] }
-  finally { searchLoading.value = false }
+    records.value = Array.isArray(res) ? res : []
+  } catch (e: any) {
+    if (records.value.length === 0) {
+      error.value = e?.message || '查询失败'
+    }
+    records.value = []
+  } finally { searchLoading.value = false }
 }
+
+// tab 切换时自动加载
+watch(tab, () => {
+  if (tab.value !== 'search') fetchData()
+})
 
 onMounted(fetchData)
 </script>

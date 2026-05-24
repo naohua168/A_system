@@ -17,6 +17,9 @@ public interface SignalDragonTigerDetailMapper extends BaseMapper<SignalDragonTi
     @Select("SELECT * FROM signal_dragon_tiger_detail WHERE stock_code = #{code} ORDER BY trade_date DESC")
     List<SignalDragonTigerDetail> selectByStock(@Param("code") String code);
 
+    @Select("SELECT * FROM signal_dragon_tiger_detail WHERE trade_date = #{date} AND stock_code = #{code} LIMIT 1")
+    SignalDragonTigerDetail selectByDateAndStock(@Param("date") String date, @Param("code") String code);
+
     @Select("SELECT DISTINCT trade_date FROM signal_dragon_tiger_detail ORDER BY trade_date DESC LIMIT 10")
     List<String> selectAvailableDates();
 }

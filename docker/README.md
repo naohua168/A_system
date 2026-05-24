@@ -17,7 +17,7 @@
 | **Spark Master** | apache/spark:3.5.0 | 8080 | 7077 | ✅ |
 | **Spark Worker** | apache/spark:3.5.0 | 8081 | - | ✅ |
 | **Prometheus** | prom/prometheus:v2.51.0 | 9090 | - | ✅ |
-| **Grafana** | grafana/grafana:10.4.2 | 3000 | - | ✅ |
+| **Grafana** | grafana/grafana:10.4.2 | 3001 | - | ✅ |
 
 ## 应用服务（本地构建）
 
@@ -57,7 +57,7 @@ docker compose build
 | Spark Master | http://localhost:8080 |
 | Spark Worker | http://localhost:8081 |
 | Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000（admin/admin） |
+| Grafana | http://localhost:3001（admin/admin） |
 
 ## 验证命令
 
@@ -182,7 +182,7 @@ docker compose down -v
 | 8081 | 8081 | Spark Worker |
 | 7077 | 7077 | Spark RPC |
 | 9090 | 9090 | Prometheus |
-| 3000 | 3000 | Grafana |
+| 3001 | 3000 | Grafana |
 
 ## 数据目录
 
@@ -312,7 +312,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f ai-servic
 
 | 服务 | URL | 说明 |
 |:-----|:----|:-----|
-| 前端 (Vite HMR) | http://localhost:3000 | 修改代码即时刷新 |
+| 前端 (Vite HMR) | http://localhost:5173 | 修改代码即时刷新 |
 | 后端 API | http://localhost:8082/api/stock/list?page=1&size=5 | REST API |
 | 后端 Swagger | http://localhost:8082/swagger-ui/index.html | API 文档 |
 | AI 服务 | http://localhost:8000/health | FastAPI 健康检查 |

@@ -16,8 +16,8 @@ public interface SignalDataService {
 
     // ==================== 龙虎榜 ====================
     Map<String, Object> getDragonTigerDaily(String date);
-    List<SignalDragonTiger> getDragonTigerByStock(String code);
-    SignalDragonTiger getDragonTigerDetail(String date, String code);
+    List<SignalDragonTigerDetail> getDragonTigerByStock(String code);
+    SignalDragonTigerDetail getDragonTigerDetail(String date, String code);
     List<String> getDragonTigerDates();
 
     // ==================== 北向资金 ====================
@@ -26,9 +26,9 @@ public interface SignalDataService {
     List<String> getNorthboundDates();
 
     // ==================== 限售解禁 ====================
-    List<SignalLockup> getLockupByStock(String code);
-    List<SignalLockup> getUpcomingLockup();
-    List<SignalLockup> getLockupHistory();
+    List<SignalLockupDetail> getLockupByStock(String code);
+    List<SignalLockupDetail> getUpcomingLockup();
+    List<SignalLockupDetail> getLockupHistory();
 
     // ==================== 行业排行 ====================
     Map<String, Object> getIndustryCompare(String date);

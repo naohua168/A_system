@@ -4,6 +4,7 @@ import com.stock.entity.Watchlist;
 import com.stock.service.WatchlistService;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Positive;
 import org.slf4j.Logger;
@@ -30,14 +31,14 @@ public class WatchlistController {
     public record AddRequest(
             @NotNull @Positive Long userId,
             @NotBlank String assetCode,
-            @NotNull @Positive Integer assetType
+            @NotNull @Min(0) Integer assetType
     ) {}
 
     /** 自选删除请求 DTO */
     public record RemoveRequest(
             @NotNull @Positive Long userId,
             @NotBlank String assetCode,
-            @NotNull @Positive Integer assetType
+            @NotNull @Min(0) Integer assetType
     ) {}
 
     /** 自选更新请求 DTO（新增） */

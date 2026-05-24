@@ -70,7 +70,8 @@ SYNC_RULES = [
         "prefix": "kline_",
         "table": "stock_daily",
         "columns": ["stock_code", "trade_date", "open_price", "close_price",
-                     "high_price", "low_price", "volume", "amount", "change_percent"],
+                     "high_price", "low_price", "pre_close", "volume", "amount",
+                     "change_percent", "turnover_rate"],
         "mapper": lambda df, fname: _map_kline(df, fname),
     },
     # K线周K/月K（从日K聚合生成的CSV）
@@ -159,6 +160,34 @@ SYNC_RULES = [
         "columns": ["trade_date", "rank_num", "industry_name", "change_pct",
                      "turnover_yi", "net_inflow_yi", "up_count", "down_count", "leader"],
         "mapper": lambda df, fname: _map_industry(df, fname),
+    },
+    # ==================== 信号层扩展（原 JSON-only 数据类型迁移到 MySQL） ====================
+    {
+        "prefix": "dragon_tiger_detail_",
+        "table": "signal_dragon_tiger_detail",
+        "columns": ["trade_date", "stock_code", "stock_name", "reason", "close",
+                     "change_pct", "net_buy_wan", "buy_wan", "sell_wan", "turnover_pct", "source"],
+        "mapper": lambda df, fname: _map_dragon_tiger_detail(df, fname),
+    },
+    {
+        "prefix": "fund_flow_",
+        "table": "signal_fund_flow",
+        "columns": ["stock_code", "trade_date", "close", "change_pct",
+                     "super_net_in", "large_net_in", "medium_net_in", "little_net_in", "main_in"],
+        "mapper": lambda df, fname: _map_fund_flow(df, fname),
+    },
+    {
+        "prefix": "concept_blocks_",
+        "table": "signal_concept_block",
+        "columns": ["stock_code", "block_type", "block_name", "change_pct"],
+        "mapper": lambda df, fname: _map_concept_block(df, fname),
+    },
+    {
+        "prefix": "lockup_",
+        "table": "signal_lockup_detail",
+        "columns": ["stock_code", "lockup_date", "lockup_type", "shares",
+                     "float_ratio", "ratio", "type_tag", "source"],
+        "mapper": lambda df, fname: _map_lockup(df, fname),
     },
 ]
 
@@ -278,6 +307,8 @@ def _map_kline(df: pd.DataFrame, fname: str) -> pd.DataFrame:
             "volume": int(row.get("volume", 0)),
             "amount": float(row.get("amount", 0)),
             "change_percent": float(row.get("change_pct", 0)),
+            "pre_close": float(row.get("pre_close", 0)),
+            "turnover_rate": float(row.get("turnover_rate", row.get("turnover_pct", 0))),
         }
     if _validate_kline_row(record):
         records.append(record)
@@ -391,6 +422,84 @@ def _map_industry(df: pd.DataFrame, fname: str) -> pd.DataFrame:
             "up_count": int(row.get("up_count", 0)),
             "down_count": int(row.get("down_count", 0)),
             "leader": str(row.get("leader", "")),
+        })
+    return pd.DataFrame(records)
+
+
+# ============================================================
+# 信号层扩展映射函数（原 JSON-only 数据类型迁移到 MySQL）
+# ============================================================
+
+def _map_dragon_tiger_detail(df: pd.DataFrame, fname: str) -> pd.DataFrame:
+    """龙虎榜明细 → signal_dragon_tiger_detail 表格式"""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "trade_date": str(row.get("trade_date", row.get("date", ""))).replace("-", ""),
+            "stock_code": str(row.get("code", row.get("stock_code", ""))),
+            "stock_name": str(row.get("name", row.get("stock_name", ""))),
+            "reason": str(row.get("reason", "")),
+            "close": float(row.get("close", 0)),
+            "change_pct": float(row.get("change_pct", 0)),
+            "net_buy_wan": float(row.get("net_buy_wan", 0)),
+            "buy_wan": float(row.get("buy_wan", 0)),
+            "sell_wan": float(row.get("sell_wan", 0)),
+            "turnover_pct": float(row.get("turnover_pct", 0)),
+            "source": str(row.get("source", "akshare")),
+        })
+    return pd.DataFrame(records)
+
+
+def _map_fund_flow(df: pd.DataFrame, fname: str) -> pd.DataFrame:
+    """个股资金流向 → signal_fund_flow 表格式"""
+    code_match = re.search(r"fund_flow_(\w+)_", fname)
+    stock_code = code_match.group(1) if code_match else ""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "stock_code": stock_code or str(row.get("code", row.get("stock_code", ""))),
+            "trade_date": str(row.get("date", row.get("trade_date", "")))[:10].replace("-", ""),
+            "close": float(row.get("close", 0)),
+            "change_pct": str(row.get("change_pct", "0")),
+            "super_net_in": str(row.get("super_net_in", row.get("super", ""))),
+            "large_net_in": str(row.get("large_net_in", row.get("large", ""))),
+            "medium_net_in": str(row.get("medium_net_in", row.get("medium", ""))),
+            "little_net_in": str(row.get("little_net_in", row.get("little", ""))),
+            "main_in": str(row.get("main_in", row.get("main", ""))),
+        })
+    return pd.DataFrame(records)
+
+
+def _map_concept_block(df: pd.DataFrame, fname: str) -> pd.DataFrame:
+    """概念板块归属 → signal_concept_block 表格式"""
+    code_match = re.search(r"concept_blocks_(\w+)_", fname)
+    stock_code = code_match.group(1) if code_match else ""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "stock_code": stock_code or str(row.get("code", row.get("stock_code", ""))),
+            "block_type": str(row.get("type", row.get("block_type", "concept"))),
+            "block_name": str(row.get("name", row.get("block_name", ""))),
+            "change_pct": str(row.get("change_pct", row.get("pct", ""))),
+        })
+    return pd.DataFrame(records)
+
+
+def _map_lockup(df: pd.DataFrame, fname: str) -> pd.DataFrame:
+    """限售解禁明细 → signal_lockup_detail 表格式"""
+    code_match = re.search(r"lockup_(\w+)_", fname)
+    stock_code = code_match.group(1) if code_match else ""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "stock_code": stock_code or str(row.get("code", row.get("stock_code", ""))),
+            "lockup_date": str(row.get("date", row.get("lockup_date", "")))[:10].replace("-", ""),
+            "lockup_type": str(row.get("type", row.get("lockup_type", ""))),
+            "shares": float(row.get("shares", 0)),
+            "float_ratio": str(row.get("float_ratio", row.get("ratio", ""))),
+            "ratio": str(row.get("ratio", "")),
+            "type_tag": str(row.get("tag", row.get("type_tag", "history"))),
+            "source": str(row.get("source", "akshare")),
         })
     return pd.DataFrame(records)
 

@@ -98,7 +98,7 @@ public class LayerController {
 
             layer("L4", "后端 API 服务层", "backend/",
                 "系统的业务中枢。Spring Boot RESTful API，12 大业务模块。",
-                "Java 17, Spring Boot 3.x, MyBatis-Plus, Redis, JWT",
+                "Java 17, Spring Boot 2.7.x, MyBatis-Plus, Redis, JWT",
                 "completed", 90, 130, 13, 16, List.of(
                     module("行情 API", "completed", "MarketController — 10 个端点"),
                     module("基金 API", "completed", "FundController — 列表/详情/净值/持仓"),
