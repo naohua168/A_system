@@ -1,6 +1,5 @@
 package com.stock.service.impl;
 
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.stock.entity.AnalysisResult;
 import com.stock.entity.StockDaily;
 import com.stock.mapper.AnalysisResultMapper;

@@ -164,48 +164,71 @@ class AkshareExtendedCollector(BaseCollector):
         return {"date": actual_date, "total_records": len(stocks), "stocks": stocks}
 
     # ==========================================================
-    # 限售解禁日历
+    # 限售解禁日历（东财 datacenter API 直调，绕过akshare解析bug）
     # ==========================================================
 
     def fetch_lockup_expiry(self, code: str, trade_date: str = None,
                              forward_days: int = 90) -> dict:
         """限售解禁日历
 
+        使用东财 datacenter API 直调（替代不稳定的 akshare）
+
         返回: {history: [{date, type, shares, ratio}],
                upcoming: [{date, type, shares, float_ratio}]}
         """
         if not trade_date:
             trade_date = datetime.now().strftime("%Y-%m-%d")
+
+        def _parse_row(row):
+            """统一解析东财解禁API返回的行"""
+            return {
+                "date": str(row.get("FREE_DATE", ""))[:10],
+                "type": row.get("FREE_SHARES_TYPE", row.get("LIMITED_RELEASE_TYPE_NAME", "")),
+                "shares": row.get("CURRENT_FREE_SHARES", row.get("FREE_SHARES_NUM", 0)),
+                "ratio": row.get("B20_ADJCHRATE", row.get("FREE_RATIO", 0)),
+            }
+
         history = []
         try:
-            df = self.ak.stock_restricted_release_queue_em(symbol=code)
-            if not df.empty:
-                for _, row in df.head(15).iterrows():
-                    history.append({
-                        "date": str(row.get("解禁时间", "")),
-                        "type": row.get("限售股类型", ""),
-                        "shares": row.get("解禁数量", 0),
-                        "ratio": row.get("实际解禁市值占总市值比例", 0),
-                    })
+            url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+            params = {
+                "reportName": "RPT_LIFT_STAGE",
+                "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{code}")',
+                "pageNumber": "1", "pageSize": "15",
+                "sortColumns": "FREE_DATE", "sortTypes": "-1",
+                "source": "WEB", "client": "WEB",
+            }
+            r = self._session.get(url, params=params, timeout=15)
+            d = r.json()
+            if d.get("result") and d["result"].get("data"):
+                for row in d["result"]["data"]:
+                    history.append(_parse_row(row))
         except Exception as e:
             logger.warning("限售解禁历史查询失败 [%s]: %s", code, e)
 
         upcoming = []
-        end_date = datetime.strptime(trade_date, "%Y-%m-%d") + timedelta(days=forward_days)
-        today_str = trade_date.replace("-", "")
         try:
-            df = self.ak.stock_restricted_release_detail_em(date=today_str)
-            if not df.empty:
-                df_stock = df[df["股票代码"] == code]
-                for _, row in df_stock.iterrows():
-                    upcoming.append({
-                        "date": str(row.get("解禁日期", "")),
-                        "type": row.get("限售股类型", ""),
-                        "shares": row.get("解禁数量", 0),
-                        "float_ratio": row.get("占流通股比例", 0),
-                    })
+            end_date = datetime.strptime(trade_date, "%Y-%m-%d") + timedelta(days=forward_days)
+            end_str = end_date.strftime("%Y-%m-%d")
+            url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+            params = {
+                "reportName": "RPT_LIFT_STAGE",
+                "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{code}")(FREE_DATE>=\'{trade_date}\')(FREE_DATE<=\'{end_str}\')',
+                "pageNumber": "1", "pageSize": "20",
+                "sortColumns": "FREE_DATE", "sortTypes": "1",
+                "source": "WEB", "client": "WEB",
+            }
+            r = self._session.get(url, params=params, timeout=15)
+            d = r.json()
+            if d.get("result") and d["result"].get("data"):
+                for row in d["result"]["data"]:
+                    parsed = _parse_row(row)
+                    parsed["float_ratio"] = parsed.pop("ratio")
+                    upcoming.append(parsed)
         except Exception as e:
-            logger.warning("限售解禁详情查询失败 [%s]: %s", code, e)
+            logger.warning("限售解禁未来查询失败 [%s]: %s", code, e)
 
         return {"history": history, "upcoming": upcoming}
 

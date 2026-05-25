@@ -159,7 +159,6 @@ public class LayerController {
 
     // ==================== 构建辅助方法 ====================
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> layer(String id, String name, String dir,
                                               String desc, String tech, String status,
                                               int completion, int fileCount, int moduleCount,

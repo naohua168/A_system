@@ -17,6 +17,7 @@ from .baidu_collector import BaiduCollector
 from .akshare_extended_collector import AkshareExtendedCollector
 from .kline_collector import KlineCollector       # 新增: 新浪/腾讯 HTTP K 线
 from .information_collector import InformationCollector
+from .fund_flow_fallback_collector import FundFlowFallbackCollector
 from config import (
     ENABLED_SOURCES, MAX_RETRIES, RETRY_BACKOFF_BASE,
     VALIDATION, QUALITY_CHECK, RATE_LIMIT, CIRCUIT_BREAKER,
@@ -35,6 +36,7 @@ _COLLECTOR_REGISTRY: Dict[str, type] = {
     "akshare_ext": AkshareExtendedCollector,
     "information": InformationCollector,           # 资讯层: 研报+新闻+公告
     "sina_kline": KlineCollector,                  # 新增: 新浪 HTTP K 线（备选，mootdx不可用时）
+    "tencent_fallback": FundFlowFallbackCollector, # 资金流向回退：腾讯财经
 }
 
 

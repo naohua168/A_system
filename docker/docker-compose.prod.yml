@@ -145,7 +145,7 @@ services:
     ports:
       - "127.0.0.1:3306:3306"    # 仅本地回环，不对外暴露
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-hadoop123}
       - MYSQL_DATABASE=stock_analysis
     # 生产：启用二进制日志（用于数据恢复）
     command: >

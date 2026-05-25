@@ -22,6 +22,12 @@ export default defineConfig({
         target: 'http://localhost:8082',
         changeOrigin: true,
       },
+      // WebSocket 代理 — Vite 开发服务器将 /ws 请求转发到后端
+      '/ws': {
+        target: 'ws://localhost:8082',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
   css: {

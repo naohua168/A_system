@@ -91,6 +91,7 @@ class LayerReport:
             "market": [],
             "signal": [],
             "information": [],
+            "raw": [],
             "unknown": [],
         }
 
@@ -120,6 +121,7 @@ class LayerReport:
             "market": "行情层",
             "signal": "信号层",
             "information": "资讯层",
+            "raw": "原始数据层",
         }
 
         for layer, type_list in self.layers.items():

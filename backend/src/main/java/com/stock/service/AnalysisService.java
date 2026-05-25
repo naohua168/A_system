@@ -1,7 +1,5 @@
 package com.stock.service;
 
-import com.stock.entity.AnalysisResult;
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;

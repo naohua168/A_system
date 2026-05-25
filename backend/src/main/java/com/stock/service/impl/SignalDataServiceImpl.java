@@ -21,9 +21,7 @@ public class SignalDataServiceImpl implements SignalDataService {
     private static final Logger log = LoggerFactory.getLogger(SignalDataServiceImpl.class);
 
     private final SignalHotReasonMapper hotReasonMapper;
-    private final SignalDragonTigerMapper dragonTigerMapper;
     private final SignalNorthboundMapper northboundMapper;
-    private final SignalLockupMapper lockupMapper;
     private final SignalDailyIndustryMapper industryMapper;
     private final SignalConceptBlockMapper conceptBlockMapper;
     private final SignalFundFlowMapper fundFlowMapper;
@@ -32,18 +30,14 @@ public class SignalDataServiceImpl implements SignalDataService {
 
     public SignalDataServiceImpl(
             SignalHotReasonMapper hotReasonMapper,
-            SignalDragonTigerMapper dragonTigerMapper,
             SignalNorthboundMapper northboundMapper,
-            SignalLockupMapper lockupMapper,
             SignalDailyIndustryMapper industryMapper,
             SignalConceptBlockMapper conceptBlockMapper,
             SignalFundFlowMapper fundFlowMapper,
             SignalDragonTigerDetailMapper dragonTigerDetailMapper,
             SignalLockupDetailMapper lockupDetailMapper) {
         this.hotReasonMapper = hotReasonMapper;
-        this.dragonTigerMapper = dragonTigerMapper;
         this.northboundMapper = northboundMapper;
-        this.lockupMapper = lockupMapper;
         this.industryMapper = industryMapper;
         this.conceptBlockMapper = conceptBlockMapper;
         this.fundFlowMapper = fundFlowMapper;

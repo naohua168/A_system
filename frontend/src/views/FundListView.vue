@@ -130,8 +130,10 @@ onMounted(async () => {
   loading.value = true
   try {
     const res = await getFundList()
-    allFunds.value = (res as any)?.data || res || []
-    total.value = allFunds.value.length
+    // 后端返回 {size, total, records, totalPages, page}
+    const pageData = (res as any)?.data || res || {}
+    allFunds.value = pageData?.records || pageData || []
+    total.value = pageData?.total || allFunds.value.length
   } catch {
     // 降级：使用示例数据
     allFunds.value = [

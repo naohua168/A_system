@@ -114,37 +114,89 @@ class BaiduCollector(BaseCollector):
         return rows
 
     # ==========================================================
-    # 个股资金流向（20日历史）
+    # 个股资金流向（日级历史）— 东财 push2 为主，百度 PAE 回退
     # ==========================================================
 
     def fetch_fund_flow_history(self, code: str, days: int = 20) -> list:
         """个股资金流向（日级历史）
 
+        主路径：东方财富 push2 API（稳定）
+        回退：百度 PAE fundsortlist API（兼容保留）
+
         返回: [{date, close, change_pct, superNetIn, largeNetIn,
                 mediumNetIn, littleNetIn, mainIn}, ...]
         """
-        url = (
-            f"https://finance.pae.baidu.com/vapi/v1/fundsortlist"
-            f"?code={code}&market=ab&pn=0&rn={days}&finClientType=pc"
-        )
-        r = requests.get(url, headers=_BAIDU_HEADERS, timeout=10)
-        d = r.json()
-        if str(d.get("ResultCode", -1)) != "0":
+        rows = self._fetch_fund_flow_push2(code, days)
+        if rows:
+            return rows
+        logger.debug("push2 回退到百度 PAE [%s]", code)
+        return self._fetch_fund_flow_baidu_fallback(code, days)
+
+    def _fetch_fund_flow_push2(self, code: str, days: int = 20) -> list:
+        """东财 push2 资金流向（日级，主路径）"""
+        market_code = 1 if code.startswith("6") else 0
+        url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
+        params = {
+            "secid": f"{market_code}.{code}",
+            "fields1": "f1,f2,f3,f7",
+            "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+            "lmt": str(days),
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://quote.eastmoney.com/",
+            "Origin": "https://quote.eastmoney.com",
+        }
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            d = r.json()
+            klines = d.get("data", {}).get("klines", [])
+            if not klines:
+                return []
+            rows = []
+            for line in klines:
+                parts = line.split(",")
+                if len(parts) >= 7:
+                    rows.append({
+                        "date": parts[0],
+                        "close": parts[2] if len(parts) > 2 else "",
+                        "ratio": parts[3] if len(parts) > 3 else "",
+                        "superNetIn": float(parts[5]) if parts[5] != "-" else 0,
+                        "largeNetIn": float(parts[4]) if parts[4] != "-" else 0,
+                        "mediumNetIn": float(parts[6]) if len(parts) > 6 and parts[6] != "-" else 0,
+                        "littleNetIn": float(parts[7]) if len(parts) > 7 and parts[7] != "-" else 0,
+                        "mainIn": float(parts[1]) if parts[1] != "-" else 0,
+                    })
+            return rows
+        except Exception as e:
+            logger.debug("push2 资金流向失败 [%s]: %s", code, e)
             return []
 
-        rows = []
-        for item in d.get("Result", {}).get("list", []):
-            rows.append({
-                "date": item.get("showtime", ""),
-                "close": item.get("closepx", ""),
-                "change_pct": item.get("ratio", ""),
-                "superNetIn": item.get("superNetIn", ""),
-                "largeNetIn": item.get("largeNetIn", ""),
-                "mediumNetIn": item.get("mediumNetIn", ""),
-                "littleNetIn": item.get("littleNetIn", ""),
-                "mainIn": item.get("extMainIn", ""),
-            })
-        return rows
+    def _fetch_fund_flow_baidu_fallback(self, code: str, days: int = 20) -> list:
+        """百度 PAE 资金流向（回退路径）"""
+        url = (f"https://finance.pae.baidu.com/vapi/v1/fundsortlist"
+               f"?code={code}&market=ab&pn=0&rn={days}&finClientType=pc")
+        try:
+            r = requests.get(url, headers=_BAIDU_HEADERS, timeout=10)
+            d = r.json()
+            if str(d.get("ResultCode", -1)) != "0":
+                return []
+            rows = []
+            for item in d.get("Result", {}).get("list", []):
+                rows.append({
+                    "date": item.get("showtime", ""),
+                    "close": item.get("closepx", ""),
+                    "change_pct": item.get("ratio", ""),
+                    "superNetIn": item.get("superNetIn", ""),
+                    "largeNetIn": item.get("largeNetIn", ""),
+                    "mediumNetIn": item.get("mediumNetIn", ""),
+                    "littleNetIn": item.get("littleNetIn", ""),
+                    "mainIn": item.get("extMainIn", ""),
+                })
+            return rows
+        except Exception as e:
+            logger.debug("百度PAE资金流向失败 [%s]: %s", code, e)
+            return []
 
     # ==========================================================
     # 接口实现（兼容基类）

@@ -419,7 +419,7 @@ class DataCollectorRunner:
 
 def main():
     parser = argparse.ArgumentParser(description="统一数据采集调度脚本 (增强版)")
-    parser.add_argument("--all", action="store_true", help="全量采集")
+    parser.add_argument("--all", action="store_true", help="全量采集（旧模式 -> CSV）")
     parser.add_argument("--realtime", action="store_true", help="仅采集实时行情")
     parser.add_argument("--kline", action="store_true", help="仅采集K线")
     parser.add_argument("--signals", action="store_true", help="仅采集信号层数据")
@@ -427,20 +427,61 @@ def main():
     parser.add_argument("--stock", type=str, help="指定股票代码采集")
     parser.add_argument("--loop", type=int, default=0, help="循环间隔（分钟），0=不循环")
     parser.add_argument("--sync", action="store_true", help="采集后同步到MySQL")
+
     # 管道模式（新一代适配器+存储+管道）
     parser.add_argument("--pipeline", action="store_true", help="管道模式（适配器+存储+管道三件套）")
     parser.add_argument("--pipeline-layer", type=str, choices=["market", "signal", "information"],
                         help="管道模式按层采集")
 
+    # 编排器模式（全量管道，自动写MySQL）
+    parser.add_argument("--collect-all", action="store_true",
+                        help="编排器全量采集（所有层，自动写MySQL+CSV）")
+    parser.add_argument("--collect-layer", type=str, choices=["market", "signal", "information", "all"],
+                        help="编排器按层采集（自动写MySQL+CSV）")
+    parser.add_argument("--validate", action="store_true",
+                        help="采集后执行数据校验，报告各表记录数")
+    parser.add_argument("--global-only", action="store_true",
+                        help="仅采集全局类型（最快，无需逐股迭代）")
+
     args = parser.parse_args()
     runner = DataCollectorRunner()
 
     def run_once():
-        # 管道模式（新一代采集方式）
+        # ==================== 编排器管道模式（新，自动写MySQL） ====================
+        if args.collect_all or args.collect_layer or args.global_only:
+            from adapters.collector_adapters import register_all_adapters
+            register_all_adapters()
+            from pipeline.orchestrator import ParallelCollector
+            pc = ParallelCollector(max_workers=4)
+            try:
+                if args.collect_all:
+                    report = pc.collect_all()
+                elif args.global_only:
+                    report = pc.collect_global_only()
+                elif args.collect_layer:
+                    if args.collect_layer == "all":
+                        report = pc.collect_all()
+                    else:
+                        report = pc.collect_layer(args.collect_layer)
+                print(report.summary())
+            finally:
+                pc.close()
+
+            if args.validate:
+                _validate_data()
+            return
+
+        # 仅校验（不采集）
+        if args.validate:
+            _validate_data()
+            return
+
+        # ==================== 管道模式 ====================
         if args.pipeline or args.pipeline_layer:
             _run_pipeline(args)
             return
-        # 旧版调度模式（兼容保留）
+
+        # ==================== 旧版调度模式（兼容保留） ====================
         if args.all:
             runner.collect_all()
         elif args.realtime:
@@ -528,6 +569,124 @@ def _run_pipeline(args):
             sync_main()
         finally:
             _sys.argv = saved
+
+
+# ============================================================
+# 数据校验 + 缺失表自动创建
+# ============================================================
+def _ensure_tables():
+    """自动创建数据目录中 MySQL 表不存在的信息层表"""
+    import pymysql
+    from config import MYSQL_CONFIG
+    try:
+        conn = pymysql.connect(**MYSQL_CONFIG)
+        cur = conn.cursor()
+        missing = []
+        for tbl in ['info_cls_news', 'info_global_news', 'info_stock_news',
+                     'info_research_report', 'info_consensus_eps', 'info_filing']:
+            cur.execute("SELECT COUNT(*) FROM information_schema.tables "
+                        "WHERE table_schema=%s AND table_name=%s",
+                        (MYSQL_CONFIG['database'], tbl))
+            if cur.fetchone()[0] == 0:
+                missing.append(tbl)
+        if missing:
+            print(f"\n📋 自动创建 {len(missing)} 张缺失表...")
+            for tbl in missing:
+                if tbl in ('info_cls_news', 'info_global_news'):
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS `{tbl}` (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                            title VARCHAR(500), content TEXT,
+                            datetime VARCHAR(50), source VARCHAR(100),
+                            url VARCHAR(1000), created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            INDEX idx_dt (datetime)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                elif tbl == 'info_stock_news':
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS `{tbl}` (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
+                            stock_name VARCHAR(50), title VARCHAR(500), content TEXT,
+                            datetime VARCHAR(50), source VARCHAR(100), url VARCHAR(1000),
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, INDEX idx_sc (stock_code)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                elif tbl == 'info_research_report':
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS `{tbl}` (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
+                            stock_name VARCHAR(50), title VARCHAR(500), rating VARCHAR(50),
+                            eps_this_year DECIMAL(10,4), eps_next_year DECIMAL(10,4),
+                            publish_date VARCHAR(50), org_name VARCHAR(200), url VARCHAR(1000),
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, INDEX idx_sc (stock_code)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                elif tbl == 'info_consensus_eps':
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS `{tbl}` (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
+                            stock_name VARCHAR(50), year INT, eps DECIMAL(10,4),
+                            num_analysts INT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            INDEX idx_sc (stock_code)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                elif tbl == 'info_filing':
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS `{tbl}` (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
+                            stock_name VARCHAR(50), title VARCHAR(500),
+                            filing_date VARCHAR(50), category VARCHAR(100), url VARCHAR(1000),
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, INDEX idx_sc (stock_code)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                else:
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS `{tbl}` (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY, content TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                print(f"  ✅ 已创建 {tbl}")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"  ⚠️ 表创建失败: {e}")
+
+
+def _validate_data():
+    """校验各 MySQL 表的数据完整性"""
+    _ensure_tables()
+    import pymysql
+    from config import MYSQL_CONFIG
+    try:
+        conn = pymysql.connect(**MYSQL_CONFIG)
+        cur = conn.cursor()
+        tables = [
+            'stock', 'stock_daily', 'index_daily', 'market_index',
+            'signal_hot_reason', 'signal_northbound', 'signal_daily_industry',
+            'signal_dragon_tiger_detail', 'signal_lockup_detail',
+            'signal_fund_flow', 'signal_concept_block',
+            'info_cls_news', 'info_global_news',
+        ]
+        print(f"\n{'='*50}")
+        print("📋 数据校验报告")
+        print(f"{'='*50}")
+        total = 0
+        for t in tables:
+            try:
+                cur.execute(f'SELECT COUNT(*) FROM {t}')
+                cnt = cur.fetchone()[0]
+                total += cnt
+                icon = "✅" if cnt > 0 else "⬜"
+                print(f"  {icon} {t:30s} {cnt:>8,} 行")
+            except Exception:
+                print(f"  ❌ {t:30s} 表不存在")
+        print(f"{'='*50}")
+        print(f"  📦 总计: {total:,} 行")
+        print(f"{'='*50}")
+        conn.close()
+    except Exception as e:
+        print(f"  ❌ 数据库连接失败: {e}")
 
 
 if __name__ == "__main__":

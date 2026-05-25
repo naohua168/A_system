@@ -20,11 +20,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 @RestControllerAdvice(basePackages = "com.stock.controller")
 public class ApiResponseWrapper implements ResponseBodyAdvice<Object> {
 
-    /** Swagger/OpenAPI 文档路径，跳过不包装 */
-    private static final String[] SKIP_PATHS = {
-            "/swagger-resources", "/v3/api-docs", "/swagger-ui"
-    };
-
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
         // 已经包装为 ApiResponse 的跳过

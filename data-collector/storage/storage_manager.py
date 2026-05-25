@@ -209,29 +209,37 @@ class MysqlStorage(StorageBackend):
             "turnover_pct": "turnover_pct",
             "trade_date": "trade_date",
         },
-        # info_research_report（研报 — akshare 东财报告 API）
+        # info_research_report（研报 — 东财 reportapi）
         "info_research_report": {
             "stock_code": "stock_code",
+            "stock_name": "stock_name",
             "title": "title",
             "org_name": "org_name",
             "rating": "rating",
+            "publish_date": "publish_date",
+            "predict_eps_this_year": "eps_this_year",   # InformationCollector 返回的字段名
+            "predict_eps_next_year": "eps_next_year",
+            "page_url": "url",
         },
-        # info_consensus_eps（一致预期 — 同花顺源）
+        # info_consensus_eps（一致预期 — 同花顺源 via akshare）
         "info_consensus_eps": {
+            "code": "stock_code",           # 采集器添加的代码列
+            "Stock_Code": "stock_code",     # 特定格式
             "年度": "year",
-            "预测机构数": "forecast_count",
-            "最小值": "min_eps",
-            "均值": "avg_eps",
-            "最大值": "max_eps",
-            "行业平均数": "industry_avg",
+            "预测机构数": "num_analysts",
+            "均值": "eps",                  # 取均值作为一致预期
+            "平均": "eps",
         },
-        # info_stock_news（个股新闻 — 东财源）
+        # info_stock_news（个股新闻 — akshare 东财源）
         "info_stock_news": {
-            "code": "stock_code",
-            "标题": "title",
+            "code": "stock_code",           # 采集器添加的代码列
+            "新闻标题": "title",             # akshare 列名
+            "新闻内容": "content_summary",
+            "content": "content_summary",
+            "新闻链接": "url",
             "发布时间": "publish_time",
-            "内容摘要": "content_summary",
-            "来源": "source",
+            "datetime": "publish_time",
+            "文章来源": "source",           # 新闻来源
         },
         # signal_concept_block（概念板块归属 — 百度源）
         "signal_concept_block": {
@@ -240,17 +248,30 @@ class MysqlStorage(StorageBackend):
             "block_name": "block_name",
             "change_pct": "change_pct",
         },
-        # signal_fund_flow（个股资金流向 — 百度源）
+        # signal_fund_flow（个股资金流向 — 百度/东财源）
+        # DataFrame 列名来自 BaiduCollector._fetch_fund_flow_push2:
+        #   date, close, ratio, superNetIn, largeNetIn, mediumNetIn, littleNetIn, mainIn
+        # 也兼容 snake_case 格式的列名
         "signal_fund_flow": {
             "stock_code": "stock_code",
+            # camelCase (push2 返回格式)
+            "date": "trade_date",
+            "ratio": "change_pct",
+            "superNetIn": "super_net_in",
+            "largeNetIn": "large_net_in",
+            "mediumNetIn": "medium_net_in",
+            "littleNetIn": "little_net_in",
+            "mainIn": "main_in",
+            # snake_case (其他源兼容)
             "trade_date": "trade_date",
-            "close": "close",
             "change_pct": "change_pct",
             "super_net_in": "super_net_in",
             "large_net_in": "large_net_in",
             "medium_net_in": "medium_net_in",
             "little_net_in": "little_net_in",
             "main_in": "main_in",
+            # 通用
+            "close": "close",
         },
         # signal_lockup_detail（限售解禁明细 — akshare源）
         "signal_lockup_detail": {
@@ -262,6 +283,23 @@ class MysqlStorage(StorageBackend):
             "type_tag": "type_tag",
         },
         # signal_dragon_tiger_detail（龙虎榜明细 — akshare源，已定义）
+
+        # fund_holding（基金持仓 — akshare/东财源）
+        "fund_holding": {
+            "code": "fund_code",              # 采集器添加的代码列
+            "stock_code": "stock_code",       # 英文列名（fetch_fund_holdings返回）
+            "stock_name": "stock_name",
+            "ratio": "ratio",
+            "rank_num": "rank_num",
+            # akshare 中文列名（兼容）
+            "基金代码": "fund_code",
+            "股票代码": "stock_code",
+            "股票名称": "stock_name",
+            "占净值比例": "ratio",
+            "占净值比例(%)": "ratio",
+            "持仓排名": "rank_num",
+            "报告期": "report_date",
+        },
     }
 
     # ============================================================

@@ -1,9 +1,25 @@
 """优化版 ResultStore — 批量 SQL 写入 + 合并事务"""
-import json, logging
+import json, logging, math
 from datetime import date, timedelta, datetime as dt
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("analysis.result_store")
+
+
+class _SafeEncoder(json.JSONEncoder):
+    """安全 JSON 编码器 — 将 NaN/Infinity 转为 null"""
+    def default(self, obj):
+        return str(obj)
+    def encode(self, o):
+        return super().encode(self._sanitize(o))
+    def _sanitize(self, obj):
+        if isinstance(obj, dict):
+            return {k: self._sanitize(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._sanitize(v) for v in obj]
+        elif isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        return obj
 
 
 class ResultStore:
@@ -26,7 +42,7 @@ class ResultStore:
         types = []
         for atype, rdict in results.items():
             summary = rdict.pop("_summary", "")
-            result_json = json.dumps(rdict, ensure_ascii=False, default=str)
+            result_json = json.dumps(rdict, ensure_ascii=False, cls=_SafeEncoder)
             rows.append((0, asset_code, atype, result_json, summary, today))
             types.append(atype)
         try:
@@ -81,7 +97,7 @@ class ResultStore:
             result = json.loads(df.iloc[0]["result_json"])
             result["_summary"] = df.iloc[0].get("summary", "")
             self._loader._cache_set(f"rs:{asset_code}:{analysis_type}",
-                json.dumps(result, ensure_ascii=False, default=str), 300)
+                json.dumps(result, ensure_ascii=False, cls=_SafeEncoder), 300)
             return result
         except Exception as e:
             logger.warning("[ResultStore] 读取失败: %s", e)

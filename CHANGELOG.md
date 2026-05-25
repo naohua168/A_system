@@ -1,5 +1,33 @@
 # 变更日志
 
+## [2.4.1] - 2026-05-24 — 数据通路修复与前端优化
+
+### 修复
+- **数据采集 → 后端**: 修复采集器写新表 (`signal_dragon_tiger_detail`/`signal_lockup_detail`) 但后端读旧表 (`signal_dragon_tiger`/`signal_lockup`) 导致的数据空白问题
+  - `storage_manager.py`/`sync_to_mysql.py`: 写入表名与后端读取对齐
+  - `SignalDataServiceImpl`: 移除未使用的旧 Mapper，统一使用 Detail Mapper
+- **后端**: `ApiResponseWrapper` 增加 `ResponseEntity` 类型检测，保留 404 HTTP 状态码语义
+- **后端**: `JwtFilter` 增加空 Token 判断 + 单次 JWT 解析 + Redis 黑名单检查
+- **后端**: `SignalDataController` 新增 8 个端点（龙虎榜明细/解禁明细/资金流向/概念板块）
+- **后端**: `UserController` 新增 `PUT /update` + `POST /change-password` + `POST /logout` + `POST /refresh`
+- **后端**: `WatchlistMapper.xml` 修复 UPDATE/DELETE SQL 映射
+- **后端**: `security-levels.yml` 新增完整四级权限配置
+- **后端**: `StockDailyMapper.xml` 修复 `selectMaxTradeDate` 排序
+
+### 新增
+- **前端**: `HomeView.vue` 首页重构 — 信号卡片布局优化（行业轮动/题材热点/龙虎榜强度/北向资金）
+- **前端**: `AppHeader.vue` 全面重构 — 响应式导航 + 搜索优化 + 主题切换
+- **前端**: `EmptyState.vue` / `SkeletonLoader.vue` 通用组件
+- **前端**: `useApiRetry.ts` API 重试 composable（3 次重试 + 指数退避）
+- **前端**: `DragonTigerView.vue` / `HotReasonView.vue` / `IndustryCompareView.vue` / `LockupView.vue` / `NorthboundView.vue` / `StockDetailView.vue` 信号视图统一布局优化
+- **前端**: `env.d.ts` 环境变量类型声明
+- **前端**: `SectorDetailView.vue` 增加回退日期机制
+- **Spark**: `spark_sector_mysql.py` Spark 行业分析结果直写 MySQL
+- **Docker**: `init.sql` 新增 2 张明细表 DDL + 索引
+- **脚本**: `end-of-day.ps1` / `end-of-day.sh` 收盘后一键处理脚本
+- **脚本**: `fetch_real_data.py` / `fetch_industries.py` / `fix_industries.py` / `fix_index_change.py` 等数据修复脚本
+- **脚本**: `seed_all.sql` / `seed_stock_daily_fix.sql` 种子数据脚本
+
 ## [2.4.0] - 2026-05-21 — 缺陷修复与配置优化
 
 ### 修复

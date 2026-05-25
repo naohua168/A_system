@@ -131,7 +131,7 @@ INSERT INTO `stock_daily` (`stock_code`, `trade_date`, `open_price`, `high_price
 
 -- Index Daily 指数日线
 DELETE FROM index_daily;
-INSERT INTO `index_daily` (`index_code`, `trade_date`, `open_point`, `high_point`, `low_point`, `close_point`, `pre_close`, `change_point`, `change_percent`, `volume`, `amount`) VALUES
+INSERT INTO `index_daily` (`index_code`, `trade_date`, `open_point`, `high_point`, `low_point`, `close_point`, `pre_close`, `change_percent`, `volume`, `amount`) VALUES
 ('000001','2026-05-08', 3215.45, 3230.12, 3208.56, 3225.78, 3218.90, 6.88, 0.2138, 3256789012, 456789012345.67),
 ('000001','2026-05-07', 3245.67, 3260.23, 3210.45, 3218.90, 3235.78, -16.88, -0.5216, 3456789012, 478901234567.89),
 ('000001','2026-05-06', 3230.12, 3255.78, 3225.34, 3235.78, 3240.56, -4.78, -0.1475, 3345678901, 467890123456.78),

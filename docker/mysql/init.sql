@@ -20,8 +20,15 @@ CREATE TABLE IF NOT EXISTS `user` (
     `email` VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
     `phone` VARCHAR(20) DEFAULT NULL COMMENT '手机号',
     `avatar` VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
-    `role` TINYINT DEFAULT 0 COMMENT '角色: 0-普通用户, 1-管理员',
-    `status` TINYINT DEFAULT 1 COMMENT '状态: 0-禁用, 1-启用',
+    `role` TINYINT DEFAULT 0 COMMENT '角色级别: 1=USER, 2=PREMIUM_USER, 3=ADMIN, 4=SUPER_ADMIN',
+    `status` TINYINT DEFAULT 0 COMMENT '用户状态: 0=正常, 1=禁用, 2=锁定',
+    `mfa_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用多因素认证',
+    `password_changed_at` DATETIME DEFAULT NULL COMMENT '密码最后修改时间',
+    `password_expires_at` DATETIME DEFAULT NULL COMMENT '密码过期时间',
+    `last_login_at` DATETIME DEFAULT NULL COMMENT '最后登录时间',
+    `failed_login_attempts` INT DEFAULT 0 COMMENT '连续登录失败次数',
+    `locked_until` DATETIME DEFAULT NULL COMMENT '账户锁定截止时间',
+    `created_by` VARCHAR(50) DEFAULT NULL COMMENT '创建者用户名',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
@@ -167,8 +174,8 @@ CREATE TABLE IF NOT EXISTS `ai_chat` (
 
 -- ========== 插入初始化用户（系统必需，用于登录） ==========
 INSERT INTO `user` (`username`, `password`, `email`, `role`) VALUES
-('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'admin@stock.com', 1),
-('test', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'test@stock.com', 0);
+('admin', '$2b$12$iPxKBdsxSqto5jD9ksFqru9X7eXNc9yQI4mPBoQKd757iB/qZ5dXa', 'admin@stock.com', 1),
+('test', '$2b$12$7lxd.iOGQVvV6mh3RUx.xedyYyeCzkye5Mt.afLGsEWGnnxUaaTNS', 'test@stock.com', 0);
 
 -- ========== 市场指数基础信息表 ==========
 CREATE TABLE IF NOT EXISTS `market_index` (
@@ -305,6 +312,58 @@ CREATE TABLE IF NOT EXISTS `signal_daily_industry` (
     PRIMARY KEY (`id`),
     KEY `idx_date` (`trade_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='行业涨跌排行表';
+
+-- ========== 资讯层数据表（动态采集） ==========
+CREATE TABLE IF NOT EXISTS `info_cls_news` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `title` VARCHAR(500), `content` TEXT,
+    `datetime` VARCHAR(50), `source` VARCHAR(100),
+    `url` VARCHAR(1000),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY `idx_dt` (`datetime`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='财联社快讯';
+
+CREATE TABLE IF NOT EXISTS `info_global_news` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `title` VARCHAR(500), `content` TEXT,
+    `datetime` VARCHAR(50), `source` VARCHAR(100),
+    `url` VARCHAR(1000),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY `idx_dt` (`datetime`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全球财经资讯';
+
+CREATE TABLE IF NOT EXISTS `info_stock_news` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY, `stock_code` VARCHAR(10),
+    `stock_name` VARCHAR(50), `title` VARCHAR(500), `content` TEXT,
+    `datetime` VARCHAR(50), `source` VARCHAR(100), `url` VARCHAR(1000),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY `idx_sc` (`stock_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='个股新闻';
+
+CREATE TABLE IF NOT EXISTS `info_research_report` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY, `stock_code` VARCHAR(10),
+    `stock_name` VARCHAR(50), `title` VARCHAR(500), `rating` VARCHAR(50),
+    `eps_this_year` DECIMAL(10,4), `eps_next_year` DECIMAL(10,4),
+    `publish_date` VARCHAR(50), `org_name` VARCHAR(200), `url` VARCHAR(1000),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY `idx_sc` (`stock_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='研报列表';
+
+CREATE TABLE IF NOT EXISTS `info_consensus_eps` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY, `stock_code` VARCHAR(10),
+    `stock_name` VARCHAR(50), `year` INT, `eps` DECIMAL(10,4),
+    `num_analysts` INT,
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY `idx_sc` (`stock_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='机构一致预期EPS';
+
+CREATE TABLE IF NOT EXISTS `info_filing` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY, `stock_code` VARCHAR(10),
+    `stock_name` VARCHAR(50), `title` VARCHAR(500),
+    `filing_date` VARCHAR(50), `category` VARCHAR(100), `url` VARCHAR(1000),
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY `idx_sc` (`stock_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='巨潮公告';
 
 -- ========== 自选数据（admin 用户示例） ==========
 INSERT INTO `watchlist` (`user_id`, `asset_type`, `asset_code`, `remark`, `sort_order`) VALUES
