@@ -200,6 +200,8 @@ class MysqlStorage(StorageBackend):
         "signal_dragon_tiger_detail": {
             "code": "stock_code",
             "name": "stock_name",
+            "stock_code": "stock_code",
+            "stock_name": "stock_name",
             "reason": "reason",
             "close": "close",
             "change_pct": "change_pct",
