@@ -132,7 +132,18 @@ onMounted(async () => {
     const res = await getFundList()
     // 后端返回 {size, total, records, totalPages, page}
     const pageData = (res as any)?.data || res || {}
-    allFunds.value = pageData?.records || pageData || []
+    const records = pageData?.records || pageData || []
+    // 字段映射: 后端 fundCode/fundName/fundType → 前端 code/name/type
+    allFunds.value = (Array.isArray(records) ? records : []).map((r: any) => ({
+      code: r.fundCode || r.code || '',
+      name: r.fundName || r.name || '',
+      type: r.fundType || r.type || '',
+      nav: r.nav ?? null,
+      navDate: r.navDate || '--',
+      manager: r.manager || '',
+      establishDate: r.establishDate || '',
+      yearReturn: r.yearReturn ?? null,
+    }))
     total.value = pageData?.total || allFunds.value.length
   } catch {
     // 降级：使用示例数据

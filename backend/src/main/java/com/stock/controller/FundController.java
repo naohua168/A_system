@@ -12,7 +12,10 @@ import com.stock.service.FundService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 基金层控制器 — 不再直接注入 Mapper
@@ -50,7 +53,64 @@ public class FundController {
             wrapper.eq(Fund::getFundType, fundType);
         }
         Page<Fund> p = fundService.page(new Page<>(page, size), wrapper);
-        return ApiResponse.page(p.getRecords(), p.getTotal(), page, size);
+
+        // 批量查询基金净值（用于计算 navDate 和 yearReturn）
+        List<Map<String, Object>> enriched = new ArrayList<>();
+        if (!p.getRecords().isEmpty()) {
+            List<String> fundCodes = p.getRecords().stream()
+                .map(Fund::getFundCode).collect(Collectors.toList());
+
+            List<FundNav> navs = fundNavService.list(
+                new LambdaQueryWrapper<FundNav>()
+                    .in(FundNav::getFundCode, fundCodes)
+                    .orderByDesc(FundNav::getNavDate)
+            );
+
+            // 按 fundCode 分组: fundCode -> [navDate -> nav]
+            Map<String, List<FundNav>> navByCode = navs.stream()
+                .collect(Collectors.groupingBy(FundNav::getFundCode));
+
+            for (Fund fund : p.getRecords()) {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("fundCode", fund.getFundCode());
+                map.put("fundName", fund.getFundName());
+                map.put("fundType", fund.getFundType());
+                map.put("nav", fund.getNav());
+                map.put("accumulatedNav", fund.getAccumulatedNav());
+                map.put("company", fund.getCompany());
+                map.put("manager", fund.getManager());
+                map.put("establishDate", fund.getEstablishDate() != null ? fund.getEstablishDate().toString() : null);
+                map.put("scale", fund.getScale());
+
+                // 从 fund_nav 计算 navDate 和 yearReturn
+                String navDate = "";
+                Double yearReturn = null;
+                List<FundNav> fundNavs = navByCode.get(fund.getFundCode());
+                if (fundNavs != null && !fundNavs.isEmpty()) {
+                    // 第一条是最新的（降序排列）
+                    FundNav latest = fundNavs.get(0);
+                    navDate = latest.getNavDate() != null ? latest.getNavDate().toString() : "";
+
+                    // 找最早的净值（最后一条）
+                    FundNav oldest = fundNavs.get(fundNavs.size() - 1);
+                    if (oldest.getNav() != null && oldest.getNavDate() != null
+                            && latest.getNav() != null && latest.getNavDate() != null) {
+                        long daysBetween = latest.getNavDate().toEpochDay() - oldest.getNavDate().toEpochDay();
+                        if (daysBetween >= 180 && oldest.getNav().compareTo(BigDecimal.ZERO) > 0) {
+                            yearReturn = latest.getNav().subtract(oldest.getNav())
+                                .divide(oldest.getNav(), 6, java.math.RoundingMode.HALF_UP)
+                                .multiply(BigDecimal.valueOf(100))
+                                .setScale(2, java.math.RoundingMode.HALF_UP)
+                                .doubleValue();
+                        }
+                    }
+                }
+                map.put("navDate", navDate);
+                map.put("yearReturn", yearReturn);
+                enriched.add(map);
+            }
+        }
+        return ApiResponse.page(enriched, p.getTotal(), page, size);
     }
 
     @GetMapping("/{code}")
