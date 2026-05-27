@@ -18,15 +18,15 @@ public class InfoFiling {
 
     private String stockCode;
 
+    private String stockName;
+
     private String title;
 
-    private String publishDate;
+    @TableField("filing_date")
+    private String filingDate;
 
-    private String filingType;
-
-    private String market;
-
-    private String contentSummary;
+    @TableField("category")
+    private String category;
 
     private String url;
 

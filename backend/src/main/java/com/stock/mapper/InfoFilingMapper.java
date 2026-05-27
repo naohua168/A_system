@@ -11,14 +11,14 @@ import java.util.List;
 @Mapper
 public interface InfoFilingMapper extends BaseMapper<InfoFiling> {
 
-    @Select("SELECT * FROM info_filing WHERE stock_code = #{code} ORDER BY publish_date DESC LIMIT #{limit}")
+    @Select("SELECT * FROM info_filing WHERE stock_code = #{code} ORDER BY filing_date DESC LIMIT #{limit}")
     List<InfoFiling> selectByStock(@Param("code") String code, @Param("limit") int limit);
 
-    @Select("SELECT * FROM info_filing WHERE stock_code = #{code} AND publish_date BETWEEN #{startDate} AND #{endDate} ORDER BY publish_date DESC")
+    @Select("SELECT * FROM info_filing WHERE stock_code = #{code} AND filing_date BETWEEN #{startDate} AND #{endDate} ORDER BY filing_date DESC")
     List<InfoFiling> selectByStockAndDateRange(@Param("code") String code,
                                                 @Param("startDate") String startDate,
                                                 @Param("endDate") String endDate);
 
-    @Select("SELECT * FROM info_filing WHERE filing_type LIKE CONCAT('%', #{type}, '%') ORDER BY publish_date DESC LIMIT #{limit}")
+    @Select("SELECT * FROM info_filing WHERE category LIKE CONCAT('%', #{type}, '%') ORDER BY filing_date DESC LIMIT #{limit}")
     List<InfoFiling> selectByType(@Param("type") String type, @Param("limit") int limit);
 }
