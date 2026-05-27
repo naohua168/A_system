@@ -53,13 +53,20 @@ services:
     labels:
       tier: "storage"
       description: "HDFS NameNode — 分布式文件系统元数据"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
 
   datanode1:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode1
     hostname: datanode1
     depends_on:
-      - namenode
+      namenode:
+        condition: service_started
     ports:
       - "9864:9864"   # DataNode Web UI
     volumes:
@@ -77,13 +84,20 @@ services:
     labels:
       tier: "storage"
       description: "HDFS DataNode #1"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   datanode2:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode2
     hostname: datanode2
     depends_on:
-      - namenode
+      namenode:
+        condition: service_started
     volumes:
       - datanode2-data:/hadoop/dfs/data
     environment:
@@ -99,6 +113,12 @@ services:
     labels:
       tier: "storage"
       description: "HDFS DataNode #2"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   # ====== MySQL 8.0 — 关系型业务数据 ======
   mysql:
@@ -131,6 +151,12 @@ services:
     labels:
       tier: "storage"
       description: "MySQL 8.0 — 业务数据存储"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   # ====== Redis 7 — 缓存加速 ======
   redis:
@@ -153,6 +179,12 @@ services:
     labels:
       tier: "storage"
       description: "Redis 7 — 缓存与Session存储"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
 
   # ================================================================
   # Tier2: 大数据计算引擎
@@ -164,8 +196,10 @@ services:
     container_name: resourcemanager
     hostname: resourcemanager
     depends_on:
-      - namenode
-      - datanode1
+      namenode:
+        condition: service_started
+      datanode1:
+        condition: service_started
     ports:
       - "8088:8088"   # YARN Web UI
     environment:
@@ -182,24 +216,44 @@ services:
     labels:
       tier: "computation"
       description: "YARN ResourceManager — 资源调度"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
 
   nodemanager1:
     image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
     container_name: nodemanager1
     hostname: nodemanager1
     depends_on:
-      - namenode
-      - datanode1
-      - resourcemanager
+      namenode:
+        condition: service_started
+      datanode1:
+        condition: service_started
+      resourcemanager:
+        condition: service_started
     environment:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
       - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
     networks:
       - bigdata-net
     labels:
       tier: "computation"
       description: "YARN NodeManager"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   # ====== Hive — 数据仓库 ======
   hive-server:
@@ -207,8 +261,10 @@ services:
     container_name: hive-server
     hostname: hive-server
     depends_on:
-      - namenode
-      - mysql
+      namenode:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     ports:
       - "10000:10000" # Hive Server2 (Thrift JDBC)
       - "10002:10002" # Hive Web UI
@@ -230,6 +286,12 @@ services:
     labels:
       tier: "computation"
       description: "Hive 2.3.2 — SQL数据仓库"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   # ====== Spark — 分布式计算引擎 ======
   spark-master:
@@ -261,13 +323,20 @@ services:
     labels:
       tier: "computation"
       description: "Spark 3.5.0 Master — 分布式计算"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
 
   spark-worker:
     image: apache/spark:3.5.0
     container_name: spark-worker
     hostname: spark-worker
     depends_on:
-      - spark-master
+      spark-master:
+        condition: service_started
     ports:
       - "8081:8081"   # Spark Worker Web UI
     environment:
@@ -293,6 +362,12 @@ services:
     labels:
       tier: "computation"
       description: "Spark 3.5.0 Worker — 2C/2G"
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 2g
 
   # ================================================================
   # Tier3: 应用服务层（消费处理后的数据）
@@ -346,6 +421,12 @@ services:
     labels:
       tier: "application"
       description: "FastAPI AI — 多智能体对话服务"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   # ====== Spring Boot 后端 ======
   backend:
@@ -385,6 +466,12 @@ services:
     labels:
       tier: "application"
       description: "Spring Boot — REST API 后端"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
 
   # ====== Nginx 前端 ======
   frontend:
@@ -413,6 +500,12 @@ services:
     labels:
       tier: "application"
       description: "Nginx — Vue 3 SPA 前端"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 128m
 
   # ====== Prometheus — 监控指标采集 ======
   prometheus:
@@ -442,6 +535,12 @@ services:
     labels:
       tier: "monitoring"
       description: "Prometheus — 指标采集与存储"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
 
   # ====== Grafana — 可视化仪表板 ======
   grafana:
@@ -474,6 +573,12 @@ services:
     labels:
       tier: "monitoring"
       description: "Grafana — 可视化仪表板"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
 
 # ============================================================
 # 命名卷

@@ -4,13 +4,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import echarts from '@/utils/echarts'
 
 interface SectorNode {
   name: string
   value: number
   changePercent: number
-  items?: SectorNode[]
 }
 
 const props = defineProps<{
@@ -26,73 +25,73 @@ let chart: echarts.ECharts | null = null
 
 function colorFor(pct: number): string {
   if (pct >= 0) {
-    const intensity = Math.min(0.85, 0.25 + Math.abs(pct) * 0.12)
-    return `rgba(231, 76, 60, ${intensity})`
+    const intensity = Math.min(0.92, 0.15 + Math.abs(pct) * 0.14)
+    return `rgba(211, 47, 47, ${intensity})`
   } else {
-    const intensity = Math.min(0.85, 0.25 + Math.abs(pct) * 0.10)
-    return `rgba(39, 174, 96, ${intensity})`
+    const intensity = Math.min(0.92, 0.15 + Math.abs(pct) * 0.14)
+    return `rgba(46, 125, 50, ${intensity})`
   }
 }
 
-function buildTreemapData(data: SectorNode[]): any[] {
-  return data.map(item => ({
-    name: item.name,
-    value: item.value,
-    changePercent: item.changePercent,
-    itemStyle: {
-      color: colorFor(item.changePercent),
-      borderColor: 'rgba(255,255,255,0.35)',
-      borderWidth: 3,
-      borderRadius: 6,
-    },
-    children: item.items?.map(sub => ({
-      name: sub.name,
-      value: sub.value,
-      changePercent: sub.changePercent,
-      itemStyle: {
-        color: colorFor(sub.changePercent),
-        borderColor: 'rgba(255,255,255,0.2)',
-        borderWidth: 2,
-        borderRadius: 4,
-      },
-    })),
-  }))
+function fontSizeFor(value: number, maxValue: number): number {
+  const ratio = value / maxValue
+  if (ratio > 0.3) return 16
+  if (ratio > 0.15) return 14
+  if (ratio > 0.08) return 12
+  if (ratio > 0.04) return 11
+  return 10
 }
 
 function renderChart() {
-  if (!chartDom.value) return
+  if (!chartDom.value || !props.data?.length) return
 
   if (!chart) {
     chart = echarts.init(chartDom.value, undefined, { renderer: 'canvas' })
   }
 
+  const maxValue = Math.max(...props.data.map(d => d.value || 1), 1)
+  const rawData = props.data.map(item => ({
+    name: item.name,
+    value: Math.max(item.value, 1),
+    changePercent: item.changePercent,
+    _maxValue: maxValue,
+    itemStyle: {
+      color: colorFor(item.changePercent),
+      borderColor: 'rgba(0,0,0,0.10)',
+      borderWidth: 0.5,
+      borderRadius: 2,
+    },
+  }))
+
   const option: echarts.EChartsOption = {
     tooltip: {
-      backgroundColor: 'rgba(30, 30, 30, 0.95)',
-      borderColor: 'rgba(255, 255, 255, 0.1)',
-      borderRadius: 8,
+      backgroundColor: 'rgba(20, 20, 20, 0.96)',
+      borderColor: 'rgba(255, 255, 255, 0.08)',
+      borderWidth: 1,
+      borderRadius: 6,
       padding: [10, 14],
       textStyle: { color: '#fff', fontSize: 13 },
       formatter: (params: any) => {
         const d = params.data
         if (!d || !d.name) return ''
-        const sign = d.changePercent >= 0 ? '+' : ''
-        const color = d.changePercent >= 0 ? '#e74c3c' : '#27ae60'
-        // value > 1000 视为成交额(亿当量，前端格式化)，否则视为成分股数量
-        const isCount = d.value && d.value < 1000
-        const sub = isCount
-          ? `成分股: ${d.value}只<br/>`
-          : (d.value ? `成交额: ${(d.value / 100).toFixed(2)}亿<br/>` : '')
-        return `<strong style="font-size:15px;">${d.name}</strong><br/>
-                ${sub}
-                <span style="color:${color};font-weight:600;">涨跌幅: ${sign}${(d.changePercent || 0).toFixed(2)}%</span>`
+        const pct = d.changePercent || 0
+        const sign = pct >= 0 ? '+' : ''
+        const color = pct >= 0 ? '#ef5350' : '#66bb6a'
+        return `
+          <div style="font-size:15px;font-weight:700;margin-bottom:4px;">${d.name}</div>
+          <div style="display:flex;justify-content:space-between;gap:20px;">
+            <span style="color:rgba(255,255,255,0.5);">涨跌幅</span>
+            <span style="color:${color};font-weight:700;">${sign}${(pct).toFixed(2)}%</span>
+          </div>
+          <div style="color:rgba(255,255,255,0.35);font-size:12px;margin-top:4px;">👆 点击查看详情</div>
+        `
       },
     },
     series: [{
       type: 'treemap',
-      data: buildTreemapData(props.data),
-      roam: false,
-      nodeClick: false,
+      data: rawData,
+      roam: true,
+      nodeClick: false,      // 禁用钻取，点击始终 emit 给父组件
       width: '100%',
       height: '100%',
       breadcrumb: { show: false },
@@ -101,66 +100,56 @@ function renderChart() {
         formatter: (params: any) => {
           const d = params.data
           if (!d || !d.name) return ''
-          const sign = d.changePercent >= 0 ? '+' : ''
-          if (d.children) return `${d.name}`
-          return `${d.name}\n${sign}${(d.changePercent || 0).toFixed(2)}%`
+          const pct = d.changePercent || 0
+          const sign = pct >= 0 ? '+' : ''
+          const maxV = d._maxValue || maxValue
+          const ratio = (d.value || 1) / maxV
+          if (ratio < 0.02) return `${sign}${(pct).toFixed(2)}%`
+          return `${d.name}\n${sign}${(pct).toFixed(2)}%`
         },
         color: '#fff',
-        fontSize: 13,
+        fontSize: (params: any) => {
+          const d = params.data
+          return fontSizeFor(d.value || 1, maxValue)
+        },
         fontWeight: 600,
         textShadowBlur: 6,
-        textShadowColor: 'rgba(0,0,0,0.6)',
-      },
-      upperLabel: {
-        show: true,
-        height: 32,
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: 600,
-        textShadowBlur: 6,
-        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        lineHeight: 20,
       },
       itemStyle: {
-        borderColor: 'rgba(255,255,255,0.25)',
-        borderWidth: 3,
-        borderRadius: 6,
+        borderColor: 'rgba(0,0,0,0.10)',
+        borderWidth: 0.5,
+        borderRadius: 2,
       },
-      levels: [
-        {
-          colorSaturation: [0.3, 0.7],
-          itemStyle: {
-            borderColor: 'rgba(255,255,255,0.3)',
-            borderWidth: 4,
-            gapWidth: 3,
-          },
+      levels: [{
+        colorSaturation: [0.35, 0.85],
+        itemStyle: {
+          borderColor: 'rgba(0,0,0,0.10)',
+          borderWidth: 0.5,
+          gapWidth: 0.5,
         },
-        {
-          colorSaturation: [0.3, 0.6],
-          itemStyle: {
-            borderColor: 'rgba(255,255,255,0.15)',
-            borderWidth: 2,
-            gapWidth: 1,
-          },
-        },
-      ],
-      animationDurationUpdate: 500,
+      }],
+      squareRatio: 1,
+      leafDepth: 1,
+      animationDurationUpdate: 600,
       animationEasing: 'cubicOut',
     }],
   }
 
-  // 仅在首次渲染后绑定点击事件，避免 watch 重绘时误触
+  chart.setOption(option, true)
+
+  // 点击事件
   const chartAny = chart as any
   if (!chartAny._clickBound) {
     chart.off('click')
     chart.on('click', (params: any) => {
-      if (params.data && params.data.name && !params.data.children) {
+      if (params.data && params.data.name) {
         emit('click', params.data)
       }
     })
     chartAny._clickBound = true
   }
-
-  chart.setOption(option, true)
 }
 
 function handleResize() {

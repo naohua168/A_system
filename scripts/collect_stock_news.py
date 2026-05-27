@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""容器内akshare采集stock_news，分批处理"""
-import subprocess, json, pymysql, logging
+"""容器内akshare采集stock_news，分批处理 - 全量股票覆盖"""
+import subprocess, json, pymysql, logging, math
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -9,16 +9,10 @@ conn = pymysql.connect(host='localhost',port=3307,user='root',password='hadoop12
                        database='stock_analysis',charset='utf8mb4',autocommit=True)
 cur = conn.cursor()
 
-# 获取top300高市值+龙虎榜股票
-cur.execute("""
-    SELECT stock_code FROM (
-        SELECT stock_code FROM stock WHERE total_market_cap > 0 ORDER BY total_market_cap DESC LIMIT 200
-    ) t1
-    UNION 
-    SELECT DISTINCT stock_code FROM signal_dragon_tiger_detail
-""")
-codes = [r[0] for r in cur.fetchall()[:300]]
-log.info(f"目标: {len(codes)} 只股票")
+# 获取全部股票代码（5000+只）
+cur.execute("SELECT stock_code FROM stock WHERE stock_code IS NOT NULL ORDER BY total_market_cap DESC")
+codes = [r[0] for r in cur.fetchall()]
+log.info(f"目标: {len(codes)} 只股票（全量扫描）")
 
 # 复制脚本
 subprocess.run(["docker","cp","scripts/collect_news_container.py","data-collector:/tmp/collect_news.py"], check=True)
@@ -27,14 +21,17 @@ cur.execute("SELECT COUNT(*) FROM info_stock_news")
 before = cur.fetchone()[0]
 total = 0
 BATCH = 100
+total_batches = math.ceil(len(codes) / BATCH)
+log.info(f"分成 {total_batches} 批，每批 {BATCH} 只，总超时 180s")
 
 for i in range(0, len(codes), BATCH):
     batch = codes[i:i+BATCH]
     codes_str = ",".join(batch)
+    batch_no = i // BATCH + 1
     
     try:
         r = subprocess.run(f'docker exec data-collector python3 /tmp/collect_news.py {codes_str}',
-                          shell=True, capture_output=True, text=True, timeout=120)
+                          shell=True, capture_output=True, text=True, timeout=180)
         
         # 解析JSON (最后一行)
         stdout_lines = r.stdout.strip().split("\n")
@@ -43,7 +40,7 @@ for i in range(0, len(codes), BATCH):
                 data = json.loads(line)
                 break
         else:
-            log.error(f"批次{i//BATCH+1} JSON失败"); continue
+            log.error(f"批次{batch_no}/{total_batches} JSON解析失败"); continue
         
         sn = data.get("stock_news", [])
         inserted = 0
@@ -58,11 +55,12 @@ for i in range(0, len(codes), BATCH):
                 inserted += cur.rowcount
             except: pass
         total += inserted
-        log.info(f"  批次{i//BATCH+1}: {inserted}条, 累计{total}")
+        progress_pct = batch_no / total_batches * 100
+        log.info(f"  批次{batch_no}/{total_batches} ({progress_pct:.1f}%): {inserted}条新闻, 累计{total}条")
     except subprocess.TimeoutExpired:
-        log.error(f"  批次{i//BATCH+1}超时")
+        log.error(f"  批次{batch_no}/{total_batches} 超时(180s)")
     except Exception as e:
-        log.error(f"  批次{i//BATCH+1}: {e}")
+        log.error(f"  批次{batch_no}/{total_batches}: {e}")
 
 cur.execute("SELECT COUNT(*), COUNT(DISTINCT stock_code) FROM info_stock_news")
 c, s = cur.fetchone()

@@ -81,7 +81,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getIndustryCompare } from '@/api/signal'
-import * as echarts from 'echarts'
+import echarts from '@/utils/echarts'
 import { useApiRetry, safeRecords, safeNum } from '@/composables/useApiRetry'
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'

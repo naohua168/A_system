@@ -72,6 +72,7 @@ public class FundController {
 
             for (Fund fund : p.getRecords()) {
                 Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", fund.getId());
                 map.put("fundCode", fund.getFundCode());
                 map.put("fundName", fund.getFundName());
                 map.put("fundType", fund.getFundType());
@@ -128,7 +129,7 @@ public class FundController {
     public ApiResponse navHistory(@PathVariable String code,
                                   @RequestParam(defaultValue = "30") int days) {
         List<FundNav> list = fundNavService.getLatest(code, days);
-        return list.isEmpty() ? ApiResponse.error("无净值数据") : ApiResponse.ok(list);
+        return list.isEmpty() ? ApiResponse.ok(java.util.Collections.emptyList()) : ApiResponse.ok(list);
     }
 
     @GetMapping("/nav/{code}")
@@ -140,6 +141,6 @@ public class FundController {
     @GetMapping("/{code}/holdings")
     public ApiResponse getHoldings(@PathVariable String code) {
         List<FundHolding> holdings = fundHoldingService.getTopHoldings(code, 10);
-        return holdings.isEmpty() ? ApiResponse.error("无持仓数据") : ApiResponse.ok(holdings);
+        return holdings.isEmpty() ? ApiResponse.ok(java.util.Collections.emptyList()) : ApiResponse.ok(holdings);
     }
 }

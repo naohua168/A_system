@@ -2,125 +2,371 @@
   <div class="news-view">
     <div class="page-header">
       <h2>市场资讯</h2>
-      <div class="news-tabs">
-        <button
-          v-for="cat in categories"
-          :key="cat.key"
-          :class="['tab-btn', { active: activeCat === cat.key }]"
-          @click="activeCat = cat.key"
-        >{{ cat.label }}</button>
+    </div>
+
+    <!-- ── 日期导航 ── -->
+    <div class="date-nav">
+      <button class="nav-btn" @click="prevDay" title="前一天">
+        <el-icon><ArrowLeft /></el-icon>
+      </button>
+
+      <el-popover
+        :visible="showDatePicker"
+        trigger="manual"
+        placement="bottom"
+        :width="300"
+        popper-class="news-popper"
+      >
+        <template #reference>
+          <div class="date-display" @click="showDatePicker = !showDatePicker">
+            <span class="date-text">{{ dateDisplayText }}</span>
+            <span
+              v-if="dateBadgeText"
+              class="date-badge"
+              :class="dateBadgeText === '今天' ? 'badge-today' : 'badge-yesterday'"
+            >{{ dateBadgeText }}</span>
+            <el-icon class="cal-icon"><Calendar /></el-icon>
+          </div>
+        </template>
+        <div class="calendar-wrap">
+          <el-date-picker
+            v-model="activeDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            inline
+            @change="onDatePick"
+          />
+        </div>
+      </el-popover>
+
+      <button class="nav-btn" @click="nextDay" :disabled="!canGoNext">
+        <el-icon><ArrowRight /></el-icon>
+      </button>
+    </div>
+
+    <!-- ── 快捷日期条 ── -->
+    <div class="date-strip" v-if="availableDates.length > 0">
+      <button
+        v-for="d in availableDates" :key="d"
+        :class="['date-chip', { active: d === activeDate }]"
+        @click="activeDate = d"
+      >{{ formatDateShort(d) }}</button>
+    </div>
+
+    <!-- ── 加载态 ── -->
+    <div v-if="loading" class="state-box">
+      <div class="sk-list">
+        <div v-for="n in 5" :key="n" class="sk-item">
+          <div class="sk-dot"></div>
+          <div class="sk-body">
+            <div class="sk-line w-30"></div>
+            <div class="sk-line w-80"></div>
+            <div class="sk-line w-60"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="timeline">
-      <div class="timeline-group" v-for="(group, gidx) in filteredNews" :key="gidx">
-        <!-- 日期分隔头 -->
-        <div class="date-header">{{ group.date }}</div>
+    <!-- ── 错误态 ── -->
+    <div v-else-if="error" class="state-box">
+      <div class="error-state">
+        <el-icon :size="40" color="#e74c3c"><WarningFilled /></el-icon>
+        <p class="error-text">{{ error }}</p>
+        <el-button type="primary" size="small" @click="loadData">重新加载</el-button>
+      </div>
+    </div>
 
-        <!-- 时间线区域 -->
-        <div class="timeline-track">
-          <!-- 竖线 -->
-          <div class="tl-line"></div>
-          <!-- 每条资讯 -->
-          <article
-            v-for="item in group.items"
-            :key="item.id"
-            class="tl-item"
-            @click="openNews(item)"
-          >
-            <div class="tl-dot">
-              <span class="dot-time">{{ item.time }}</span>
-            </div>
-            <div class="tl-card">
-              <div class="news-tags">
-                <el-tag
-                  v-for="tag in item.tags" :key="tag"
-                  size="small"
-                  :type="tagType(tag)"
-                  class="news-tag"
-                >{{ tag }}</el-tag>
-              </div>
-              <h3 class="news-title">{{ item.title }}</h3>
-              <p class="news-summary caption">{{ item.summary }}</p>
-              <div class="news-footer">
-                <span class="news-source caption">{{ item.source }}</span>
-              </div>
-            </div>
-          </article>
+    <!-- ── 新闻列表 ── -->
+    <div v-else class="news-list">
+      <div v-if="currentItems.length === 0" class="state-box">
+        <div class="empty-state">
+          <el-icon :size="40" color="#ccc"><Document /></el-icon>
+          <p class="empty-text">该日期暂无资讯</p>
         </div>
       </div>
+
+      <template v-else>
+        <div
+          v-for="item in currentItems" :key="item.id"
+          class="nl-item"
+          @click="openLink(item)"
+        >
+          <div class="nl-left">
+            <span class="nl-time">{{ item.time }}</span>
+            <span class="nl-dot"></span>
+          </div>
+          <div class="nl-card">
+            <div class="nl-meta">
+              <el-tag
+                size="small"
+                :type="item.type === 'cls' ? '' : 'success'"
+                class="nl-tag"
+              >{{ item.type === 'cls' ? '快讯' : '资讯' }}</el-tag>
+              <span class="nl-source">{{ item.source }}</span>
+            </div>
+            <h4 class="nl-title">{{ item.title }}</h4>
+            <p class="nl-summary">{{ item.content }}</p>
+          </div>
+        </div>
+
+        <div class="load-more" v-if="hasMore">
+          <el-button :loading="loadingMore" text type="primary" @click="loadMore">
+            {{ loadingMore ? '加载中...' : '加载更多' }}
+          </el-button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { ArrowLeft, ArrowRight, Calendar, WarningFilled, Document } from '@element-plus/icons-vue'
+import { getClsNews, getGlobalNews } from '@/api/info'
+import type { ClsNewsItem, GlobalNewsItem } from '@/types'
 
-const activeCat = ref('all')
+// ══════════════════════════════════════════
+// 工具函数（放在最前面，避免 computed 引用未定义）
+// ══════════════════════════════════════════
 
-const categories = [
-  { key: 'all', label: '全部' },
-  { key: 'macro', label: '宏观' },
-  { key: 'stock', label: '股市' },
-  { key: 'fund', label: '基金' },
-  { key: 'industry', label: '行业' },
-  { key: 'company', label: '公司' },
-  { key: 'policy', label: '政策' },
-  { key: 'capital', label: '资金' },
-  { key: 'global', label: '全球' },
-]
+const $W = ['日', '一', '二', '三', '四', '五', '六']
 
-interface NewsItem {
-  id: string; title: string; summary: string; source: string
-  time: string; tags: string[]; url: string
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
 }
 
-const newsData: NewsItem[] = [
-  { id: '1', title: '央行宣布下调存款准备金率0.5个百分点', summary: '中国人民银行决定自2026年5月15日起下调金融机构存款准备金率0.5个百分点，释放长期资金约1万亿元。', source: '中国人民银行', time: '10:32', tags: ['宏观', '政策'], url: '#' },
-  { id: '2', title: 'A股三大指数集体收涨 沪指重返3300点', summary: '今日A股市场全线走强，上证指数收涨1.25%报3356.78点，深证成指涨1.12%，创业板指涨0.85%。两市成交额超1.2万亿。', source: '东方财富', time: '15:05', tags: ['股市'], url: '#' },
-  { id: '3', title: '北向资金今日净买入超80亿元', summary: '北向资金今日大幅净买入82.56亿元，其中沪股通净买入45.23亿元，深股通净买入37.33亿元。贵州茅台、宁德时代获净买入居前。', source: 'Wind', time: '15:30', tags: ['股市', '资金'], url: '#' },
-  { id: '4', title: '多家基金公司宣布自购旗下权益基金', summary: '包括易方达、华夏、南方在内的多家头部基金公司宣布自购旗下权益类基金，合计自购金额超过10亿元，释放积极信号。', source: '中国基金报', time: '14:20', tags: ['基金'], url: '#' },
-  { id: '5', title: '新能源板块持续活跃 光伏产业链领涨', summary: '新能源板块今日表现强势，光伏产业链集体走强，隆基绿能涨超5%，通威股份涨超4%。消息面上，多部门发布支持新能源发展的相关政策。', source: '证券时报', time: '11:45', tags: ['行业', '新能源'], url: '#' },
-  { id: '6', title: '美联储维持利率不变 符合市场预期', summary: '美联储最新议息会议决定维持联邦基金利率目标区间不变，并表示将继续关注通胀数据。市场普遍预计年内可能降息1-2次。', source: '新华社', time: '08:15', tags: ['宏观', '全球'], url: '#' },
-  { id: '7', title: '半导体行业景气度回升 存储芯片价格反弹', summary: '据行业研究机构数据，存储芯片价格连续两个月环比上涨，DRAM和NAND Flash涨幅分别达到5%和3%，行业复苏信号明显。', source: '集微网', time: '09:30', tags: ['行业', '半导体'], url: '#' },
-  { id: '8', title: '2026年Q1公募基金持仓分析：加仓科技减仓消费', summary: '2026年一季度公募基金持仓数据出炉，前十大重仓股中科技股占比提升至35%，消费股占比下降至22%，新能源、半导体获显著加仓。', source: '天天基金网', time: '13:00', tags: ['基金', '分析'], url: '#' },
-  { id: '9', title: '国务院发布促进人工智能产业发展指导意见', summary: '国务院印发《关于促进人工智能产业高质量发展的指导意见》，提出到2030年AI核心产业规模超万亿，重点支持芯片、算法、应用三大领域。', source: '新华社', time: '19:00', tags: ['政策', '行业'], url: '#' },
-  { id: '10', title: '宁德时代发布第三代钠离子电池 能量密度提升30%', summary: '宁德时代在发布会上宣布第三代钠离子电池能量密度达到200Wh/kg，计划2027年实现量产，将大幅降低储能和电动车成本。', source: '证券日报', time: '14:50', tags: ['公司', '新能源'], url: '#' },
-  { id: '11', title: '全球央行黄金储备连续18个月增加 中国央行增持最多', summary: '世界黄金协会数据显示，全球央行一季度净购金量达286吨，中国央行连续18个月增持黄金储备，累计增加约316吨。', source: 'Wind', time: '09:15', tags: ['全球', '宏观'], url: '#' },
-  { id: '12', title: '中芯国际14nm制程良率突破95% 产能利用率满载', summary: '中芯国际公布最新运营数据，14nm FinFET制程良率突破95%，产能利用率连续三个季度保持满载，Q1营收同比增长22%。', source: '集微网', time: '11:20', tags: ['公司', '半导体'], url: '#' },
-]
+function fmtDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
 
-const groupedData = [
-  { date: '今天 5月8日', items: newsData.slice(0, 5) },
-  { date: '昨天 5月7日', items: newsData.slice(5, 8) },
-  { date: '5月6日', items: newsData.slice(8, 12) },
-]
+/** 安全解析 YYYY-MM-DD 字符串 */
+function dateFromStr(s: string): Date | null {
+  if (!s || typeof s !== 'string') return null
+  const p = s.split('-')
+  if (p.length < 3) return null
+  const [y, m, d] = [parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2])]
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null
+  return new Date(y, m, d)
+}
 
-const filteredNews = computed(() => {
-  if (activeCat.value === 'all') return groupedData
-  return groupedData.map(g => ({
-    date: g.date,
-    items: g.items.filter(item =>
-      item.tags.some(t => t === activeCat.value)
-    ),
-  })).filter(g => g.items.length > 0)
+/** 解析 publishTime 字段，兼容只存了时间的情况 */
+function parsePubTime(s: string): { date: string; time: string } {
+  if (!s) return { date: '', time: '' }
+
+  // "2026-05-27 22:47:10" → 完整日期时间
+  if (s.includes(' ')) {
+    const p = s.split(' ')
+    return { date: p[0], time: (p[1] || '00:00').substring(0, 5) }
+  }
+
+  // "22:47:10" → 只有时间，用今天的日期
+  if (s.includes(':')) {
+    return { date: fmtDate(new Date()), time: s.substring(0, 5) }
+  }
+
+  // "2026-05-27" → 只有日期
+  return { date: s, time: '00:00' }
+}
+
+function formatDateShort(s: string): string {
+  const d = dateFromStr(s)
+  if (!d) return s || '?'
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+// ══════════════════════════════════════════
+// 类型
+// ══════════════════════════════════════════
+
+interface FeedItem {
+  id: string
+  type: 'cls' | 'global'
+  title: string
+  date: string
+  time: string
+  content: string
+  source: string
+  url?: string
+}
+
+// ══════════════════════════════════════════
+// 状态
+// ══════════════════════════════════════════
+
+const today = new Date()
+const tomorrowStr = (() => {
+  const d = new Date(today)
+  d.setDate(d.getDate() + 1)
+  return fmtDate(d)
+})()
+
+const activeDate = ref(fmtDate(today))
+const availableDates = ref<string[]>([])
+const showDatePicker = ref(false)
+
+const loading = ref(true)
+const error = ref('')
+const loadingMore = ref(false)
+const allItems = ref<FeedItem[]>([])
+const clsDone = ref(false)
+const globalDone = ref(false)
+
+// ══════════════════════════════════════════
+// computed
+// ══════════════════════════════════════════
+
+const currentItems = computed(() =>
+  allItems.value
+    .filter(i => i.date === activeDate.value)
+    .sort((a, b) => b.time.localeCompare(a.time))
+)
+
+const hasMore = computed(() => !clsDone.value || !globalDone.value)
+
+const dateDisplayText = computed(() => {
+  const d = dateFromStr(activeDate.value)
+  if (!d || isNaN(d.getTime())) return activeDate.value
+  return `${d.getMonth() + 1}月${d.getDate()}日 周${$W[d.getDay()]}`
 })
 
-function openNews(item: NewsItem) {
-  window.open(item.url, '_blank')
+const dateBadgeText = computed(() => {
+  const t = fmtDate(today)
+  if (activeDate.value === t) return '今天'
+  const y = new Date(today)
+  y.setDate(y.getDate() - 1)
+  if (activeDate.value === fmtDate(y)) return '昨天'
+  return ''
+})
+
+const canGoNext = computed(() => activeDate.value < tomorrowStr)
+
+// ══════════════════════════════════════════
+// 数据转换
+// ══════════════════════════════════════════
+
+function cls2feed(item: ClsNewsItem): FeedItem {
+  const { date, time } = parsePubTime(item.publishTime)
+  return { id: `cls-${item.id}`, type: 'cls', title: item.title, date, time, content: item.content || '', source: '财联社' }
 }
 
-function tagType(tag: string) {
-  const map: Record<string, string> = {
-    '宏观': 'danger', '政策': 'danger',
-    '股市': 'primary', '资金': 'primary',
-    '基金': 'success', '行业': 'warning',
-    '公司': 'primary', '全球': 'info',
-    '半导体': 'warning', '新能源': 'success',
-    '分析': 'info',
-  }
-  return map[tag] || 'info'
+function global2feed(item: GlobalNewsItem): FeedItem {
+  const { date, time } = parsePubTime(item.publishTime)
+  return { id: `global-${item.id}`, type: 'global', title: item.title, date, time, content: item.summary || '', source: item.source || '全球资讯', url: item.url }
 }
+
+// ══════════════════════════════════════════
+// 数据加载
+// ══════════════════════════════════════════
+
+async function loadData() {
+  loading.value = true
+  error.value = ''
+  allItems.value = []
+  clsDone.value = false
+  globalDone.value = false
+
+  try {
+    const [clsRes, globalRes] = await Promise.all([
+      getClsNews(100).catch(() => ({ records: [] as ClsNewsItem[], total: 0 })),
+      getGlobalNews(100).catch(() => ({ records: [] as GlobalNewsItem[], total: 0 })),
+    ])
+
+    // 转换 + 去重
+    const raw: FeedItem[] = [
+      ...((clsRes?.records || []).map(cls2feed)),
+      ...((globalRes?.records || []).map(global2feed)),
+    ]
+    const seen = new Set<string>()
+    raw.forEach(i => { if (!seen.has(i.id)) { seen.add(i.id); allItems.value.push(i) } })
+
+    // 可用日期（只保留有效 YYYY-MM-DD 格式）
+    const ds = new Set<string>()
+    allItems.value.forEach(i => {
+      if (i.date && /^\d{4}-\d{2}-\d{2}$/.test(i.date)) ds.add(i.date)
+    })
+    availableDates.value = Array.from(ds).sort().reverse()
+
+    // 默认定位到今天或最近有数据的日期
+    const todayStr = fmtDate(today)
+    if (availableDates.value.includes(todayStr)) {
+      activeDate.value = todayStr
+    } else if (availableDates.value.length > 0) {
+      activeDate.value = availableDates.value[0]
+    }
+
+    clsDone.value = (clsRes?.records || []).length < 100
+    globalDone.value = (globalRes?.records || []).length < 100
+  } catch (e: any) {
+    error.value = e?.message || '加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadMore() {
+  loadingMore.value = true
+  try {
+    const ps: Promise<any>[] = []
+    if (!clsDone.value) {
+      ps.push(
+        getClsNews(100).then((r: any) => {
+          const items = (r?.records || []).map(cls2feed)
+          const exist = new Set(allItems.value.map(i => i.id))
+          items.forEach(i => { if (!exist.has(i.id)) { allItems.value.push(i) } })
+          clsDone.value = items.length < 100
+        })
+      )
+    }
+    if (!globalDone.value) {
+      ps.push(
+        getGlobalNews(100).then((r: any) => {
+          const items = (r?.records || []).map(global2feed)
+          const exist = new Set(allItems.value.map(i => i.id))
+          items.forEach(i => { if (!exist.has(i.id)) { allItems.value.push(i) } })
+          globalDone.value = items.length < 100
+        })
+      )
+    }
+    await Promise.all(ps)
+    const ds = new Set<string>()
+    allItems.value.forEach(i => { if (/^\d{4}-\d{2}-\d{2}$/.test(i.date)) ds.add(i.date) })
+    availableDates.value = Array.from(ds).sort().reverse()
+  } catch { /* silent */ } finally {
+    loadingMore.value = false
+  }
+}
+
+// ══════════════════════════════════════════
+// 交互
+// ══════════════════════════════════════════
+
+function prevDay() {
+  const d = dateFromStr(activeDate.value)
+  if (!d) return
+  d.setDate(d.getDate() - 1)
+  activeDate.value = fmtDate(d)
+}
+
+function nextDay() {
+  const d = dateFromStr(activeDate.value)
+  if (!d) return
+  d.setDate(d.getDate() + 1)
+  const maxD = new Date(today)
+  maxD.setDate(maxD.getDate() + 1)
+  if (d > maxD) return
+  activeDate.value = fmtDate(d)
+}
+
+function onDatePick(val: string) {
+  showDatePicker.value = false
+  if (val) activeDate.value = val
+}
+
+function openLink(item: FeedItem) {
+  if (item.url) window.open(item.url, '_blank')
+}
+
+onMounted(loadData)
 </script>
 
 <style scoped lang="scss">
@@ -132,173 +378,190 @@ function tagType(tag: string) {
 
 .page-header {
   margin-bottom: $spacing-xl;
-
-  h2 { margin-bottom: $spacing-md; }
+  h2 { margin: 0 0 $spacing-lg; font-weight: 700; font-size: 22px; }
 }
 
-.news-tabs {
+// ── 日期导航 ──
+.date-nav {
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: $spacing-xs;
+  margin-bottom: $spacing-md;
 
-  .tab-btn {
-    padding: 8px 20px;
+  .nav-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
     border: 1px solid $hairline;
     background: $canvas;
-    border-radius: $rounded-pill;
-    font-size: 14px;
-    color: $ink-muted-48;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     transition: all 0.2s;
+    color: $ink-muted-48;
+    flex-shrink: 0;
+
+    &:hover:not(:disabled) { border-color: $primary; color: $primary; background: rgba($primary, 0.04); }
+    &:disabled { opacity: 0.3; cursor: not-allowed; }
+  }
+
+  .date-display {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: $rounded-md;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+
+    &:hover { background: $canvas-parchment; }
+
+    .date-text { font-size: 17px; font-weight: 600; color: $ink; white-space: nowrap; }
+    .cal-icon { font-size: 16px; color: $ink-muted-48; flex-shrink: 0; }
+  }
+
+  .date-badge {
+    font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: $rounded-pill;
+    flex-shrink: 0; margin-left: -6px;
+
+    &.badge-today { background: $rise; color: white; }
+    &.badge-yesterday { background: $ink-muted-48; color: white; }
+  }
+}
+
+// ── 日历弹出 ──
+:deep(.calendar-wrap) {
+  padding: 8px;
+  .el-date-picker { width: 100%; }
+}
+
+// ── 来源标签 ──
+.source-tabs {
+  display: flex; gap: $spacing-xs; margin-bottom: $spacing-sm; justify-content: center;
+
+  .source-btn {
+    padding: 6px 20px;
+    border: 1px solid $hairline; background: $canvas; border-radius: $rounded-pill;
+    font-size: 13px; font-weight: 500; color: $ink-muted-48; cursor: pointer; transition: all 0.2s;
 
     &:hover { border-color: $primary; color: $primary; }
     &.active { background: $primary; border-color: $primary; color: white; }
   }
 }
 
-/* 时间线 */
-.timeline-group {
-  margin-bottom: $spacing-lg;
+// ── 日期快捷条 ──
+.date-strip {
+  display: flex; gap: 6px; padding: $spacing-sm 0 $spacing-md; justify-content: center;
+  flex-wrap: wrap;
+
+  .date-chip {
+    padding: 4px 12px; border-radius: $rounded-pill;
+    border: 1px solid $hairline; background: $canvas;
+    font-size: 12px; color: $ink-muted-48; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+
+    &:hover { border-color: $primary; color: $primary; }
+    &.active { background: $primary; border-color: $primary; color: white; font-weight: 600; }
+  }
 }
 
-.date-header {
-  position: relative;
-  z-index: 2;
-  display: inline-block;
-  padding: 4px 16px;
-  background: $canvas-parchment;
-  border: 1px solid $divider-soft;
-  border-radius: $rounded-pill;
-  font-size: 13px;
-  font-weight: 600;
-  color: $ink-muted-48;
-  margin-bottom: $spacing-md;
+// ── 状态 ──
+.state-box {
+  min-height: 320px; display: flex; align-items: center; justify-content: center;
 }
 
-.timeline-track {
-  position: relative;
-  padding-left: 64px;  /* 留给时间和竖线的空间 */
+// skeleton
+.sk-list { width: 100%; display: flex; flex-direction: column; gap: $spacing-lg; }
+
+.sk-item {
+  display: flex; gap: $spacing-lg; align-items: flex-start;
+
+  .sk-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: $hairline;
+    flex-shrink: 0; margin-top: 6px; animation: pulse 1.5s infinite;
+  }
+  .sk-body { flex: 1; }
+  .sk-line {
+    height: 14px; border-radius: 4px; background: $hairline; margin-bottom: 8px; animation: pulse 1.5s infinite;
+    &.w-30 { width: 30%; } &.w-60 { width: 60%; } &.w-80 { width: 80%; }
+  }
 }
 
-/* 竖线 - 从第一个item延伸到最后一个 */
-.tl-line {
-  position: absolute;
-  left: 30px;
-  top: 12px;
-  bottom: 12px;
+@keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+.error-state { text-align: center; display: flex; flex-direction: column; align-items: center; gap: $spacing-md; }
+.error-text { color: $ink-muted-48; font-size: 14px; }
+.empty-state { text-align: center; display: flex; flex-direction: column; align-items: center; gap: $spacing-sm; }
+.empty-text { color: $ink-muted-48; font-size: 14px; margin: 0; }
+
+// ══════════════════════════════════════════
+// 新闻列表
+// ══════════════════════════════════════════
+
+.news-list { position: relative; padding-left: 56px; }
+
+// 竖线
+.news-list::before {
+  content: ''; position: absolute; left: 26px; top: 12px; bottom: 12px;
   width: 2px;
-  background: linear-gradient(to bottom,
-    $hairline 0%,
-    $primary 30%,
-    $primary 70%,
-    $hairline 100%
-  );
-  opacity: 0.5;
+  background: linear-gradient(to bottom, transparent 0%, $hairline 6%, $hairline 94%, transparent 100%);
+  pointer-events: none;
 }
 
-/* 每条资讯 */
-.tl-item {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: $spacing-md;
-  margin-bottom: $spacing-md;
-  cursor: pointer;
+.nl-item {
+  position: relative; display: flex; align-items: flex-start; gap: $spacing-md;
+  margin-bottom: $spacing-md; cursor: pointer;
 
   &:last-child { margin-bottom: 0; }
 }
 
-/* 左侧圆点 + 时间 */
-.tl-dot {
-  position: absolute;
-  left: -64px;  /* 从padding起始处偏移 */
-  top: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 64px;
-  justify-content: flex-end;
+// 左侧时间 + 圆点
+.nl-left {
+  position: absolute; left: -56px; top: 18px;
+  display: flex; align-items: center; gap: 6px;
+  width: 56px; justify-content: flex-end;
 
-  /* 圆点 */
-  &::after {
-    content: '';
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: $primary;
-    border: 2px solid $canvas;
-    box-shadow: 0 0 0 2px rgba(41,151,255,0.3);
-    flex-shrink: 0;
-    transition: all 0.2s;
-  }
+  .nl-time { font-size: 12px; font-weight: 600; color: $ink-muted-48; white-space: nowrap; transition: color 0.2s; }
 
-  .dot-time {
-    font-size: 12px;
-    font-family: $font-display;
-    font-weight: 600;
-    color: $ink-muted-48;
-    white-space: nowrap;
-    transition: color 0.2s;
+  .nl-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: $primary;
+    border: 2px solid $canvas; box-shadow: 0 0 0 2px rgba($primary, 0.2);
+    flex-shrink: 0; transition: all 0.25s;
   }
 }
 
-/* 悬停时圆点放大变色 */
-.tl-item:hover {
-  .tl-dot::after {
-    transform: scale(1.3);
-    background: #ff6b6b;
-    box-shadow: 0 0 0 3px rgba(255,107,107,0.3);
-  }
-  .dot-time { color: $ink; font-weight: 700; }
+.nl-item:hover {
+  .nl-dot { transform: scale(1.35); background: $rise; box-shadow: 0 0 0 3px rgba($rise, 0.25); }
+  .nl-time { color: $ink; font-weight: 700; }
 }
 
-/* 资讯卡片 */
-.tl-card {
-  flex: 1;
-  background: $canvas;
-  border: 1px solid $divider-soft;
-  border-radius: $rounded-lg;
-  padding: $spacing-md $spacing-lg;
-  transition: all 0.2s;
+// 卡片
+.nl-card {
+  flex: 1; background: $canvas; border: 1px solid $divider-soft; border-radius: $rounded-md;
+  padding: $spacing-md $spacing-lg; transition: all 0.2s;
 
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: $shadow-elevated;
-    border-color: rgba(41,151,255,0.2);
+    transform: translateY(-1px); box-shadow: $shadow-elevated; border-color: rgba($primary, 0.15);
   }
 
-  .news-tags {
-    display: flex;
-    gap: 6px;
-    margin-bottom: $spacing-xs;
-  }
+  .nl-meta { display: flex; align-items: center; gap: $spacing-xs; margin-bottom: $spacing-xs; }
+  .nl-tag { border: none; font-weight: 600; height: 22px; line-height: 22px; padding: 0 8px; }
+  .nl-source { font-size: 11px; color: $ink-muted-48; }
 
-  .news-tag {
-    border: none;
-    font-weight: 500;
-  }
-
-  .news-title {
-    font-size: 16px;
-    font-weight: 600;
-    line-height: 1.4;
-    margin-bottom: $spacing-xs;
-    color: $ink;
-
+  .nl-title {
+    font-size: 15px; font-weight: 600; line-height: 1.4; color: $ink; margin: 0 0 $spacing-xs;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     &:hover { color: $primary; }
   }
 
-  .news-summary {
-    margin-bottom: $spacing-sm;
-    line-height: 1.5;
-    font-size: 13px;
-    color: $ink-muted-48;
+  .nl-summary {
+    font-size: 13px; line-height: 1.5; color: $ink-muted-48; margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   }
+}
 
-  .news-footer {
-    display: flex;
-    justify-content: space-between;
-    color: $ink-muted-48;
-    font-size: 12px;
-  }
+.load-more {
+  text-align: center; padding: $spacing-lg 0 $spacing-xl; position: relative; left: -28px;
 }
 </style>

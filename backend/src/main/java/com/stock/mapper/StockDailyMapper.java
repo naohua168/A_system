@@ -35,6 +35,9 @@ public interface StockDailyMapper extends BaseMapper<StockDaily> {
     /** 行业涨跌排行 */
     List<Map<String, Object>> selectSectorRanking(@Param("tradeDate") String tradeDate);
 
+    /** 行业分层云图（一级行业 + 成分股明细） */
+    List<Map<String, Object>> selectIndustryTreeMap(@Param("tradeDate") String tradeDate);
+
     /** 查询最大交易日（即最近有数据的一天） */
     String selectMaxTradeDate();
 

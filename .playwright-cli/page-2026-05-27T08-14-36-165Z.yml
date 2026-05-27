@@ -1,0 +1,37 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - heading "StockAI" [level=1] [ref=e11]
+      - paragraph [ref=e12]: 智能金融分析平台
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - img [ref=e16]
+          - generic [ref=e18]: 实时行情与K线技术分析
+        - generic [ref=e19]:
+          - img [ref=e21]
+          - generic [ref=e23]: 缠论智能中枢识别
+        - generic [ref=e24]:
+          - img [ref=e26]
+          - generic [ref=e28]: 多维度量化指标
+        - generic [ref=e29]:
+          - img [ref=e31]
+          - generic [ref=e33]: AI智能对话分析
+    - generic [ref=e35]:
+      - generic [ref=e36]:
+        - heading "欢迎回来" [level=2] [ref=e37]
+        - paragraph [ref=e38]: 登录您的账户继续
+      - generic [ref=e39]:
+        - generic [ref=e43]:
+          - img [ref=e46]
+          - textbox "用户名" [ref=e48]: admin
+        - generic [ref=e52]:
+          - img [ref=e55]
+          - textbox "密码" [ref=e58]: admin123
+          - img [ref=e66] [cursor=pointer]
+        - button "登录" [ref=e61] [cursor=pointer]:
+          - generic [ref=e62]: 登录
+      - generic [ref=e63]: 还没有账户？立即注册
+  - alert [ref=e69]:
+    - img [ref=e71]
+    - paragraph [ref=e73]: 数据库访问异常

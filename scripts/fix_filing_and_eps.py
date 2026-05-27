@@ -24,13 +24,23 @@ cur.execute("SELECT COUNT(*) FROM info_filing")
 before = cur.fetchone()[0]
 log.info(f"当前: {before} 条")
 
+# 获取已有数据的股票，用于增量跳过
+cur.execute("SELECT DISTINCT stock_code FROM info_filing")
+existing_filing_codes = set(r[0] for r in cur.fetchall())
+log.info(f"已有公告股票: {len(existing_filing_codes)} 只")
+
 if before < 100:
-    cur.execute("SELECT stock_code, stock_name FROM stock ORDER BY total_market_cap DESC LIMIT 500")
+    cur.execute("SELECT stock_code, stock_name FROM stock ORDER BY total_market_cap DESC LIMIT 1000")
     top_stocks = cur.fetchall()
-    log.info(f"采集TOP500市值股票公告...")
+    log.info(f"采集TOP1000市值股票公告（已有{len(existing_filing_codes)}只跳过）...")
     
     inserted = 0
+    skipped = 0
     for i, (code, name) in enumerate(top_stocks):
+        # 增量跳过：已有数据的股票不再采集
+        if code in existing_filing_codes:
+            skipped += 1
+            continue
         try:
             org_id = f"gssh0{code}" if code.startswith('6') else (f"gsbj0{code}" if code.startswith(('8','4')) else f"gssz0{code}")
             r = sess.post("https://www.cninfo.com.cn/new/hisAnnouncement/query",
@@ -49,16 +59,21 @@ if before < 100:
                      f"https://www.cninfo.com.cn/new/disclosure/detail?annoId={ann.get('announcementId','')}"))
                 inserted += 1
         except: pass
-        if (i+1)%100==0: log.info(f"  公告进度:{i+1}/500, 插入:{inserted}")
+        if (i+1)%100==0: log.info(f"  公告进度:{i+1}/1000 (跳过{skipped}), 新增插入:{inserted}")
         time.sleep(0.05)
     conn.commit()
     cur.execute("SELECT COUNT(*) FROM info_filing")
-    log.info(f"公告完成: {cur.fetchone()[0]} 条")
+    log.info(f"公告完成: {cur.fetchone()[0]} 条 (跳过{skipped}只已有股票)")
 
 # ====== 2. 一致预期采集 (info_consensus_eps) ======
 log.info("\n=== 一致预期采集 ===")
 cur.execute("SELECT COUNT(DISTINCT stock_code) FROM info_consensus_eps")
 before = cur.fetchone()[0]
+
+# 获取已有数据的股票，用于增量跳过
+cur.execute("SELECT DISTINCT stock_code FROM info_consensus_eps")
+existing_eps_codes = set(r[0] for r in cur.fetchall())
+log.info(f"已有一致预期股票: {len(existing_eps_codes)} 只")
 
 # 获取热门+高关注度股票
 cur.execute("""
@@ -69,10 +84,16 @@ cur.execute("""
     ORDER BY stock_code
 """)
 eps_stocks = [r[0] for r in cur.fetchall()[:400]]
-log.info(f"采集 {len(eps_stocks)} 只股票一致预期...")
+log.info(f"采集候选 {len(eps_stocks)} 只股票一致预期...")
 
 inserted = 0
+skipped = 0
 for i, code in enumerate(eps_stocks):
+    # 增量跳过：已有数据的股票不再重新采集
+    if code in existing_eps_codes:
+        skipped += 1
+        if (i+1)%100==0: log.info(f"  EPS跳过:{i+1}/{len(eps_stocks)}, 已跳过{skipped}, 新增{inserted}")
+        continue
     try:
         r = sess.get(f"https://basic.10jqka.com.cn/new/{code}/worth.html",
                      headers={"User-Agent":UA}, timeout=10)
@@ -102,7 +123,7 @@ for i, code in enumerate(eps_stocks):
                     except: pass
                 break
     except: pass
-    if (i+1)%100==0: log.info(f"  EPS进度:{i+1}/{len(eps_stocks)}, 插入:{inserted}")
+    if (i+1)%100==0: log.info(f"  EPS进度:{i+1}/{len(eps_stocks)} (跳过{skipped}), 新增插入:{inserted}")
     time.sleep(0.15)
 conn.commit()
 

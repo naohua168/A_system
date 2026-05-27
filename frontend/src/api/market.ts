@@ -36,6 +36,19 @@ export function getSectorRanking(tradeDate?: string): Promise<{ tradeDate: strin
   return request.get('/market/sector-ranking', { params: { tradeDate } })
 }
 
+/** 行业分层云图（一级行业 + 成分股明细，前端钻取用） */
+export function getIndustryTreemap(tradeDate?: string): Promise<{
+  tradeDate: string
+  records: {
+    name: string
+    stockCount: number
+    avgChangePct: number
+    children: { stockCode: string; stockName: string; changePercent: number }[]
+  }[]
+}> {
+  return request.get('/market/industry-treemap', { params: { tradeDate } })
+}
+
 export function filterStocks(params: StockFilterParams): Promise<StockDetail[]> {
   return request.get('/market/filter', { params })
 }

@@ -77,8 +77,15 @@
 
     <!-- K线图 -->
     <div class="chart-main" ref="chartRef" v-loading="chartLoading">
-      <div class="kline-chart" ref="klineChartRef"></div>
-      <div class="bottom-chart" ref="bottomChartRef"></div>
+      <template v-if="!chartLoading && (!cachedKlineData || cachedKlineData.length < 10)">
+        <div class="chart-empty">
+          <span class="chart-empty-text">暂无K线数据</span>
+        </div>
+      </template>
+      <template v-else>
+        <div class="kline-chart" ref="klineChartRef"></div>
+        <div class="bottom-chart" ref="bottomChartRef"></div>
+      </template>
     </div>
 
     <!-- 底部信息区域 (新排版) -->
@@ -281,52 +288,29 @@
     </el-dialog>
 
     <!-- 参数设置弹窗 -->
-    <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="380px" :modal="false" class="params-dialog">
+    <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="420px" :modal="false" class="params-dialog">
       <div v-if="paramsTarget === 'macd'" class="params-form">
-        <div class="param-item">
-          <label>快线周期 (EMA短)</label>
-          <el-input-number v-model="params.macd.fast" :min="5" :max="30" size="small" controls-position="right" />
-        </div>
-        <div class="param-item">
-          <label>慢线周期 (EMA长)</label>
-          <el-input-number v-model="params.macd.slow" :min="10" :max="60" size="small" controls-position="right" />
-        </div>
-        <div class="param-item">
-          <label>信号周期 (DEA)</label>
-          <el-input-number v-model="params.macd.signal" :min="5" :max="30" size="small" controls-position="right" />
-        </div>
+        <div class="param-item"><div class="param-row"><label>快线周期 (EMA短)</label><el-input-number v-model="params.macd.fast" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">短周期 EMA 计算参数，值越小对价格越敏感。默认值 12。</p></div>
+        <div class="param-item"><div class="param-row"><label>慢线周期 (EMA长)</label><el-input-number v-model="params.macd.slow" :min="10" :max="60" size="small" controls-position="right" /></div><p class="param-hint">长周期 EMA 计算参数，值越大趋势越平滑。默认值 26。</p></div>
+        <div class="param-item"><div class="param-row"><label>信号周期 (DEA)</label><el-input-number v-model="params.macd.signal" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">DIF 的移动平均周期，值越大信号越滞后。默认值 9。</p></div>
       </div>
       <div v-if="paramsTarget === 'kdj'" class="params-form">
-        <div class="param-item">
-          <label>计算周期 (N)</label>
-          <el-input-number v-model="params.kdj.period" :min="5" :max="30" size="small" controls-position="right" />
-        </div>
+        <div class="param-item"><div class="param-row"><label>计算周期 (N)</label><el-input-number v-model="params.kdj.period" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">RSV 的计算周期，决定 K 值对价格变动的敏感度。默认值 9。</p></div>
+        <div class="param-item"><div class="param-row"><label>K值平滑 (M1)</label><el-input-number v-model="params.kdj.m1" :min="2" :max="10" size="small" controls-position="right" /></div><p class="param-hint">K 值的平滑因子，值越小 K 线跟随 RSV 越快。默认值 3。</p></div>
+        <div class="param-item"><div class="param-row"><label>D值平滑 (M2)</label><el-input-number v-model="params.kdj.m2" :min="2" :max="10" size="small" controls-position="right" /></div><p class="param-hint">D 值的平滑因子，值越小 D 线跟随 K 越快。默认值 3。</p></div>
       </div>
       <div v-if="paramsTarget === 'rsi'" class="params-form">
-        <div class="param-item">
-          <label>计算周期 (N)</label>
-          <el-input-number v-model="params.rsi.period" :min="5" :max="30" size="small" controls-position="right" />
-        </div>
+        <div class="param-item"><div class="param-row"><label>计算周期 (N)</label><el-input-number v-model="params.rsi.period" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">RSI 的计算周期，值越小对价格波动越敏感。默认值 14。</p></div>
       </div>
       <div v-if="paramsTarget === 'ma'" class="params-form">
-        <div class="param-item">
-          <label>MA1 周期</label>
-          <el-input-number v-model="params.ma.periods[0]" :min="3" :max="60" size="small" controls-position="right" />
-        </div>
-        <div class="param-item">
-          <label>MA2 周期</label>
-          <el-input-number v-model="params.ma.periods[1]" :min="3" :max="120" size="small" controls-position="right" />
-        </div>
+        <div class="param-item"><div class="param-row"><label>MA1 周期</label><el-input-number v-model="params.ma.periods[0]" :min="3" :max="120" size="small" controls-position="right" /></div><p class="param-hint">短期均线，常用值 5/10。默认值 5。</p></div>
+        <div class="param-item"><div class="param-row"><label>MA2 周期</label><el-input-number v-model="params.ma.periods[1]" :min="3" :max="120" size="small" controls-position="right" /></div><p class="param-hint">中期均线，常用值 20/30。默认值 20。</p></div>
+        <div class="param-item"><div class="param-row"><label>MA3 周期</label><el-input-number v-model="params.ma.periods[2]" :min="3" :max="250" size="small" controls-position="right" /></div><p class="param-hint">中长期均线，常用值 60。默认值 60。</p></div>
+        <div class="param-item"><div class="param-row"><label>MA4 周期</label><el-input-number v-model="params.ma.periods[3]" :min="3" :max="250" size="small" controls-position="right" /></div><p class="param-hint">长期均线，常用值 120/250。默认值 120。</p></div>
       </div>
       <div v-if="paramsTarget === 'boll'" class="params-form">
-        <div class="param-item">
-          <label>计算周期</label>
-          <el-input-number v-model="params.boll.period" :min="5" :max="60" size="small" controls-position="right" />
-        </div>
-        <div class="param-item">
-          <label>标准差倍数</label>
-          <el-input-number v-model="params.boll.multiplier" :min="1" :max="5" :step="0.5" size="small" controls-position="right" />
-        </div>
+        <div class="param-item"><div class="param-row"><label>计算周期</label><el-input-number v-model="params.boll.period" :min="5" :max="60" size="small" controls-position="right" /></div><p class="param-hint">布林带中轨 MA 的计算周期，值越大通道越平滑。默认值 20。</p></div>
+        <div class="param-item"><div class="param-row"><label>标准差倍数</label><el-input-number v-model="params.boll.multiplier" :min="1" :max="5" :step="0.5" size="small" controls-position="right" /></div><p class="param-hint">通道宽度倍数，值越大上下轨越宽。默认值 2。</p></div>
       </div>
       <template #footer>
         <el-button @click="paramsDialogVisible = false">取消</el-button>
@@ -608,6 +592,9 @@ async function loadData() {
         safeVal(d.highPrice),
         safeVal(d.volume),
       ])
+    }
+    // 3. 从最新一条K线提取实时行情
+    if (klineRaw && klineRaw.length > 0) {
       const last = klineRaw[klineRaw.length - 1]
       const high = safeVal(last.highPrice)
       const low = safeVal(last.lowPrice)
@@ -785,10 +772,22 @@ watch(lastKlineUpdate, (update: KlineUpdateData | null) => {
   border-radius: $rounded-lg;
   overflow: hidden;
   margin-bottom: $spacing-lg;
+  position: relative;
 }
 
 .kline-chart { height: 420px; }
 .bottom-chart { height: 150px; border-top: 1px solid $divider-soft; }
+
+.chart-empty {
+  height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  .chart-empty-text {
+    font-size: 14px;
+    color: $ink-muted-48;
+  }
+}
 
 .bottom-section {
   display: flex;
@@ -1050,16 +1049,26 @@ watch(lastKlineUpdate, (update: KlineUpdateData | null) => {
 .params-form {
   .param-item {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 0;
     border-bottom: 1px solid $divider-soft;
 
     &:last-child { border-bottom: none; }
 
-    label {
-      font-size: 13px;
-      color: $ink;
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    label { font-size: 13px; color: $ink; font-weight: 500; }
+
+    .param-hint {
+      margin: 0;
+      font-size: 11px;
+      color: $ink-muted-48;
+      line-height: 1.4;
     }
   }
 }

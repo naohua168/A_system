@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import echarts from '@/utils/echarts'
 import { TrendCharts } from '@element-plus/icons-vue'
 import { getFundFlow } from '@/api/signal'
 import type { FundFlow } from '@/types'

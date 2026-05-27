@@ -108,7 +108,7 @@
           </div>
         </div>
         <div class="current-list">
-          <div class="list-title">已添加 ({{ visibleIndices.length }}/12)</div>
+          <div class="list-title">已添加 ({{ visibleIndices.length }}/15)</div>
           <div class="current-chips">
             <div v-for="(idx, i) in visibleIndices" :key="idx.code" class="chip chip-added">
               <span>{{ idx.name }}</span>
@@ -197,7 +197,7 @@
         <div class="chart-legend">
           <span class="legend-item"><span class="dot dot-rise"></span>涨</span>
           <span class="legend-item"><span class="dot dot-fall"></span>跌</span>
-          <span class="zoom-hint"><el-icon><Pointer /></el-icon> 点击板块跳转行情</span>
+          <span class="zoom-hint"><el-icon><Pointer /></el-icon> 点击板块查看详情</span>
         </div>
       </div>
       <div class="chart-container" ref="chartRef">
@@ -257,6 +257,17 @@
         </div>
       </template>
     </section>
+
+    <!-- 行业详情右侧面板 -->
+    <SectorDetailPanel
+      v-model="showSectorPanel"
+      :sector-name="selectedSectorName"
+      :sector-change="selectedSectorChange"
+      :stocks="selectedSectorStocks"
+      :kline-data="sectorKlineData"
+      @stock-click="onStockClick"
+      @go-detail="(name:string) => router.push({ path: `/sector/${encodeURIComponent(name)}` })"
+    />
   </div>
 </template>
 
@@ -265,7 +276,8 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, ArrowLeft, Setting, Pointer, Plus, Close, TrendCharts, DataAnalysis, Histogram, Aim } from '@element-plus/icons-vue'
 import TreemapChart from '@/components/chart/TreemapChart.vue'
-import { getStockList } from '@/api/market'
+import SectorDetailPanel from '@/components/chart/SectorDetailPanel.vue'
+import { getStockList, getIndustryTreemap, getSectorKline } from '@/api/market'
 import { getIndexList } from '@/api/index'
 import { getSectorRanking } from '@/api/analysis'
 import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare } from '@/api/signal'
@@ -352,7 +364,13 @@ async function loadSignalData() {
 
 /** 大盘指数 — 从后端 API 实时加载 */
 const allIndexData = ref<IndexCard[]>([])
-const DEFAULT_INDICES_CODES = ['000001', '399001', '399006', '000688']
+// 中国大盘指数默认展示核心4个，其他可手动添加
+const DEFAULT_INDICES_CODES = [
+  '000001',  // 上证指数
+  '399001',  // 深证成指
+  '399006',  // 创业板指
+  '000688',  // 科创50
+]
 
 const visibleIndices = ref<IndexCard[]>([])
 
@@ -403,7 +421,7 @@ function scrollIndices(dir: number) {
 }
 
 function addIndex(idx: IndexCard) {
-  if (visibleIndices.value.length >= 12) return
+  if (visibleIndices.value.length >= 15) return
   visibleIndices.value.push({ ...idx })
 }
 
@@ -418,6 +436,37 @@ function goToIndex(code: string) {
 
 /** 板块云图数据 */
 const sectorData = ref<SectorNode[]>([])
+
+/** 行业成分股映射表（行业名 → 股票列表，供详情面板使用） */
+const sectorStockMap = ref<Map<string, { stockCode: string; stockName: string; changePercent: number }[]>>(new Map())
+
+/** 行业详情面板状态 */
+const showSectorPanel = ref(false)
+const selectedSectorName = ref('')
+const selectedSectorChange = ref(0)
+const selectedSectorStocks = ref<{ stockCode: string; stockName: string; changePercent: number }[]>([])
+const sectorKlineData = ref<{ date: string; open: number; high: number; low: number; close: number; volume: number }[]>([])
+
+/** 加载行业 K 线数据 */
+async function loadSectorKline(industry: string) {
+  try {
+    const data = await getSectorKline(industry, 60)
+    if (Array.isArray(data) && data.length > 0) {
+      sectorKlineData.value = data.map((d: any) => ({
+        date: d.tradeDate || '',
+        open: Number(d.openPrice) || 0,
+        high: Number(d.highPrice) || 0,
+        low: Number(d.lowPrice) || 0,
+        close: Number(d.closePrice) || 0,
+        volume: Number(d.volume) || 0,
+      }))
+    } else {
+      sectorKlineData.value = []
+    }
+  } catch {
+    sectorKlineData.value = []
+  }
+}
 
 /** 热门股票网格 */
 const hotStocks = ref<HomeStockCard[]>([])
@@ -454,33 +503,82 @@ async function loadMarketStats() {
   } catch { /* 非关键功能，静默失败 */ }
 }
 
-/** 加载板块云图数据 */
+/** 加载板块云图数据（双层钻取：一级行业 → 成分股） */
 async function loadSectorData() {
   try {
-    const data = await getSectorRanking() as SectorRanking[]
-    if (Array.isArray(data) && data.length > 0) {
-      sectorData.value = data.map((d) => ({
-        name: d.industry || '其他',
-        value: Number(d.stockCount) || 1,
-        changePercent: Number(d.avgChangePct) || 0,
-      }))
-      // 云图数据已加载，如果行业排行卡片为空则补充
-      if (industryTop.value.length === 0) {
-        const top3 = sectorData.value
-          .slice()
-          .sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))
-          .slice(0, 3)
-          .map((item) => ({ industryName: item.name, changePct: item.changePercent || 0 }))
-        if (top3.length > 0) industryTop.value = top3
-      }
-      return
+    // 优先使用新 API（行业-成分股分层），后端无此接口时回退到旧 API
+    let data: { name: string; stockCount: number; avgChangePct: number; children: any[] }[] | null = null
+    try {
+      const res = await getIndustryTreemap()
+      if (res?.records?.length) data = res.records
+    } catch {
+      // 新 API 不可用（旧版本后端），fallback 到旧 API
     }
+    if (!data) {
+      // 旧 API：行业排行聚合为一级分类
+      const oldData = await getSectorRanking()
+      const arr = Array.isArray(oldData) ? oldData : (oldData?.records || [])
+      const map = new Map<string, { cnt: number; sumPct: number }>()
+      for (const d of arr) {
+        const pct = Number(d.avgChangePct) || 0
+        const top = (d.industry || '其他').split('-')[0]
+        const c = Number(d.stockCount) || 1
+        const e = map.get(top)
+        if (e) { const t = e.cnt + c; e.sumPct = (e.sumPct * e.cnt + pct * c) / t; e.cnt = t }
+        else { map.set(top, { cnt: c, sumPct: pct }) }
+      }
+      sectorData.value = Array.from(map.entries())
+        .map(([n, v]) => ({ name: n, value: v.cnt, changePercent: Math.round(v.sumPct * 100) / 100 }))
+        .sort((a, b) => b.value - a.value)
+    } else {
+      // 新 API 有成分股明细，存入映射表供详情面板使用
+      const stockMap = new Map<string, { stockCode: string; stockName: string; changePercent: number }[]>()
+      sectorData.value = data.map((r) => {
+        const stocks = (r.children || [])
+          .filter((c: any) => c.changePercent !== 0)
+          .slice(0, 500)
+          .map((c: any) => ({
+            stockCode: c.stockCode,
+            stockName: c.stockName,
+            changePercent: c.changePercent,
+          }))
+        stockMap.set(r.name, stocks)
+        return {
+          name: r.name,
+          value: r.stockCount,
+          changePercent: r.avgChangePct,
+        }
+      })
+      sectorStockMap.value = stockMap
+    }
+    // 云图数据已加载，如果行业排行卡片为空则补充
+    if (industryTop.value.length === 0) {
+      const top3 = sectorData.value
+        .slice()
+        .sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))
+        .slice(0, 3)
+        .map((item) => ({ industryName: item.name, changePct: item.changePercent || 0 }))
+      if (top3.length > 0) industryTop.value = top3
+    }
+    return
   } catch (_e) { console.warn('[Home] loadSectorData failed:', _e) }
 }
 
 function onSectorClick(data: { name?: string }) {
   const name = data?.name || ''
-  router.push({ path: `/sector/${encodeURIComponent(name)}` })
+  if (!name || !sectorData.value.find(s => s.name === name)) return
+  // 弹出右侧详情面板
+  selectedSectorName.value = name
+  selectedSectorChange.value = sectorData.value.find(s => s.name === name)?.changePercent || 0
+  selectedSectorStocks.value = sectorStockMap.value.get(name) || []
+  sectorKlineData.value = []
+  showSectorPanel.value = true
+  // 异步加载 K 线
+  loadSectorKline(name)
+}
+
+function onStockClick(code: string) {
+  router.push(`/stock/${code}`)
 }
 
 onMounted(async () => {
@@ -692,8 +790,8 @@ onMounted(async () => {
 .chart-container {
   background: $canvas-parchment;
   border-radius: $rounded-lg;
-  padding: $spacing-md;
-  height: 600px;
+  padding: $spacing-xs;
+  height: 750px;
 }
 
 /* ======== 热门股票 ======== */

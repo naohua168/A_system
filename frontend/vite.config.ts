@@ -1,14 +1,15 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import vitePluginCompression from 'vite-plugin-compression'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
-    // 如需启用 gzip/brotli 压缩，安装并取消注释:
-    // vitePluginCompression({ algorithm: 'gzip', ext: '.gz' }),
-    // vitePluginCompression({ algorithm: 'brotliCompress', ext: '.br' }),
+    // 生产环境下启用 gzip/brotli 压缩
+    vitePluginCompression({ algorithm: 'gzip', ext: '.gz' }),
+    vitePluginCompression({ algorithm: 'brotliCompress', ext: '.br' }),
   ],
   resolve: {
     alias: {

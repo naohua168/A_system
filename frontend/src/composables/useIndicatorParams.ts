@@ -78,9 +78,9 @@ export function useIndicatorParams() {
   /** 技术指标参数（默认值） */
   const params = reactive({
     macd: { fast: 12, slow: 26, signal: 9 },
-    kdj: { period: 9 },
+    kdj: { period: 9, m1: 3, m2: 3 },
     rsi: { period: 14 },
-    ma: { periods: [5, 20] as number[] },
+    ma: { periods: [5, 20, 60, 120] as number[] },
     boll: { period: 20, multiplier: 2 },
   })
 

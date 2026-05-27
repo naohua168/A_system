@@ -44,7 +44,7 @@
             SELECT MAX(trade_date) FROM stock_daily
         )
         <if test="industry != null and industry != ''">
-            AND s.industry = #{industry}
+            AND s.industry LIKE CONCAT(#{industry}, '%')
         </if>
         <if test="minPrice != null">
             AND d.close_price >= #{minPrice}
@@ -59,12 +59,12 @@
         LIMIT #{limit}
     </select>
 
-    <!-- 行业涨跌排行 -->
+    <!-- 行业涨跌排行（按一级行业名聚合） -->
     <select id="selectSectorRanking" resultType="java.util.Map">
         SELECT
-            s.industry,
+            SUBSTRING_INDEX(s.industry, '-', 1) AS industry,
             COUNT(*) AS stockCount,
-            ROUND(AVG(d.change_percent), 2) AS avgChangePct,
+            ROUND(AVG(d.change_percent), 4) AS avgChangePct,
             SUM(CASE WHEN d.change_percent > 0 THEN 1 ELSE 0 END) AS upCount,
             ROUND(SUM(CASE WHEN d.change_percent > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS upRatio
         FROM stock_daily d
@@ -72,8 +72,23 @@
         WHERE d.trade_date = #{tradeDate}
           AND s.industry IS NOT NULL
           AND s.industry != ''
-        GROUP BY s.industry
+        GROUP BY SUBSTRING_INDEX(s.industry, '-', 1)
         ORDER BY avgChangePct DESC
+    </select>
+
+    <!-- 行业分层云图（一级行业 + 成分股明细，供前端钻取） -->
+    <select id="selectIndustryTreeMap" resultType="java.util.Map">
+        SELECT
+            SUBSTRING_INDEX(s.industry, '-', 1) AS topIndustry,
+            s.stock_code AS stockCode,
+            s.stock_name AS stockName,
+            d.change_percent AS changePercent
+        FROM stock_daily d
+        JOIN stock s ON d.stock_code = s.stock_code
+        WHERE d.trade_date = #{tradeDate}
+          AND s.industry IS NOT NULL AND s.industry != ''
+          AND d.change_percent IS NOT NULL
+        ORDER BY topIndustry, d.change_percent DESC
     </select>
 
     <!-- 板块K线聚合（按行业成分股每日收盘均价计算） -->
@@ -88,7 +103,7 @@
             SUM(d.amount) AS amount
         FROM stock_daily d
         JOIN stock s ON d.stock_code = s.stock_code
-        WHERE s.industry = #{industry}
+        WHERE s.industry LIKE CONCAT(#{industry}, '%')
           AND d.trade_date >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
         GROUP BY d.trade_date
         ORDER BY d.trade_date ASC
@@ -123,7 +138,7 @@
                      OR s.stock_code LIKE CONCAT('%', #{keyword}, '%'))
             </if>
             <if test="industry != null and industry != ''">
-                AND s.industry = #{industry}
+                AND s.industry LIKE CONCAT(#{industry}, '%')
             </if>
         </where>
         <choose>

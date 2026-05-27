@@ -123,7 +123,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { Star } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
+import echarts from '@/utils/echarts'
 import { getFundInfo, getFundNav, getFundHoldings } from '@/api/fund'
 import type { FundNav, FundHolding } from '@/types'
 

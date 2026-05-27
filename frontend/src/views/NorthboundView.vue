@@ -101,7 +101,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { getNorthboundLatest } from '@/api/signal'
-import * as echarts from 'echarts'
+import echarts from '@/utils/echarts'
 import { useApiRetry, safeNum } from '@/composables/useApiRetry'
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'

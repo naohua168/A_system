@@ -1,0 +1,78 @@
+- generic [ref=e71]:
+  - banner [ref=e72]:
+    - generic [ref=e73]:
+      - link "StockAI" [ref=e74] [cursor=pointer]:
+        - /url: /home
+        - img [ref=e75]
+        - generic [ref=e78]: StockAI
+      - navigation [ref=e79]:
+        - link "行情" [ref=e80] [cursor=pointer]:
+          - /url: /home
+          - img
+          - generic [ref=e82]: 行情
+        - link "股票" [ref=e83] [cursor=pointer]:
+          - /url: /stocks
+          - img
+          - generic [ref=e85]: 股票
+        - link "资讯" [ref=e86] [cursor=pointer]:
+          - /url: /news
+          - img
+          - generic [ref=e89]: 资讯
+        - link "自选" [ref=e90] [cursor=pointer]:
+          - /url: /watchlist
+          - img
+          - generic [ref=e92]: 自选
+        - link "AI分析" [ref=e93] [cursor=pointer]:
+          - /url: /chat
+          - generic [ref=e94]: AI分析
+        - button "数据中心" [ref=e96] [cursor=pointer]:
+          - img [ref=e98]
+          - generic [ref=e102]: 数据中心
+          - img [ref=e104]
+      - generic [ref=e106]:
+        - button [ref=e107] [cursor=pointer]:
+          - img [ref=e109]
+        - button [ref=e112] [cursor=pointer]:
+          - img [ref=e114]
+        - generic [ref=e119] [cursor=pointer]: A
+  - main [ref=e120]:
+    - generic [ref=e121]:
+      - generic [ref=e137]:
+        - heading "大盘指数" [level=4] [ref=e138]
+        - button "管理指数" [disabled] [ref=e140]:
+          - generic [ref=e141]:
+            - img
+            - text: 管理指数
+      - generic [ref=e171]:
+        - generic [ref=e172] [cursor=pointer]:
+          - generic [ref=e173]:
+            - img [ref=e175]
+            - generic [ref=e177]: 北向资金
+          - generic [ref=e181]: 加载中...
+        - generic [ref=e182] [cursor=pointer]:
+          - generic [ref=e183]:
+            - img [ref=e185]
+            - generic [ref=e187]: 题材热点
+          - generic [ref=e191]: 加载中...
+        - generic [ref=e193] [cursor=pointer]:
+          - img [ref=e195]
+          - generic [ref=e197]: 行业排行
+        - generic [ref=e201] [cursor=pointer]:
+          - generic [ref=e202]:
+            - img [ref=e204]
+            - generic [ref=e207]: 龙虎榜
+          - generic [ref=e211]: 加载中...
+      - generic [ref=e213]:
+        - heading "板块涨跌云图" [level=4] [ref=e214]
+        - generic [ref=e215]:
+          - generic [ref=e216]: 涨
+          - generic [ref=e218]: 跌
+          - generic [ref=e220]:
+            - img [ref=e222]
+            - text: 点击板块跳转行情
+      - generic [ref=e248]:
+        - heading "热门股票" [level=4] [ref=e249]
+        - link "查看所有股票" [ref=e250] [cursor=pointer]:
+          - /url: /stocks
+          - text: 查看所有股票
+          - img [ref=e252]

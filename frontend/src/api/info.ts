@@ -1,5 +1,5 @@
 import request from './request'
-import type { ResearchReportResponse, ConsensusEps, NewsResponse, ClsNewsResponse, GlobalNewsResponse, FilingResponse, InfoPdf, AllInfoResponse } from '@/types'
+import type { ResearchReportResponse, ConsensusEps, NewsResponse, ClsNewsItem, ClsNewsResponse, GlobalNewsResponse, FilingResponse, InfoPdf, AllInfoResponse } from '@/types'
 
 /**
  * 资讯层 API — 对应后端 InfoController (/api/info)
@@ -31,6 +31,9 @@ export function getStockNews(code: string, limit = 20): Promise<NewsResponse> {
 // ── 财联社快讯 ──
 export function getClsNews(limit = 30): Promise<ClsNewsResponse> {
   return request.get('/info/cls-news', { params: { limit } })
+}
+export function getClsNewsSince(since: string): Promise<ClsNewsItem[]> {
+  return request.get('/info/cls-news/since', { params: { since } })
 }
 
 // ── 全球资讯 ──

@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import echarts from '@/utils/echarts'
 import { DataLine } from '@element-plus/icons-vue'
 import { getConsensusEps } from '@/api/info'
 import type { ConsensusEps } from '@/types'

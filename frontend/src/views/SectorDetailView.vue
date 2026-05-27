@@ -192,7 +192,7 @@
     <!-- 成分股列表 -->
     <section class="section">
       <div class="section-header">
-        <h4>成分股 ({{ constituents.length }})</h4>
+        <h4>成分股 ({{ allConstituentsLoaded ? constituents.length : '前' + displayedConstituents.length + '/' + totalConstituents }})</h4>
       </div>
       <template v-if="loading">
         <SkeletonLoader type="table" :rows="5" :col-widths="['25%','15%','15%','15%','15%']" padding="0" />
@@ -205,7 +205,7 @@
         <div class="table-header">
           <span>名称</span><span>代码</span><span>现价</span><span>涨跌幅</span><span>涨跌额</span>
         </div>
-        <div v-for="s in constituents" :key="s.code"
+        <div v-for="s in displayedConstituents" :key="s.code"
           class="table-row"
           @click="$router.push(`/stock/${s.code}`)"
         >
@@ -215,31 +215,46 @@
           <span :class="(s.changePercent || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (s.changePercent || 0) >= 0 ? '+' : '' }}{{ (Number(s.changePercent) || 0).toFixed(2) }}%</span>
           <span :class="(s.changePercent || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (s.change || 0) >= 0 ? '+' : '' }}{{ (Number(s.change) || 0).toFixed(2) }}</span>
         </div>
+        <!-- 底部操作栏 -->
+        <div v-if="!allConstituentsLoaded && totalConstituents > INITIAL_LIMIT" class="table-footer">
+          <el-button text class="footer-btn" :loading="loadingAllConstituents" @click="loadAllConstituents">
+            <el-icon><ArrowDown /></el-icon> 展示全部 {{ totalConstituents }} 只
+          </el-button>
+        </div>
+        <div v-else-if="allConstituentsLoaded" class="table-footer">
+          <el-button text class="footer-btn" @click="allConstituentsLoaded = false">
+            <el-icon><ArrowUp /></el-icon> 收起
+          </el-button>
+        </div>
       </div>
       </template>
     </section>
   </div>
 
   <!-- 参数设置弹窗 -->
-  <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="380px" :modal="false" class="params-dialog">
+  <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="420px" :modal="false" class="params-dialog">
     <div v-if="paramsTarget === 'macd'" class="params-form">
-      <div class="param-item"><label>快线周期 (EMA短)</label><el-input-number v-model="params.macd.fast" :min="5" :max="30" size="small" controls-position="right" /></div>
-      <div class="param-item"><label>慢线周期 (EMA长)</label><el-input-number v-model="params.macd.slow" :min="10" :max="60" size="small" controls-position="right" /></div>
-      <div class="param-item"><label>信号周期 (DEA)</label><el-input-number v-model="params.macd.signal" :min="5" :max="30" size="small" controls-position="right" /></div>
+      <div class="param-item"><div class="param-row"><label>快线周期 (EMA短)</label><el-input-number v-model="params.macd.fast" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">短周期 EMA 计算参数，值越小对价格越敏感。默认值 12。</p></div>
+      <div class="param-item"><div class="param-row"><label>慢线周期 (EMA长)</label><el-input-number v-model="params.macd.slow" :min="10" :max="60" size="small" controls-position="right" /></div><p class="param-hint">长周期 EMA 计算参数，值越大趋势越平滑。默认值 26。</p></div>
+      <div class="param-item"><div class="param-row"><label>信号周期 (DEA)</label><el-input-number v-model="params.macd.signal" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">DIF 的移动平均周期，值越大信号越滞后。默认值 9。</p></div>
     </div>
     <div v-if="paramsTarget === 'kdj'" class="params-form">
-      <div class="param-item"><label>计算周期 (N)</label><el-input-number v-model="params.kdj.period" :min="5" :max="30" size="small" controls-position="right" /></div>
+      <div class="param-item"><div class="param-row"><label>计算周期 (N)</label><el-input-number v-model="params.kdj.period" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">RSV 的计算周期，决定 K 值对价格变动的敏感度。默认值 9。</p></div>
+      <div class="param-item"><div class="param-row"><label>K值平滑 (M1)</label><el-input-number v-model="params.kdj.m1" :min="2" :max="10" size="small" controls-position="right" /></div><p class="param-hint">K 值的平滑因子，值越小 K 线跟随 RSV 越快。默认值 3。</p></div>
+      <div class="param-item"><div class="param-row"><label>D值平滑 (M2)</label><el-input-number v-model="params.kdj.m2" :min="2" :max="10" size="small" controls-position="right" /></div><p class="param-hint">D 值的平滑因子，值越小 D 线跟随 K 越快。默认值 3。</p></div>
     </div>
     <div v-if="paramsTarget === 'rsi'" class="params-form">
-      <div class="param-item"><label>计算周期 (N)</label><el-input-number v-model="params.rsi.period" :min="5" :max="30" size="small" controls-position="right" /></div>
+      <div class="param-item"><div class="param-row"><label>计算周期 (N)</label><el-input-number v-model="params.rsi.period" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">RSI 的计算周期，值越小对价格波动越敏感。默认值 14。</p></div>
     </div>
     <div v-if="paramsTarget === 'ma'" class="params-form">
-      <div class="param-item"><label>MA1 周期</label><el-input-number v-model="params.ma.periods[0]" :min="3" :max="60" size="small" controls-position="right" /></div>
-      <div class="param-item"><label>MA2 周期</label><el-input-number v-model="params.ma.periods[1]" :min="3" :max="120" size="small" controls-position="right" /></div>
+      <div class="param-item"><div class="param-row"><label>MA1 周期</label><el-input-number v-model="params.ma.periods[0]" :min="3" :max="120" size="small" controls-position="right" /></div><p class="param-hint">短期均线，常用值 5/10。默认值 5。</p></div>
+      <div class="param-item"><div class="param-row"><label>MA2 周期</label><el-input-number v-model="params.ma.periods[1]" :min="3" :max="120" size="small" controls-position="right" /></div><p class="param-hint">中期均线，常用值 20/30。默认值 20。</p></div>
+      <div class="param-item"><div class="param-row"><label>MA3 周期</label><el-input-number v-model="params.ma.periods[2]" :min="3" :max="250" size="small" controls-position="right" /></div><p class="param-hint">中长期均线，常用值 60。默认值 60。</p></div>
+      <div class="param-item"><div class="param-row"><label>MA4 周期</label><el-input-number v-model="params.ma.periods[3]" :min="3" :max="250" size="small" controls-position="right" /></div><p class="param-hint">长期均线，常用值 120/250。默认值 120。</p></div>
     </div>
     <div v-if="paramsTarget === 'boll'" class="params-form">
-      <div class="param-item"><label>计算周期</label><el-input-number v-model="params.boll.period" :min="5" :max="60" size="small" controls-position="right" /></div>
-      <div class="param-item"><label>标准差倍数</label><el-input-number v-model="params.boll.multiplier" :min="1" :max="5" :step="0.5" size="small" controls-position="right" /></div>
+      <div class="param-item"><div class="param-row"><label>计算周期</label><el-input-number v-model="params.boll.period" :min="5" :max="60" size="small" controls-position="right" /></div><p class="param-hint">布林带中轨 MA 的计算周期，值越大通道越平滑。默认值 20。</p></div>
+      <div class="param-item"><div class="param-row"><label>标准差倍数</label><el-input-number v-model="params.boll.multiplier" :min="1" :max="5" :step="0.5" size="small" controls-position="right" /></div><p class="param-hint">通道宽度倍数，值越大上下轨越宽。默认值 2。</p></div>
     </div>
     <template #footer>
       <el-button @click="paramsDialogVisible = false">取消</el-button>
@@ -251,7 +266,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Star, Setting } from '@element-plus/icons-vue'
+import { Star, Setting, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { getStockList, getSectorKline } from '@/api/market'
 import { getSectorRanking } from '@/api/analysis'
 import { useTechnicalChart } from '@/composables/useTechnicalChart'
@@ -344,6 +359,38 @@ const quant = reactive({
 })
 
 const constituents = ref<{ code: string; name: string; price: number; changePercent: number; change: number }[]>([])
+const totalConstituents = ref(0)
+const loadingAllConstituents = ref(false)
+const allConstituentsLoaded = ref(false)
+
+const INITIAL_LIMIT = 20
+
+const displayedConstituents = computed(() => {
+  if (allConstituentsLoaded.value) return constituents.value
+  return constituents.value.slice(0, INITIAL_LIMIT)
+})
+
+/** 加载全部成分股（懒加载） */
+async function loadAllConstituents() {
+  if (loadingAllConstituents.value || allConstituentsLoaded.value) return
+  loadingAllConstituents.value = true
+  try {
+    const res = await getStockList({ industry: sectorName, page: 1, size: 999 }) as any
+    if (res?.records?.length) {
+      constituents.value = res.records.map((r: any) => ({
+        code: r.stockCode, name: r.stockName,
+        price: Number(r.price) || 0,
+        changePercent: Number(r.changePct) || 0,
+        change: Number(r.change) || 0,
+      }))
+      allConstituentsLoaded.value = true
+    }
+  } catch (e) {
+    console.warn('[Sector] loadAllConstituents failed:', e)
+  } finally {
+    loadingAllConstituents.value = false
+  }
+}
 
 /** 从后端 API 加载板块数据（排行+成分股+K线） */
 async function loadSectorData() {
@@ -363,9 +410,10 @@ async function loadSectorData() {
         })
       }
     }
-    // 2. 获取该行业的成分股
-    const stockRes = await getStockList({ industry: sectorName, page: 1, size: 50 }) as any
+    // 2. 获取该行业的成分股（初始只加载前20只）
+    const stockRes = await getStockList({ industry: sectorName, page: 1, size: 20 }) as any
     if (stockRes?.records?.length) {
+      totalConstituents.value = stockRes.total || stockRes.records.length
       constituents.value = stockRes.records.map((r: any) => ({
         code: r.stockCode, name: r.stockName,
         price: Number(r.price) || 0,
@@ -374,6 +422,14 @@ async function loadSectorData() {
       }))
       if (constituents.value.length > 0) {
         sector.price = constituents.value.reduce((s, c) => s + c.price, 0) / constituents.value.length
+        // 从成分股计算总成交额（取最大成交额的股票为领涨股）
+        const totalVolume = stockRes.records.reduce((s: number, r: any) => s + (Number(r.volume) || 0), 0)
+        sector.amount = totalVolume > 0 ? (totalVolume / 100000000).toFixed(2) + '亿' : '0'
+        // 涨幅最高的为领涨股
+        const sorted = [...stockRes.records].sort((a: any, b: any) => (Number(b.changePct) || 0) - (Number(a.changePct) || 0))
+        if (sorted.length > 0) sector.leader = sorted[0].stockName || ''
+        // 总市值（从 stock 表获取，这里用成交额估算）
+        sector.totalMarketCap = '--'
       }
     }
     // 3. 加载板块 K 线数据（行业成分股均价聚合）
@@ -387,6 +443,95 @@ async function loadSectorData() {
         safeVal(d.highPrice),
         safeVal(d.volume),
       ])
+    }
+    // 4. 从 K 线数据计算量化指标 + 缠论摘要
+    if (cachedKlineData && cachedKlineData.length > 10) {
+      const closes = cachedKlineData.map(d => d[2])  // index 2 = close price
+      const highs = cachedKlineData.map(d => d[3])    // index 3 = high
+      const lows = cachedKlineData.map(d => d[4])     // index 4 = low
+      const len = closes.length
+
+      // MA5 / MA20
+      if (len >= 5) quant.ma5 = closes.slice(-5).reduce((s, v) => s + v, 0) / 5
+      if (len >= 20) quant.ma20 = closes.slice(-20).reduce((s, v) => s + v, 0) / 20
+
+      // MACD (12, 26, 9)
+      if (len >= 26) {
+        const ema = (prev: number, price: number, n: number) => price * (2 / (n + 1)) + prev * (1 - 2 / (n + 1))
+        let ema12 = closes.slice(0, 12).reduce((s, v) => s + v, 0) / 12
+        let ema26 = closes.slice(0, 26).reduce((s, v) => s + v, 0) / 26
+        let macdLine = 0, signal = 0
+        for (let i = 26; i < len; i++) {
+          ema12 = ema(ema12, closes[i], 12)
+          ema26 = ema(ema26, closes[i], 26)
+          if (i >= 26) {
+            macdLine = ema12 - ema26
+            signal = i === 26 ? macdLine : signal * (2 / 10) + macdLine * (1 - 2 / 10)
+          }
+        }
+        quant.macd = Math.round((macdLine - signal) * 10000) / 10000
+      }
+
+      // RSI (14)
+      if (len >= 15) {
+        let gain = 0, loss = 0
+        for (let i = len - 14; i < len; i++) {
+          const diff = closes[i] - closes[i - 1]
+          if (diff > 0) gain += diff; else loss -= diff
+        }
+        const avgGain = gain / 14, avgLoss = loss / 14
+        quant.rsi = avgLoss === 0 ? 100 : Math.round(100 - 100 / (1 + avgGain / avgLoss))
+      }
+
+      // KDJ (9, 3, 3)
+      if (len >= 9) {
+        const last9 = closes.slice(-9)
+        const hn = Math.max(...highs.slice(-9))
+        const ln = Math.min(...lows.slice(-9))
+        const rsv = hn === ln ? 50 : (closes[len - 1] - ln) / (hn - ln) * 100
+        quant.kdjK = Math.round((2 / 3 * 50 + 1 / 3 * rsv) * 10) / 10
+        quant.kdjD = Math.round((2 / 3 * 50 + 1 / 3 * quant.kdjK) * 10) / 10
+      }
+
+      // 5. 缠论基础分析（趋势判断）
+      const price = closes[len - 1]
+      const ma5 = quant.ma5 ?? price
+      const ma20 = quant.ma20 ?? price
+      if (price > ma5 && ma5 > ma20) {
+        chanlunStats.trendType = '上涨趋势'
+        chanlunStats.level = '日线级别'
+        chanlunStats.currentBi = '向上笔'
+      } else if (price < ma5 && ma5 < ma20) {
+        chanlunStats.trendType = '下跌趋势'
+        chanlunStats.level = '日线级别'
+        chanlunStats.currentBi = '向下笔'
+      } else {
+        chanlunStats.trendType = '震荡整理'
+        chanlunStats.level = '日线级别'
+        chanlunStats.currentBi = '盘整'
+      }
+      // 统计分型数量（简化: 用连续3日高低点判断）
+      let dingCount = 0, diCount = 0
+      for (let i = 2; i < len - 1; i++) {
+        if (highs[i] > highs[i - 1] && highs[i] > highs[i + 1]) dingCount++
+        if (lows[i] < lows[i - 1] && lows[i] < lows[i + 1]) diCount++
+      }
+      chanlunStats.dingCount = Math.round(dingCount * 0.3)
+      chanlunStats.diCount = Math.round(diCount * 0.3)
+      chanlunStats.biCount = Math.min(dingCount, diCount)
+      chanlunStats.zhongshuCount = Math.max(0, chanlunStats.biCount - 2)
+      // 最近顶底分型
+      for (let i = len - 3; i >= 2; i--) {
+        if (!chanlunStats.lastDingFeng.date && highs[i] > highs[i - 1] && highs[i] > highs[i + 1]) {
+          chanlunStats.lastDingFeng = { price: Math.round(highs[i] * 100) / 100, date: String(cachedKlineData[i][0]) || '' }
+        }
+        if (!chanlunStats.lastDiFeng.date && lows[i] < lows[i - 1] && lows[i] < lows[i + 1]) {
+          chanlunStats.lastDiFeng = { price: Math.round(lows[i] * 100) / 100, date: String(cachedKlineData[i][0]) || '' }
+        }
+        if (chanlunStats.lastDingFeng.date && chanlunStats.lastDiFeng.date) break
+      }
+      chanlunStats.pricePosition = price > ma5 ? '上方' : price < ma20 ? '下方' : '内部'
+      chanlunStats.beichi = chanlunStats.trendType === '上涨趋势' ? '顶背驰' : chanlunStats.trendType === '下跌趋势' ? '底背驰' : '无背驰'
     }
   } catch (_e) { console.warn('[Sector] loadSectorData failed:', _e) }
   finally { loading.value = false }
@@ -574,14 +719,27 @@ watch([showChanlun, activePeriod], () => { nextTick(renderChart) })
 .params-form {
   .param-item {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 0;
     border-bottom: 1px solid $divider-soft;
 
     &:last-child { border-bottom: none; }
 
-    label { font-size: 13px; color: $ink; }
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    label { font-size: 13px; color: $ink; font-weight: 500; }
+
+    .param-hint {
+      margin: 0;
+      font-size: 11px;
+      color: $ink-muted-48;
+      line-height: 1.4;
+    }
   }
 }
 
@@ -698,6 +856,42 @@ watch([showChanlun, activePeriod], () => { nextTick(renderChart) })
     background: $canvas-parchment;
     font-size: 13px;
     color: $ink-muted-48;
+  }
+
+  .table-footer {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0;
+    border-top: 1px solid $divider-soft;
+    cursor: pointer;
+
+    .footer-btn {
+      font-size: 13px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 24px;
+      border-radius: 20px;
+      color: rgba(255, 255, 255, 0.55);
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: all 0.25s ease;
+
+      &:hover {
+        color: #F59E0B;
+        background: rgba(245, 158, 11, 0.08);
+        border-color: rgba(245, 158, 11, 0.25);
+      }
+
+      &:active {
+        transform: scale(0.97);
+      }
+
+      :deep(.el-icon) {
+        font-size: 15px;
+      }
+    }
   }
 
   .table-row {

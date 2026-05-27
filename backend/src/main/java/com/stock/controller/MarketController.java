@@ -56,7 +56,7 @@ public class MarketController {
                    .or().like(Stock::getStockCode, keyword);
         }
         if (industry != null) {
-            countWrapper.eq(Stock::getIndustry, industry);
+            countWrapper.like(Stock::getIndustry, industry);
         }
         long total = stockService.count(countWrapper);
 
@@ -152,6 +152,39 @@ public class MarketController {
                 "tradeDate", date,
                 "records", stockDailyMapper.selectSectorRanking(date)
         ));
+    }
+
+    /** 行业分层云图数据（一级行业分组 + 成分股明细，供前端双层钻取） */
+    @GetMapping("/industry-treemap")
+    public ApiResponse getIndustryTreemap(@RequestParam(required = false) String tradeDate) {
+        String date = (tradeDate != null) ? tradeDate : stockDailyMapper.selectMaxTradeDate();
+        if (date == null) {
+            return ApiResponse.error("暂无数据");
+        }
+        List<Map<String, Object>> raw = stockDailyMapper.selectIndustryTreeMap(date);
+        // 按 topIndustry 分组为父子结构
+        Map<String, List<Map<String, Object>>> grouped = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : raw) {
+            String top = (String) row.get("topIndustry");
+            if (top == null || top.isEmpty()) continue;
+            grouped.computeIfAbsent(top, k -> new java.util.ArrayList<>()).add(row);
+        }
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, List<Map<String, Object>>> entry : grouped.entrySet()) {
+            List<Map<String, Object>> stocks = entry.getValue();
+            double avgPct = stocks.stream()
+                    .mapToDouble(s -> ((Number) s.getOrDefault("changePercent", 0)).doubleValue())
+                    .average().orElse(0);
+            Map<String, Object> sector = new java.util.LinkedHashMap<>();
+            sector.put("name", entry.getKey());
+            sector.put("stockCount", stocks.size());
+            sector.put("avgChangePct", Math.round(avgPct * 100.0) / 100.0);
+            sector.put("children", stocks);
+            result.add(sector);
+        }
+        // 按成分股数量排序
+        result.sort((a, b) -> Integer.compare((int) b.get("stockCount"), (int) a.get("stockCount")));
+        return ApiResponse.ok(Map.of("tradeDate", date, "records", result));
     }
 
     @GetMapping("/filter")

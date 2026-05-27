@@ -27,12 +27,12 @@ public interface IndexDailyMapper extends BaseMapper<IndexDaily> {
     String selectMaxTradeDate();
 
     /** 查询行业/市场排行（用指数涨跌幅）
-     *  返回每个指数最新一条数据 */
+     *  返回每个指数最新一条数据，无数据的指数也会列出 */
     @Select("SELECT i.index_code AS indexCode, i.index_name AS indexName, i.category, " +
             "d.close_point AS closePoint, d.change_percent AS changePercent, d.trade_date AS tradeDate " +
             "FROM market_index i " +
-            "JOIN index_daily d ON i.index_code = d.index_code " +
-            "WHERE d.trade_date = (SELECT MAX(trade_date) FROM index_daily) " +
-            "ORDER BY d.change_percent DESC")
+            "LEFT JOIN index_daily d ON i.index_code = d.index_code " +
+            "    AND d.trade_date = (SELECT MAX(trade_date) FROM index_daily WHERE index_code = i.index_code) " +
+            "ORDER BY d.trade_date DESC, d.change_percent DESC")
     List<Map<String, Object>> selectIndexRanking();
 }

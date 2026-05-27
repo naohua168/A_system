@@ -26,7 +26,8 @@ mybatis-plus:
       logic-delete-value: 1
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # 默认不指定 log-impl；如需查看 SQL 日志，可在 dev profile 中启用：
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
 # AI 对话服务配置
 ai:

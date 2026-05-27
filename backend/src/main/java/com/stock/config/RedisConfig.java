@@ -18,10 +18,25 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 @EnableCaching
 public class RedisConfig {
+
+    /** 实时行情 / 资金流向：30秒 */
+    private static final Duration TTL_REALTIME = Duration.ofSeconds(30);
+    /** 龙虎榜 / 热点题材：5分钟 */
+    private static final Duration TTL_HOT = Duration.ofMinutes(5);
+    /** 股票列表 / 行业数据：15分钟 */
+    private static final Duration TTL_STANDARD = Duration.ofMinutes(15);
+    /** 研报 / 公告 / 新闻：30分钟 */
+    private static final Duration TTL_INFO = Duration.ofMinutes(30);
+    /** fund 净值：60分钟 */
+    private static final Duration TTL_FUND = Duration.ofMinutes(60);
+    /** 默认兜底：15分钟 */
+    private static final Duration TTL_DEFAULT = Duration.ofMinutes(15);
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
@@ -63,14 +78,42 @@ public class RedisConfig {
         mapper.registerModule(new JavaTimeModule());
         jacksonSerializer.setObjectMapper(mapper);
 
-        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(30))
-                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+        StringRedisSerializer stringSerializer = new StringRedisSerializer();
+
+        // 基础默认配置 — 默认兜底 TTL
+        RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(TTL_DEFAULT)
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jacksonSerializer))
                 .disableCachingNullValues();
 
+        // 按 cacheNames 分级 TTL
+        Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
+
+        // 实时数据（30秒）：资金流向、行情快照
+        cacheConfigs.put("realtime", defaultConfig.entryTtl(TTL_REALTIME));
+        cacheConfigs.put("signalMarketData", defaultConfig.entryTtl(TTL_REALTIME));
+
+        // 热点数据（5分钟）：龙虎榜、热点题材、北向资金
+        cacheConfigs.put("signalHotData", defaultConfig.entryTtl(TTL_HOT));
+        cacheConfigs.put("signalDragonTiger", defaultConfig.entryTtl(TTL_HOT));
+
+        // 标准数据（15分钟）：股票列表、行业数据、概念板块
+        cacheConfigs.put("signalReferenceData", defaultConfig.entryTtl(TTL_STANDARD));
+        cacheConfigs.put("stockList", defaultConfig.entryTtl(TTL_STANDARD));
+        cacheConfigs.put("stockDaily", defaultConfig.entryTtl(TTL_STANDARD));
+
+        // 信息类数据（30分钟）：研报、公告、新闻
+        cacheConfigs.put("infoReport", defaultConfig.entryTtl(TTL_INFO));
+        cacheConfigs.put("infoNews", defaultConfig.entryTtl(TTL_INFO));
+        cacheConfigs.put("infoFiling", defaultConfig.entryTtl(TTL_INFO));
+
+        // fund 净值（60分钟）
+        cacheConfigs.put("fundNav", defaultConfig.entryTtl(TTL_FUND));
+
         return RedisCacheManager.builder(factory)
-                .cacheDefaults(config)
+                .cacheDefaults(defaultConfig)
+                .withInitialCacheConfigurations(cacheConfigs)
                 .build();
     }
 }

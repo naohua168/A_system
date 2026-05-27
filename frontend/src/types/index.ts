@@ -535,6 +535,11 @@ export interface SectorNode {
   name: string
   value: number
   changePercent: number
+  /** 成分股列表（云图钻取二级） */
+  children?: SectorNode[]
+  /** API原始字段（仅后端返回用） */
+  stockCode?: string
+  stockName?: string
 }
 
 // ── 首页大盘 ──

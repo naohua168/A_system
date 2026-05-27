@@ -12,7 +12,7 @@ export function calcMA(data: number[][], days: number): (number | null)[] {
   for (let i = 0; i < data.length; i++) {
     if (i < days - 1) { result.push(null); continue }
     let sum = 0
-    for (let j = i - days + 1; j <= i; j++) sum += (data[j][2] + data[j][3]) / 2
+    for (let j = i - days + 1; j <= i; j++) sum += data[j][2]
     result.push(+(sum / days).toFixed(2))
   }
   return result
@@ -85,7 +85,7 @@ export interface KDJResult {
 }
 
 /** KDJ 指标 */
-export function calcKDJ(data: number[][], period = 9): KDJResult {
+export function calcKDJ(data: number[][], period = 9, m1 = 3, m2 = 3): KDJResult {
   const kV: number[] = []
   const dV: number[] = []
   const jV: number[] = []
@@ -100,8 +100,8 @@ export function calcKDJ(data: number[][], period = 9): KDJResult {
     const rsv = ((close - low) / (high - low)) * 100
 
     const k = kV[i - 1] || 50
-    const kVal = k * 2 / 3 + rsv / 3
-    const dVal = (dV[i - 1] || 50) * 2 / 3 + kVal / 3
+    const kVal = k * (m1 - 1) / m1 + rsv / m1
+    const dVal = (dV[i - 1] || 50) * (m2 - 1) / m2 + kVal / m2
 
     kV.push(+kVal.toFixed(1))
     dV.push(+dVal.toFixed(1))
