@@ -100,7 +100,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import AlertBell from '@/components/common/AlertBell.vue'
 import {
-  Search, ArrowDown, SwitchButton, Star,
+  Search, ArrowDown, SwitchButton, Star, Coin,
   TrendCharts, DataAnalysis, Aim, Histogram, Reading,
 } from '@element-plus/icons-vue'
 
@@ -136,6 +136,7 @@ function closeUserMenu() {
 const mainNavItems = [
   { path: '/home', label: '行情', icon: TrendCharts },
   { path: '/stocks', label: '股票', icon: DataAnalysis },
+  { path: '/funds', label: '基金', icon: Coin },
   { path: '/news', label: '资讯', icon: Reading },
   { path: '/watchlist', label: '自选', icon: Star },
   { path: '/chat', label: 'AI分析', icon: undefined },

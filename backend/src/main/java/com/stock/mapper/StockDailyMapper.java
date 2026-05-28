@@ -44,6 +44,7 @@ public interface StockDailyMapper extends BaseMapper<StockDaily> {
     /** 查询带最新行情数据的股票列表 */
     List<Map<String, Object>> selectStocksWithPrice(@Param("keyword") String keyword,
                                                      @Param("industry") String industry,
+                                                     @Param("market") String market,
                                                      @Param("limit") int limit,
                                                      @Param("offset") int offset,
                                                      @Param("sortField") String sortField,

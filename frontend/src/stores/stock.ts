@@ -17,6 +17,7 @@ export const useStockStore = defineStore('stock', () => {
   const error = ref<string | null>(null)
   const keyword = ref('')
   const selectedIndustry = ref('')
+  const selectedMarket = ref('')
 
   const stockDetail = ref<StockDetail | null>(null)
   const klineData = ref<StockDaily[]>([])
@@ -45,6 +46,7 @@ export const useStockStore = defineStore('stock', () => {
         size: params?.size ?? pageSize.value,
         keyword: params?.keyword ?? keyword.value,
         industry: params?.industry ?? selectedIndustry.value,
+        market: params?.market ?? selectedMarket.value,
         sortField: params?.sortField,
         sortOrder: params?.sortOrder,
       }, listController.signal)
@@ -71,6 +73,11 @@ export const useStockStore = defineStore('stock', () => {
 
   function setIndustry(ind: string) {
     selectedIndustry.value = ind
+    fetchList({ page: 1 })
+  }
+
+  function setMarket(mkt: string) {
+    selectedMarket.value = mkt
     fetchList({ page: 1 })
   }
 
@@ -124,6 +131,7 @@ export const useStockStore = defineStore('stock', () => {
     currentPage.value = 1
     keyword.value = ''
     selectedIndustry.value = ''
+    selectedMarket.value = ''
     stockDetail.value = null
     klineData.value = []
     error.value = null
@@ -132,10 +140,10 @@ export const useStockStore = defineStore('stock', () => {
 
   return {
     records, total, currentPage, pageSize, loading, error,
-    keyword, selectedIndustry,
+    keyword, selectedIndustry, selectedMarket,
     stockDetail, klineData, klineLoading, klineError,
     totalPages, hasMore,
-    fetchList, setKeyword, setIndustry, setPage,
+    fetchList, setKeyword, setIndustry, setMarket, setPage,
     fetchDetail, fetchKline, reset,
   }
 })

@@ -24,12 +24,23 @@ const chartDom = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
 
 function colorFor(pct: number): string {
+  const abs = Math.abs(pct)
+  // 涨跌幅区间分层着色：0-1%, 1-2%, 2-3%, 3-5%, 5%+
+  function level(i: number) { return Math.min(i, 0.92) }
   if (pct >= 0) {
-    const intensity = Math.min(0.92, 0.15 + Math.abs(pct) * 0.14)
-    return `rgba(211, 47, 47, ${intensity})`
+    if (abs < 0.5) return `rgba(211,47,47,${level(0.12)})`
+    if (abs < 1)  return `rgba(211,47,47,${level(0.28)})`
+    if (abs < 2)  return `rgba(211,47,47,${level(0.45)})`
+    if (abs < 3)  return `rgba(211,47,47,${level(0.62)})`
+    if (abs < 5)  return `rgba(211,47,47,${level(0.78)})`
+    return `rgba(211,47,47,${level(0.92)})`
   } else {
-    const intensity = Math.min(0.92, 0.15 + Math.abs(pct) * 0.14)
-    return `rgba(46, 125, 50, ${intensity})`
+    if (abs < 0.5) return `rgba(46,125,50,${level(0.12)})`
+    if (abs < 1)  return `rgba(46,125,50,${level(0.28)})`
+    if (abs < 2)  return `rgba(46,125,50,${level(0.45)})`
+    if (abs < 3)  return `rgba(46,125,50,${level(0.62)})`
+    if (abs < 5)  return `rgba(46,125,50,${level(0.78)})`
+    return `rgba(46,125,50,${level(0.92)})`
   }
 }
 
@@ -153,7 +164,8 @@ function renderChart() {
 }
 
 function handleResize() {
-  chart?.resize()
+  if (!chart || !chartDom.value?.offsetParent) return
+  try { chart.resize() } catch { /* ECharts 内部 DOM 引用已失效时静默跳过 */ }
 }
 
 watch(() => props.data, () => {

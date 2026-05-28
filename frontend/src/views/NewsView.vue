@@ -87,12 +87,12 @@
 
       <template v-else>
         <div
-          v-for="item in currentItems" :key="item.id"
+          v-for="(item, idx) in currentItems" :key="item.id"
           class="nl-item"
           @click="openLink(item)"
         >
           <div class="nl-left">
-            <span class="nl-time">{{ item.time }}</span>
+            <span class="nl-time" :class="{ 'nl-time-hidden': idx > 0 && item.time.slice(0,5) === currentItems[idx-1].time.slice(0,5) }">{{ item.time }}</span>
             <span class="nl-dot"></span>
           </div>
           <div class="nl-card">
@@ -159,9 +159,16 @@ function parsePubTime(s: string): { date: string; time: string } {
     return { date: p[0], time: (p[1] || '00:00').substring(0, 5) }
   }
 
-  // "22:47:10" → 只有时间，用今天的日期
+  // "22:47:10" → 只有时间（cls_news 数据只存了时间无日期）
+  // 用当前时间对比：如果存储时间小时 > 当前小时，说明是前一天的
   if (s.includes(':')) {
-    return { date: fmtDate(new Date()), time: s.substring(0, 5) }
+    const now = new Date()
+    const storedHour = parseInt(s.substring(0, 2), 10)
+    const curHour = now.getHours()
+    if (!isNaN(storedHour) && storedHour > curHour + 1) {
+      now.setDate(now.getDate() - 1)
+    }
+    return { date: fmtDate(now), time: s.substring(0, 5) }
   }
 
   // "2026-05-27" → 只有日期
@@ -218,7 +225,7 @@ const globalDone = ref(false)
 const currentItems = computed(() =>
   allItems.value
     .filter(i => i.date === activeDate.value)
-    .sort((a, b) => b.time.localeCompare(a.time))
+    .sort((a, b) => a.time.localeCompare(b.time))
 )
 
 const hasMore = computed(() => !clsDone.value || !globalDone.value)
@@ -279,12 +286,12 @@ async function loadData() {
     const seen = new Set<string>()
     raw.forEach(i => { if (!seen.has(i.id)) { seen.add(i.id); allItems.value.push(i) } })
 
-    // 可用日期（只保留有效 YYYY-MM-DD 格式）
+    // 可用日期（按从早到晚排列）
     const ds = new Set<string>()
     allItems.value.forEach(i => {
       if (i.date && /^\d{4}-\d{2}-\d{2}$/.test(i.date)) ds.add(i.date)
     })
-    availableDates.value = Array.from(ds).sort().reverse()
+    availableDates.value = Array.from(ds).sort()
 
     // 默认定位到今天或最近有数据的日期
     const todayStr = fmtDate(today)
@@ -523,6 +530,7 @@ onMounted(loadData)
   width: 56px; justify-content: flex-end;
 
   .nl-time { font-size: 12px; font-weight: 600; color: $ink-muted-48; white-space: nowrap; transition: color 0.2s; }
+  .nl-time-hidden { visibility: hidden; }
 
   .nl-dot {
     width: 10px; height: 10px; border-radius: 50%; background: $primary;

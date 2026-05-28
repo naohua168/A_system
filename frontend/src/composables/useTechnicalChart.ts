@@ -24,6 +24,44 @@ export function useTechnicalChart(
   let klineChart: echarts.ECharts | null = null
   let bottomChart: echarts.ECharts | null = null
   let disposed = false
+  let zoomState = { start: 70, end: 100 }
+  let isSyncing = false
+
+  /** 双向同步 dataZoom：防止事件循环 */
+  function syncZoom(start: number, end: number, source: 'kline' | 'bottom') {
+    if (isSyncing || disposed) return
+    isSyncing = true
+    try {
+      zoomState = { start, end }
+      if (source !== 'kline' && klineChart && !klineChart.isDisposed() &&
+          klineChartRef.value?.isConnected && klineChartRef.value?.offsetParent) {
+        klineChart.setOption({ dataZoom: [{ start, end }] }, false)
+      }
+      if (source !== 'bottom' && bottomChart && !bottomChart.isDisposed() &&
+          bottomChartRef.value?.isConnected && bottomChartRef.value?.offsetParent) {
+        const isVol = options.bottomActive.value === null
+        if (isVol) {
+          bottomChart.setOption({ dataZoom: [
+            { type: 'inside', start, end },
+            { type: 'slider', start, end, height: 22, bottom: 1,
+              minValueSpan: 15, maxValueSpan: 80,
+              borderColor: '#e0e0e0', backgroundColor: '#fafafa',
+              fillerColor: 'rgba(41,151,255,0.25)',
+              handleSize: '100%',
+              handleStyle: { color: '#fff', borderColor: '#aaa', borderWidth: 1.5 },
+              textStyle: { fontSize: 10, color: '#888' },
+              showDataShadow: false, showDetail: false,
+              dataBackground: { lineStyle: { color: '#ccc', width: 1 }, areaStyle: { color: 'rgba(0,0,0,0.03)' } },
+              selectedDataBackground: { lineStyle: { color: '#2997ff', width: 1.5 }, areaStyle: { color: 'rgba(41,151,255,0.12)' } },
+            },
+          ]}, false)
+        } else {
+          bottomChart.setOption({ dataZoom: [{ start, end }] }, false)
+        }
+      }
+    } catch { /* ignore sync errors */ }
+    finally { isSyncing = false }
+  }
 
   /** 计算 K 线数据的 OHLC 范围（仅基于 low/high），避开均线历史值对 Y 轴的影响 */
   function calcVisibleYRange(data: number[][], startPct: number, endPct: number) {
@@ -66,11 +104,12 @@ export function useTechnicalChart(
       })
       const volumes = klineData.map((d) => d[5])
 
-      if (!klineChart) klineChart = echarts.init(klineChartRef.value)
+      if (!klineChart && klineChartRef.value?.isConnected) klineChart = echarts.init(klineChartRef.value)
+      if (!klineChart) return
 
       const dataLen = klineData.length
       // 用可见K线OHLC算Y轴范围（只取low/high），排除均线历史值拉宽
-      const [yMin, yMax] = calcVisibleYRange(klineData, 65, 100)
+      const [yMin, yMax] = calcVisibleYRange(klineData, zoomState.start, zoomState.end)
 
     const maData: Record<string, (number | null)[]> = {}
     paramsVal.ma.periods.forEach((p) => { maData[`ma${p}`] = calcMA(klineData, p) })
@@ -137,7 +176,7 @@ export function useTechnicalChart(
 
     klineChart.setOption({
       animation: false,
-      grid: { left: 60, right: 20, top: 20, bottom: 40 },
+      grid: { left: 60, right: 20, top: 20, bottom: 20 },
       xAxis: {
         type: 'category', data: dates,
         axisLine: { lineStyle: { color: '#ddd' } },
@@ -156,46 +195,48 @@ export function useTechnicalChart(
         textStyle: { color: '#333', fontSize: 12 },
       },
       dataZoom: [
-        { type: 'inside', start: 70, end: 100, minValueSpan: 15, maxValueSpan: 80 },
-        {
-          type: 'slider', start: 70, end: 100, height: 26, bottom: 0,
-          minValueSpan: 15, maxValueSpan: 80,
-          borderColor: '#e0e0e0',
-          backgroundColor: '#fafafa',
-          fillerColor: 'rgba(41,151,255,0.25)',
-          handleSize: '100%',
-          handleStyle: { color: '#fff', borderColor: '#aaa', borderWidth: 1.5 },
-          textStyle: { fontSize: 10, color: '#888' },
-          showDataShadow: true,
-          showDetail: true,
-          labelFormatter: (v: number, s: string) => {
-            const idx = Math.round(v / 100 * (dates.length - 1))
-            return dates[Math.max(0, Math.min(dates.length - 1, idx))] || ''
-          },
-          dataBackground: { lineStyle: { color: '#ccc', width: 1 }, areaStyle: { color: 'rgba(0,0,0,0.03)' } },
-          selectedDataBackground: { lineStyle: { color: '#2997ff', width: 1.5 }, areaStyle: { color: 'rgba(41,151,255,0.12)' } },
-        },
+        { type: 'inside', start: zoomState.start, end: zoomState.end, minValueSpan: 15, maxValueSpan: 80 },
       ],
       series,
     }, true)
 
-    // 缩放时更新 Y 轴范围
+    // 缩放时更新 Y 轴范围，双向同步底部图
     klineChart.off('dataZoom')
     klineChart.on('dataZoom', (params: any) => {
       try {
         if (disposed || !klineChartRef.value || !klineChart || klineChart.isDisposed()) return
         const zoom = params.batch?.[0] ?? params
-        const start = (zoom.start ?? 65) as number
-        const end = (zoom.end ?? 100) as number
+        const start = (zoom.start ?? zoomState.start) as number
+        const end = (zoom.end ?? zoomState.end) as number
         const [newMin, newMax] = calcVisibleYRange(klineData, start, end)
-        if (!disposed && klineChart && !klineChart.isDisposed()) {
+        if (!isSyncing && klineChart && !klineChart.isDisposed()) {
           klineChart.setOption({ yAxis: { min: newMin, max: newMax } }, false)
         }
+        syncZoom(start, end, 'kline')
       } catch { /* ignore zoom error */ }
     })
 
     // ── 底部指标图 ──
-    if (!bottomChart) bottomChart = echarts.init(bottomChartRef.value)
+    if (!bottomChart && bottomChartRef.value?.isConnected) bottomChart = echarts.init(bottomChartRef.value)
+    if (!bottomChart) return
+
+    // slider 样式统一配置（仅 VOL 量能柱模式使用）
+    const volSlider = {
+      type: 'slider' as const, start: zoomState.start, end: zoomState.end,
+      height: 22, bottom: 1,
+      minValueSpan: 15, maxValueSpan: 80,
+      borderColor: '#e0e0e0', backgroundColor: '#fafafa',
+      fillerColor: 'rgba(41,151,255,0.25)',
+      handleSize: '100%',
+      handleStyle: { color: '#fff' as const, borderColor: '#aaa' as const, borderWidth: 1.5 },
+      textStyle: { fontSize: 10, color: '#888' as const },
+      showDataShadow: false,
+      showDetail: false,
+      dataBackground: { lineStyle: { color: '#ccc' as const, width: 1 }, areaStyle: { color: 'rgba(0,0,0,0.03)' as const } },
+      selectedDataBackground: { lineStyle: { color: '#2997ff' as const, width: 1.5 }, areaStyle: { color: 'rgba(41,151,255,0.12)' as const } },
+    }
+
+    const bottomDataZooom = [{ type: 'inside' as const, start: zoomState.start, end: zoomState.end }]
 
     let bottomOption: echarts.EChartsOption
     if (bottomActive.value === 'macd') {
@@ -204,6 +245,7 @@ export function useTechnicalChart(
         animation: false, grid: { left: '7%', right: '7%', top: '12%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
+        dataZoom: bottomDataZooom,
         series: [
           { name: 'DIF', type: 'line', data: macdData.dif, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db' } },
           { name: 'DEA', type: 'line', data: macdData.dea, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#e67e22' } },
@@ -216,6 +258,7 @@ export function useTechnicalChart(
         animation: false, grid: { left: '7%', right: '7%', top: '10%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
+        dataZoom: bottomDataZooom,
         series: [
           { name: 'K', type: 'line', data: kdjData.k, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db' } },
           { name: 'D', type: 'line', data: kdjData.d, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#e67e22' } },
@@ -228,6 +271,7 @@ export function useTechnicalChart(
         animation: false, grid: { left: '7%', right: '7%', top: '10%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { scale: false, min: 0, max: 100, splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
+        dataZoom: bottomDataZooom,
         series: [{
           name: 'RSI', type: 'line', data: rsiData, smooth: true, symbol: 'none',
           lineStyle: { width: 1, color: '#e67e22' },
@@ -238,26 +282,47 @@ export function useTechnicalChart(
         }],
       }
     } else {
+      // VOL 量能柱模式：包含 slider 滑块
       bottomOption = {
-        animation: false, grid: { left: '7%', right: '7%', top: '6%', bottom: '2%' },
+        animation: false, grid: { left: '7%', right: '7%', top: '4%', bottom: '26%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
+        dataZoom: [...bottomDataZooom, volSlider] as any,
         series: [{
           type: 'bar',
+          barMinHeight: 1,
           data: volumes.map((v, i) => ({ value: v, itemStyle: { color: klineData[i][2] >= klineData[i][1] ? '#e74c3c' : '#27ae60', opacity: 0.5 } })),
           barWidth: '55%',
         }],
       }
     }
     bottomChart.setOption(bottomOption, true)
+
+    // 底部图 dataZoom 事件 → 反向同步到 K线图
+    bottomChart.off('dataZoom')
+    bottomChart.on('dataZoom', (params: any) => {
+      try {
+        if (disposed || !bottomChartRef.value || !bottomChart || bottomChart.isDisposed()) return
+        const zoom = params.batch?.[0] ?? params
+        const start = (zoom.start ?? zoomState.start) as number
+        const end = (zoom.end ?? zoomState.end) as number
+        syncZoom(start, end, 'bottom')
+      } catch { /* ignore bottom zoom error */ }
+    })
   } catch (e) { console.warn('[Chart] render error:', e) }
   }
 
   function handleResize() {
     try {
       if (disposed) return
-      klineChart?.resize()
-      bottomChart?.resize()
+      if (klineChart && !klineChart.isDisposed() &&
+          klineChartRef.value?.isConnected && klineChartRef.value?.offsetParent) {
+        klineChart.resize()
+      }
+      if (bottomChart && !bottomChart.isDisposed() &&
+          bottomChartRef.value?.isConnected && bottomChartRef.value?.offsetParent) {
+        bottomChart.resize()
+      }
     } catch { /* ignore resize errors */ }
   }
 
@@ -268,7 +333,10 @@ export function useTechnicalChart(
         klineChart.off('dataZoom')
         klineChart.dispose()
       }
-      bottomChart?.dispose()
+      if (bottomChart) {
+        bottomChart.off('dataZoom')
+        bottomChart.dispose()
+      }
     } catch { /* ignore dispose errors */ }
     klineChart = null
     bottomChart = null

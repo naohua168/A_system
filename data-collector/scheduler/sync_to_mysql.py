@@ -102,6 +102,31 @@ SYNC_RULES = [
         "columns": ["fund_code", "nav_date", "nav", "accumulated_nav", "daily_return"],
         "mapper": lambda df, fname: _map_fund_nav(df, fname),
     },
+    {
+        "prefix": "fund_basic_",
+        "table": "fund",
+        "columns": ["fund_code", "fund_name", "fund_type", "company", "manager",
+                     "establish_date", "nav", "accumulated_nav", "scale", "status"],
+        "mapper": lambda df, fname: _map_fund_basic(df),
+    },
+    {
+        "prefix": "fund_detail_",
+        "table": "fund",
+        "columns": ["fund_code", "company", "manager", "scale", "fund_type"],
+        "mapper": lambda df, fname: _map_fund_detail(df),
+    },
+    {
+        "prefix": "fund_details_",
+        "table": "fund",
+        "columns": ["fund_code", "company", "manager", "scale", "fund_type"],
+        "mapper": lambda df, fname: _map_fund_detail(df),
+    },
+    {
+        "prefix": "fund_holding_",
+        "table": "fund_holding",
+        "columns": ["fund_code", "stock_code", "stock_name", "ratio", "rank_num", "report_date"],
+        "mapper": lambda df, fname: _map_fund_holding(df, fname),
+    },
     # ==================== 资讯层（a-stock-data 迁移合并：研报+新闻+公告） ====================
     {
         "prefix": "research_reports_",
@@ -366,6 +391,56 @@ def _map_fund_nav(df: pd.DataFrame, fname: str) -> pd.DataFrame:
             "nav": float(row.get("nav", 0)),
             "accumulated_nav": float(row.get("accum_nav", 0)),
             "daily_return": float(row.get("daily_change", 0)),
+        })
+    return pd.DataFrame(records)
+
+
+def _map_fund_basic(df: pd.DataFrame) -> pd.DataFrame:
+    """全量基金列表 CSV → fund 表格式"""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "fund_code": str(row.get("fund_code", "")),
+            "fund_name": str(row.get("fund_name", "")),
+            "fund_type": str(row.get("fund_type", "")),
+            "company": str(row.get("company", "")),
+            "manager": str(row.get("manager", "")),
+            "establish_date": str(row.get("establish_date", ""))[:10].replace("-", ""),
+            "nav": float(row.get("nav") or 0),
+            "accumulated_nav": float(row.get("accumulated_nav") or 0),
+            "scale": float(row.get("scale") or 0),
+            "status": int(row.get("status", 1)),
+        })
+    return pd.DataFrame(records)
+
+
+def _map_fund_detail(df: pd.DataFrame) -> pd.DataFrame:
+    """基金详情补充 CSV → fund 表补全字段"""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "fund_code": str(row.get("fund_code", "")),
+            "company": str(row.get("company", "")),
+            "manager": str(row.get("manager", "")),
+            "scale": float(row.get("scale") or 0),
+            "fund_type": str(row.get("fund_type", row.get("fund_type", ""))),
+        })
+    return pd.DataFrame(records)
+
+
+def _map_fund_holding(df: pd.DataFrame, fname: str) -> pd.DataFrame:
+    """基金持仓 CSV → fund_holding 表格式"""
+    code_match = re.search(r"fund_holding_(\w+)_", fname)
+    fund_code = code_match.group(1) if code_match else ""
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "fund_code": str(row.get("code", row.get("fund_code", fund_code))),
+            "stock_code": str(row.get("stock_code", "")),
+            "stock_name": str(row.get("stock_name", "")),
+            "ratio": float(row.get("ratio") or 0),
+            "rank_num": int(row.get("rank_num", row.get("rank_num", 0))),
+            "report_date": str(row.get("report_date", row.get("报告期", "")))[:10].replace("-", ""),
         })
     return pd.DataFrame(records)
 

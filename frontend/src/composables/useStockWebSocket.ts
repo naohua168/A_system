@@ -41,7 +41,7 @@ export function useStockWebSocket(stockCode: Ref<string> | string) {
   /** 发起连接 */
   function connect() {
     const code = typeof stockCode === 'string' ? stockCode : stockCode.value
-    if (!code || wsStatus.value === 'connecting') return
+    if (!code || wsStatus.value === 'connecting' || wsStatus.value === 'connected') return
 
     wsStatus.value = 'connecting'
     const url = getWsUrl(code)
@@ -49,7 +49,7 @@ export function useStockWebSocket(stockCode: Ref<string> | string) {
     try {
       ws = new WebSocket(url)
     } catch (err) {
-      console.error('[WS] 创建 WebSocket 失败:', err)
+      console.warn('[WS] 创建 WebSocket 失败:', err)
       wsStatus.value = 'disconnected'
       scheduleReconnect()
       return
@@ -77,8 +77,8 @@ export function useStockWebSocket(stockCode: Ref<string> | string) {
       scheduleReconnect()
     }
 
-    ws.onerror = (err) => {
-      console.error('[WS] 连接错误:', err)
+    ws.onerror = () => {
+      // WebSocket 不可用时静默降级，不影响 REST API 数据加载
       wsStatus.value = 'disconnected'
     }
   }

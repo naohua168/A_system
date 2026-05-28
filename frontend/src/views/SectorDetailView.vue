@@ -276,7 +276,7 @@ import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
 const route = useRoute()
-const sectorName = decodeURIComponent(route.params.name as string)
+const sectorName = decodeURIComponent(route.params.name as string) || '未知板块'
 const activePeriod = ref('day')
 const showChanlun = ref(false)
 
@@ -435,14 +435,27 @@ async function loadSectorData() {
     // 3. 加载板块 K 线数据（行业成分股均价聚合）
     const klineRaw = await getSectorKline(sectorName, 120) as any[]
     if (klineRaw && klineRaw.length > 10) {
-      cachedKlineData = klineRaw.map((d) => [
-        parseTradeDate(d.tradeDate),
-        safeVal(d.openPrice),
-        safeVal(d.closePrice),
-        safeVal(d.lowPrice),
-        safeVal(d.highPrice),
-        safeVal(d.volume),
-      ])
+      cachedKlineData = klineRaw.map((d) => {
+        const open = safeVal(d.openPrice)
+        const close = safeVal(d.closePrice)
+        const low = safeVal(d.lowPrice)
+        const high = safeVal(d.highPrice)
+        // 板块K线取 MAX(high)/MIN(low) 时极端值导致垂直线，裁剪影线至实体长度的合理倍数
+        const bodyLen = Math.abs(close - open)
+        const shadowLen = high - low
+        let cappedHigh = high
+        let cappedLow = low
+        if (bodyLen > 0.01 && shadowLen > bodyLen * 5) {
+          const mid = (open + close) / 2
+          const maxShadow = bodyLen * 3
+          cappedHigh = Math.min(high, mid + maxShadow)
+          cappedLow = Math.max(low, mid - maxShadow)
+        }
+        return [
+          parseTradeDate(d.tradeDate), open, close, cappedLow, cappedHigh,
+          safeVal(d.volume),
+        ]
+      })
     }
     // 4. 从 K 线数据计算量化指标 + 缠论摘要
     if (cachedKlineData && cachedKlineData.length > 10) {

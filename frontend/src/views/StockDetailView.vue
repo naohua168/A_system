@@ -593,23 +593,36 @@ async function loadData() {
         safeVal(d.volume),
       ])
     }
-    // 3. 从最新一条K线提取实时行情
+    // 3. 从 API 提取实时行情（优先使用 stock API，其含涨跌幅兜底计算）
+    if (info) {
+      Object.assign(stock, {
+        price: info.price ?? 0,
+        open: info.open ?? 0,
+        high: info.high ?? 0,
+        low: info.low ?? 0,
+        preClose: info.preClose ?? 0,
+        changePercent: info.changePercent ?? 0,
+      })
+    }
+    // 从 K 线补充 volume/amount/turnoverRate 以及 info 未提供的字段
     if (klineRaw && klineRaw.length > 0) {
       const last = klineRaw[klineRaw.length - 1]
+      stock.volume = safeVal(last.volume)
+      stock.amount = safeVal(last.amount)
+      stock.turnoverRate = safeVal(last.turnoverRate)
+      // 若 stock API 未提供字段（或为 0），从 K 线兜底
+      if (!stock.price) stock.price = safeVal(last.closePrice)
+      if (!stock.changePercent) stock.changePercent = safeVal(last.changePercent)
+      if (!stock.open) stock.open = safeVal(last.openPrice)
+      if (!stock.high) stock.high = safeVal(last.highPrice)
+      if (!stock.low) stock.low = safeVal(last.lowPrice)
+      if (!stock.preClose) stock.preClose = safeVal(last.preClose) || safeVal(last.closePrice) * 0.99
+      // 振幅计算需 K 线极值
       const high = safeVal(last.highPrice)
       const low = safeVal(last.lowPrice)
-      Object.assign(stock, {
-        price: safeVal(last.closePrice),
-        open: safeVal(last.openPrice),
-        high,
-        low,
-        preClose: safeVal(last.preClose) || safeVal(last.closePrice) * 0.99,
-        volume: safeVal(last.volume),
-        amount: safeVal(last.amount),
-        changePercent: safeVal(last.changePercent),
-        turnoverRate: safeVal(last.turnoverRate),
-        amplitude: high && low ? safeVal(((high - low) / ((high + low) / 2)) * 100) : 0,
-      })
+      stock.amplitude = high && low ? ((high - low) / ((high + low) / 2)) * 100 : 0
+    }
+    if (info || (klineRaw && klineRaw.length > 0)) {
       loadSignalData(stockCode)
     }
   } catch (_e) {

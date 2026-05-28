@@ -187,7 +187,9 @@ function renderKline() {
 }
 
 function handleResize() {
-  chart?.resize()
+  if (!chart || chart.isDisposed?.()) return
+  if (!klineRef.value?.offsetParent) return
+  try { chart.resize() } catch { /* ignore resize errors */ }
 }
 
 watch(() => props.klineData, () => {

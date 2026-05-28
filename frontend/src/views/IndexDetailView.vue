@@ -243,13 +243,16 @@ async function loadData() {
     }
     const kline: any[] = await getIndexKline(code, 120) as any[]
     if (Array.isArray(kline) && kline.length > 10) {
+      // API 返回 ORDER BY trade_date DESC，转为升序 [oldest...newest]
       cachedKlineData = kline.map((d) => [
         parseTradeDate(d.tradeDate),
         safeVal(d.openPoint), safeVal(d.closePoint),
         safeVal(d.lowPoint), safeVal(d.highPoint),
         safeVal(d.volume),
-      ])
-      const last = kline[kline.length - 1]
+      ]).sort((a, b) => a[0] - b[0])
+
+      // 最新行情: API 返回的第一个（DESC 最新在前）
+      const last = kline[0]
       Object.assign(info, {
         price: Number(last.closePoint),
         open: Number(last.openPoint),
@@ -260,7 +263,7 @@ async function loadData() {
         amount: Number(last.amount),
         changePercent: Number(last.changePercent),
       })
-      // 量化指标
+      // 量化指标 — cachedKlineData 已是升序，slice(-N) 取最后 N 个 = 最近 N 天
       const closes = cachedKlineData.map(d => d[2])
       const highs = cachedKlineData.map(d => d[3])
       const lows = cachedKlineData.map(d => d[4])
@@ -313,7 +316,10 @@ async function loadData() {
   finally { loading.value = false }
 }
 
-function handleResizeCb() { handleResize() }
+function handleResizeCb() {
+  if (!klineChartRef.value?.offsetParent && !bottomChartRef.value?.offsetParent) return
+  handleResize()
+}
 
 onMounted(async () => {
   await loadData()

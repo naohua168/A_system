@@ -1,5 +1,38 @@
 <template>
   <div class="stock-list-view">
+    <!-- 市场分类标签（二级下拉） -->
+    <div class="market-tabs">
+      <template v-for="tab in marketTree" :key="tab.key">
+        <!-- 有子分类的 tab：点击出下拉菜单 -->
+        <div
+          v-if="tab.children"
+          :class="['market-tab', 'tab-with-dropdown', { active: isTabActive(tab) }]"
+        >
+          <span class="tab-text" @click="openDropdown(tab.key)">
+            {{ tab.label }}
+            <svg class="arrow" viewBox="0 0 12 12" width="10" height="10"
+              :class="{ rotate: activeDropdown === tab.key }"
+            ><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </span>
+          <!-- 下拉菜单 -->
+          <div v-show="activeDropdown === tab.key" class="dropdown-menu">
+            <div
+              v-for="child in tab.children"
+              :key="child.key"
+              :class="['dropdown-item', { active: store.selectedMarket === child.key }]"
+              @click="selectMarket(child.key, child.label, tab)"
+            >{{ child.label }}</div>
+          </div>
+        </div>
+        <!-- 无子分类的 tab -->
+        <div
+          v-else
+          :class="['market-tab', { active: store.selectedMarket === tab.key }]"
+          @click="selectMarket(tab.key, tab.label, tab)"
+        >{{ tab.label }}</div>
+      </template>
+    </div>
+
     <div class="toolbar">
       <div class="search-area">
         <el-input
@@ -102,11 +135,58 @@ import { useStockStore } from '@/stores/stock'
 import { getIndustries } from '@/api/market'
 import { formatVol } from '@/utils/format'
 
+interface MarketNode {
+  key: string
+  label: string
+  children?: MarketNode[]
+}
+
 const router = useRouter()
 const store = useStockStore()
 const searchKeyword = ref('')
 const sortField = ref('')
 const industries = ref<string[]>([])
+const activeDropdown = ref<string | null>(null)
+
+/** 市场分类（参考东方财富：一级横向，二级下拉） */
+const marketTree: MarketNode[] = [
+  { key: '', label: '全部' },
+  { key: 'hs', label: '沪深A股', children: [
+    { key: 'hs', label: '全部沪深A股' },
+    { key: 'sh', label: '沪市A股' },
+    { key: 'sz', label: '深市A股' },
+  ]},
+  { key: 'sh-kcb', label: '科创板' },
+  { key: 'sz-cyb', label: '创业板' },
+  { key: 'bj', label: '北交所' },
+]
+
+/** 打开下拉菜单（关闭其他） */
+function openDropdown(key: string) {
+  activeDropdown.value = activeDropdown.value === key ? null : key
+}
+
+/** 点击页面空白关闭下拉 */
+function closeDropdown(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.market-tab')) {
+    activeDropdown.value = null
+  }
+}
+
+/** 判断 tab（或它的子项）是否被选中 */
+function isTabActive(tab: MarketNode): boolean {
+  if (tab.children) {
+    return tab.children.some(c => c.key === store.selectedMarket)
+  }
+  return tab.key === store.selectedMarket
+}
+
+/** 选择市场 */
+function selectMarket(key: string, label: string, _parent: MarketNode) {
+  activeDropdown.value = null
+  store.setMarket(key)
+}
 
 function handleSearch() {
   store.setKeyword(searchKeyword.value)
@@ -131,6 +211,7 @@ function goToDetail(row: any) {
 
 onMounted(() => {
   store.fetchList()
+  document.addEventListener('click', closeDropdown)
   getIndustries().then((res) => {
     industries.value = res
   }).catch(() => {})
@@ -142,6 +223,88 @@ onMounted(() => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
+}
+
+.market-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+
+  .market-tab {
+    position: relative;
+    flex-shrink: 0;
+    padding: 6px 16px;
+    border: 1px solid $divider-soft;
+    background: $canvas;
+    font-size: 13px;
+    color: $ink-muted-48;
+    cursor: pointer;
+    border-radius: $rounded-pill;
+    transition: all 0.15s;
+    font-weight: 500;
+    user-select: none;
+
+    &:hover {
+      border-color: $primary;
+      color: $primary;
+    }
+
+    &.active {
+      background: $primary;
+      border-color: $primary;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    &.tab-with-dropdown {
+      .tab-text {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .arrow {
+        opacity: 0.5;
+        transition: transform 0.2s;
+        &.rotate { transform: rotate(180deg); }
+      }
+      &:hover .arrow { opacity: 0.8; }
+    }
+  }
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: $canvas;
+  border: 1px solid $divider-soft;
+  border-radius: $rounded-sm;
+  box-shadow: $shadow-elevated;
+  min-width: 130px;
+  padding: 4px;
+  z-index: 100;
+
+  .dropdown-item {
+    padding: 7px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: $rounded-xs;
+    color: $ink;
+    transition: all 0.1s;
+
+    &:hover {
+      background: rgba($primary, 0.06);
+      color: $primary;
+    }
+
+    &.active {
+      color: $primary;
+      font-weight: 600;
+      background: rgba($primary, 0.08);
+    }
+  }
 }
 
 .toolbar {

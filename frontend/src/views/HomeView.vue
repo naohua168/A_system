@@ -123,69 +123,94 @@
     <!-- 信号层快捷卡片 -->
     <section class="section signal-cards">
       <div class="signal-grid">
-        <div class="signal-card signal-card-nb" @click="signalLoaded.nb ? $router.push('/northbound') : undefined"
-          :style="{ opacity: signalLoaded.nb ? 1 : 0.5 }">
+        <!-- 北向资金 -->
+        <div class="signal-card" @click="$router.push('/northbound')">
           <div class="card-header">
-            <el-icon class="card-icon"><TrendCharts /></el-icon>
-            <span class="card-title">北向资金</span>
+            <div class="card-icon-wrap" style="background:rgba(41,151,255,0.12);color:#2997ff">
+              <el-icon :size="20"><TrendCharts /></el-icon>
+            </div>
+            <div class="card-meta">
+              <div class="card-title">北向资金</div>
+              <div class="card-subtitle">沪/深股通资金流向</div>
+            </div>
           </div>
-          <div class="card-body">
-            <div v-if="signalLoaded.nb" class="card-value" :class="nbTotal >= 0 ? 'text-rise' : 'text-fall'">
+          <template v-if="signalLoaded.nb">
+            <div class="card-value" :class="nbTotal >= 0 ? 'text-rise' : 'text-fall'">
               {{ nbTotal >= 0 ? '+' : '' }}{{ nbTotal }}<small>亿</small>
             </div>
-            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:60%;height:22px" /></div>
-            <div class="card-detail" v-if="signalLoaded.nb">沪 {{ safeNum(nbHgt) }} 深 {{ safeNum(nbSgt) }}</div>
-            <div v-else class="card-detail">加载中...</div>
-          </div>
+            <div class="card-foot">沪 {{ safeNum(nbHgt) }} 亿 / 深 {{ safeNum(nbSgt) }} 亿</div>
+          </template>
+          <template v-else>
+            <div class="card-skeleton"><div class="sk-line" style="width:55%;height:28px" /><div class="sk-line" style="width:70%;height:12px" /></div>
+          </template>
         </div>
-        <div class="signal-card signal-card-hot" @click="signalLoaded.hot ? $router.push('/hot-reason') : undefined"
-          :style="{ opacity: signalLoaded.hot ? 1 : 0.5 }">
+        <!-- 题材热点 -->
+        <div class="signal-card" @click="$router.push('/hot-reason')">
           <div class="card-header">
-            <el-icon class="card-icon"><DataAnalysis /></el-icon>
-            <span class="card-title">题材热点</span>
-          </div>
-          <div class="card-body">
-            <div v-if="signalLoaded.hot && hotReasons.length" class="card-tags">
-              <el-tag v-for="r in hotReasons.slice(0,3)" :key="r.stockCode" size="small" class="hot-tag"
-                @click.stop="$router.push(`/stock/${r.stockCode}`)">
-                {{ r.stockName }}
-              </el-tag>
+            <div class="card-icon-wrap" style="background:rgba(239,83,80,0.12);color:#ef5350">
+              <el-icon :size="20"><DataAnalysis /></el-icon>
             </div>
-            <div v-else-if="signalLoaded.hot" class="card-empty">暂无数据</div>
-            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:80%;height:20px" /></div>
-            <div class="card-detail">{{ signalLoaded.hot ? (hotReasons.length + ' 只个股今日强势') : '加载中...' }}</div>
+            <div class="card-meta">
+              <div class="card-title">题材热点</div>
+              <div class="card-subtitle">今日强势个股</div>
+            </div>
           </div>
+          <template v-if="signalLoaded.hot">
+            <div class="card-tags" v-if="hotReasons.length">
+              <span v-for="r in hotReasons.slice(0,3)" :key="r.stockCode" class="hot-tag"
+                @click.stop="$router.push(`/stock/${r.stockCode}`)">{{ r.stockName }}</span>
+            </div>
+            <div class="card-foot" v-if="hotReasons.length">{{ hotReasons.length }} 只个股今日强势</div>
+            <div class="card-empty" v-else>暂无数据</div>
+          </template>
+          <template v-else>
+            <div class="card-skeleton"><div class="sk-line" style="width:80%;height:24px" /><div class="sk-line" style="width:50%;height:12px" /></div>
+          </template>
         </div>
-        <div class="signal-card signal-card-ind" @click="signalLoaded.ind ? $router.push('/industry-compare') : undefined"
-          :style="{ opacity: signalLoaded.ind ? 1 : 0.5 }">
+        <!-- 行业排行 -->
+        <div class="signal-card" @click="$router.push('/industry-compare')">
           <div class="card-header">
-            <el-icon class="card-icon"><Histogram /></el-icon>
-            <span class="card-title">行业排行</span>
+            <div class="card-icon-wrap" style="background:rgba(82,196,26,0.12);color:#52c41a">
+              <el-icon :size="20"><Histogram /></el-icon>
+            </div>
+            <div class="card-meta">
+              <div class="card-title">行业排行</div>
+              <div class="card-subtitle">各行业涨跌排名</div>
+            </div>
           </div>
-          <div class="card-body">
-            <div v-if="industryTop.length" class="card-ind-list">
-              <div v-for="ind in industryTop.slice(0,3)" :key="ind.industryName" class="ind-row">
-                <span class="ind-name">{{ ind.industryName }}</span>
+          <template v-if="signalLoaded.ind">
+            <div class="card-rank-list" v-if="industryTop.length">
+              <div v-for="ind in industryTop.slice(0,3)" :key="ind.industryName" class="rank-row">
+                <span class="rank-name">{{ ind.industryName }}</span>
                 <span :class="(ind.changePct || 0) >= 0 ? 'text-rise' : 'text-fall'">
                   {{ (ind.changePct || 0) >= 0 ? '+' : '' }}{{ safeNum(ind.changePct, 2) }}%
                 </span>
               </div>
             </div>
-            <div v-else-if="signalLoaded.ind" class="card-empty">暂无数据</div>
-            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:70%;height:20px" /></div>
-          </div>
+            <div class="card-empty" v-else>暂无数据</div>
+          </template>
+          <template v-else>
+            <div class="card-skeleton"><div class="sk-line" style="width:85%;height:20px" /><div class="sk-line" style="width:60%;height:12px" /></div>
+          </template>
         </div>
-        <div class="signal-card signal-card-dt" @click="signalLoaded.dt ? $router.push('/dragon-tiger') : undefined"
-          :style="{ opacity: signalLoaded.dt ? 1 : 0.5 }">
+        <!-- 龙虎榜 -->
+        <div class="signal-card" @click="$router.push('/dragon-tiger')">
           <div class="card-header">
-            <el-icon class="card-icon"><Aim /></el-icon>
-            <span class="card-title">龙虎榜</span>
+            <div class="card-icon-wrap" style="background:rgba(255,140,0,0.12);color:#ff8c00">
+              <el-icon :size="20"><Aim /></el-icon>
+            </div>
+            <div class="card-meta">
+              <div class="card-title">龙虎榜</div>
+              <div class="card-subtitle">每日上榜异动个股</div>
+            </div>
           </div>
-          <div class="card-body">
-            <div v-if="signalLoaded.dt" class="card-value">{{ dtCount || '0' }}</div>
-            <div v-else class="card-value-skeleton"><div class="skeleton-line" style="width:40%;height:22px" /></div>
-            <div class="card-detail">{{ signalLoaded.dt ? (dtCount ? dtCount + ' 只个股今日上榜' : '暂无上榜') : '加载中...' }}</div>
-          </div>
+          <template v-if="signalLoaded.dt">
+            <div class="card-count">{{ dtCount || '0' }}</div>
+            <div class="card-foot">{{ dtCount ? dtCount + ' 只个股今日上榜' : '今日暂无上榜' }}</div>
+          </template>
+          <template v-else>
+            <div class="card-skeleton"><div class="sk-line" style="width:40%;height:28px" /><div class="sk-line" style="width:65%;height:12px" /></div>
+          </template>
         </div>
       </div>
     </section>
@@ -299,7 +324,7 @@ const showIndexManager = ref(false)
 /** 主页面数据加载完成标记 */
 const homeLoaded = ref(false)
 
-/** 各信号卡片加载状态 */
+/** 各信号卡片加载状态（函数末尾批量赋值，避免逐项触发重渲染） */
 const signalLoaded = reactive({ nb: false, hot: false, ind: false, dt: false })
 
 /** 信号层数据 — 业务类型见 @/types */
@@ -310,6 +335,15 @@ const hotReasons = ref<HotReason[]>([])
 const industryTop = ref<IndustryTopItem[]>([])
 const dtCount = ref(0)
 
+// ── 共享请求缓存：loadMarketStats 和 loadSectorData fallback 共用一次 getSectorRanking ──
+let sectorRankingPromise: Promise<any[]> | null = null
+function getCachedSectorRanking(): Promise<any[]> {
+  if (!sectorRankingPromise) {
+    sectorRankingPromise = (getSectorRanking() as Promise<any[]>).catch(() => [])
+  }
+  return sectorRankingPromise
+}
+
 /** 并行加载信号层数据（各接口独立容错，无论成功失败都标记加载完成） */
 async function loadSignalData() {
   const [nbRes, hotRes, indRes, dtRes] = await Promise.allSettled([
@@ -319,7 +353,6 @@ async function loadSignalData() {
     getDragonTigerDaily().catch(() => null),
   ])
   // 北向资金
-  signalLoaded.nb = true
   if (nbRes.status === 'fulfilled' && nbRes.value) {
     const nbData = nbRes.value as Northbound[]
     if (Array.isArray(nbData) && nbData.length > 0 && nbData[0]) {
@@ -328,13 +361,11 @@ async function loadSignalData() {
     }
   }
   // 题材热点
-  signalLoaded.hot = true
   if (hotRes.status === 'fulfilled' && hotRes.value) {
     const raw = hotRes.value as any
     hotReasons.value = (raw?.records && Array.isArray(raw.records)) ? raw.records : []
   }
   // 行业排行
-  signalLoaded.ind = true
   if (indRes.status === 'fulfilled' && indRes.value) {
     const raw = indRes.value as any
     const all = (raw?.records && Array.isArray(raw.records)) ? raw.records : []
@@ -349,7 +380,6 @@ async function loadSignalData() {
     }
   }
   // 龙虎榜
-  signalLoaded.dt = true
   if (dtRes.status === 'fulfilled' && dtRes.value) {
     const raw = dtRes.value as any
     if (raw && typeof raw.total === 'number') {
@@ -360,6 +390,11 @@ async function loadSignalData() {
       dtCount.value = 0
     }
   }
+  // 批量更新信号卡片加载状态（合并为一次渲染）
+  signalLoaded.nb = true
+  signalLoaded.hot = true
+  signalLoaded.ind = true
+  signalLoaded.dt = true
 }
 
 /** 大盘指数 — 从后端 API 实时加载 */
@@ -452,14 +487,31 @@ async function loadSectorKline(industry: string) {
   try {
     const data = await getSectorKline(industry, 60)
     if (Array.isArray(data) && data.length > 0) {
-      sectorKlineData.value = data.map((d: any) => ({
-        date: d.tradeDate || '',
-        open: Number(d.openPrice) || 0,
-        high: Number(d.highPrice) || 0,
-        low: Number(d.lowPrice) || 0,
-        close: Number(d.closePrice) || 0,
-        volume: Number(d.volume) || 0,
-      }))
+      sectorKlineData.value = data.map((d: any) => {
+        const open = Number(d.openPrice) || 0
+        const close = Number(d.closePrice) || 0
+        const low = Number(d.lowPrice) || 0
+        const high = Number(d.highPrice) || 0
+        // 裁剪极端影线（MAX(high)/MIN(low) 跨价格层级）
+        const bodyLen = Math.abs(close - open)
+        const shadowLen = high - low
+        let cappedHigh = high
+        let cappedLow = low
+        if (bodyLen > 0.01 && shadowLen > bodyLen * 5) {
+          const mid = (open + close) / 2
+          const maxShadow = bodyLen * 3
+          cappedHigh = Math.min(high, mid + maxShadow)
+          cappedLow = Math.max(low, mid - maxShadow)
+        }
+        return {
+          date: d.tradeDate || '',
+          open,
+          high: cappedHigh,
+          low: cappedLow,
+          close,
+          volume: Number(d.volume) || 0,
+        }
+      })
     } else {
       sectorKlineData.value = []
     }
@@ -490,15 +542,15 @@ async function loadHotStocks() {
 const marketStats = ref({ total: 0, up: 0, down: 0, flat: 0 })
 async function loadMarketStats() {
   try {
-    const ranking = await getSectorRanking() as SectorRanking[]
+    const ranking = await getCachedSectorRanking()
     if (Array.isArray(ranking) && ranking.length > 0) {
       let total = 0, up = 0, down = 0
       ranking.forEach((s) => {
         total += Number(s.stockCount) || 0
         up += Number(s.upCount) || 0
-        down += (Number(s.stockCount) || 0) - (Number(s.upCount) || 0)
+        down += Number(s.downCount) || 0
       })
-      marketStats.value = { total, up, down, flat: total - up - down }
+      marketStats.value = { total, up, down, flat: Math.max(0, total - up - down) }
     }
   } catch { /* 非关键功能，静默失败 */ }
 }
@@ -506,22 +558,23 @@ async function loadMarketStats() {
 /** 加载板块云图数据（双层钻取：一级行业 → 成分股） */
 async function loadSectorData() {
   try {
-    // 优先使用新 API（行业-成分股分层），后端无此接口时回退到旧 API
+    // 优先使用新 API，2秒超时降级到旧 API（避免串行等待）
     let data: { name: string; stockCount: number; avgChangePct: number; children: any[] }[] | null = null
     try {
-      const res = await getIndustryTreemap()
-      if (res?.records?.length) data = res.records
-    } catch {
-      // 新 API 不可用（旧版本后端），fallback 到旧 API
-    }
+      const newApi = getIndustryTreemap()
+      const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
+      const res = await Promise.race([newApi, timeout])
+      if (res && (res as any)?.records?.length) data = (res as any).records
+    } catch { /* fallback */ }
     if (!data) {
-      // 旧 API：行业排行聚合为一级分类
-      const oldData = await getSectorRanking()
+      // 旧 API：复用 loadMarketStats 的缓存，避免重复请求
+      const oldData = await getCachedSectorRanking()
       const arr = Array.isArray(oldData) ? oldData : (oldData?.records || [])
       const map = new Map<string, { cnt: number; sumPct: number }>()
       for (const d of arr) {
         const pct = Number(d.avgChangePct) || 0
-        const top = (d.industry || '其他').split('-')[0]
+        const rawIndustry = (d.industry || '').trim()
+        const top = rawIndustry ? rawIndustry.split('-')[0] : '其他'
         const c = Number(d.stockCount) || 1
         const e = map.get(top)
         if (e) { const t = e.cnt + c; e.sumPct = (e.sumPct * e.cnt + pct * c) / t; e.cnt = t }
@@ -534,6 +587,7 @@ async function loadSectorData() {
       // 新 API 有成分股明细，存入映射表供详情面板使用
       const stockMap = new Map<string, { stockCode: string; stockName: string; changePercent: number }[]>()
       sectorData.value = data.map((r) => {
+        const name = (r.name || '').trim() || '其他'
         const stocks = (r.children || [])
           .filter((c: any) => c.changePercent !== 0)
           .slice(0, 500)
@@ -542,9 +596,9 @@ async function loadSectorData() {
             stockName: c.stockName,
             changePercent: c.changePercent,
           }))
-        stockMap.set(r.name, stocks)
+        stockMap.set(name, stocks)
         return {
-          name: r.name,
+          name,
           value: r.stockCount,
           changePercent: r.avgChangePct,
         }
@@ -833,34 +887,81 @@ onMounted(async () => {
 /* 信号层快捷卡片 */
 .signal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .signal-card {
-  cursor: pointer; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
-  transition: all 0.2s; border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer; border-radius: 12px; padding: 18px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: $canvas-parchment;
+  border: 1px solid $divider-soft;
+  transition: all 0.2s ease;
 }
 .signal-card:hover {
-  transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  transform: translateY(-1px);
 }
 .signal-card .card-header {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 12px;
 }
-.signal-card .card-header .card-icon {
-  font-size: 20px; flex-shrink: 0;
+.signal-card .card-icon-wrap {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
 }
-.signal-card .card-header .card-title {
-  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.75);
+.signal-card .card-meta { flex: 1; min-width: 0; }
+.signal-card .card-title {
+  font-size: 14px; font-weight: 600; color: $ink;
+  line-height: 1.3;
 }
-.signal-card .card-body { flex: 1; min-width: 0; }
-.signal-card .card-value { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-.signal-card .card-value small { font-size: 12px; font-weight: 400; opacity: 0.4; margin-left: 2px; }
-.signal-card .card-detail { font-size: 12px; color: rgba(255,255,255,0.3); }
-.signal-card .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-.signal-card .card-ind-list .ind-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
-.signal-card .card-ind-list .ind-row .ind-name { color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.signal-card-nb { background: linear-gradient(135deg, rgba(41,151,255,0.08), rgba(41,151,255,0.02)); }
-.signal-card-hot { background: linear-gradient(135deg, rgba(236,77,76,0.08), rgba(236,77,76,0.02)); }
-.signal-card-ind { background: linear-gradient(135deg, rgba(82,196,26,0.08), rgba(82,196,26,0.02)); }
-.signal-card-dt { background: linear-gradient(135deg, rgba(255,140,0,0.08), rgba(255,140,0,0.02)); }
-.hot-tag { background: rgba(236,77,76,0.12); color: #ec4d4c; border: 1px solid rgba(236,77,76,0.2);
-  cursor: pointer; &:hover { background: rgba(236,77,76,0.2); } }
+.signal-card .card-subtitle {
+  font-size: 11px; color: $ink-muted-48; margin-top: 1px;
+}
+.signal-card .card-value {
+  font-size: 28px; font-weight: 700; font-family: $font-display;
+}
+.signal-card .card-value small {
+  font-size: 12px; font-weight: 400; opacity: 0.45; margin-left: 3px;
+}
+.signal-card .card-foot {
+  font-size: 11px; color: $ink-muted-48;
+}
+.signal-card .card-count {
+  font-size: 28px; font-weight: 700; font-family: $font-display; color: $ink;
+}
+.signal-card .card-empty {
+  font-size: 13px; color: $ink-muted-48; padding: 8px 0;
+}
+.signal-card .card-tags {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.signal-card .hot-tag {
+  display: inline-block; padding: 3px 10px; border-radius: 6px;
+  font-size: 12px; font-weight: 500;
+  background: rgba(239,83,80,0.1); color: #ef5350;
+  border: 1px solid rgba(239,83,80,0.15);
+  cursor: pointer; transition: all 0.12s;
+  &:hover { background: rgba(239,83,80,0.18); }
+}
+.signal-card .card-rank-list {
+  display: flex; flex-direction: column; gap: 5px;
+}
+.signal-card .rank-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; padding: 3px 8px; border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+}
+.signal-card .rank-row .rank-name {
+  color: $ink-muted-48; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px;
+}
+.signal-card .card-skeleton {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.signal-card .sk-line {
+  border-radius: 4px; background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%; animation: sk-shimmer 1.5s infinite;
+}
+@keyframes sk-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 /* ======== 骨架屏 ======== */
 .skeleton-bar .stat-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; }

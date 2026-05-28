@@ -636,6 +636,7 @@ export interface MarketListParams {
   size?: number
   keyword?: string
   industry?: string
+  market?: string
   sortField?: string
   sortOrder?: 'asc' | 'desc'
 }

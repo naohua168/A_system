@@ -57,6 +57,11 @@ export function getMaxTradeDate(): Promise<{ tradeDate: string }> {
   return request.get('/market/max-date')
 }
 
+/** 获取市场分类列表（沪市/深市/创业板等） */
+export function getMarkets(): Promise<string[]> {
+  return request.get('/market/markets')
+}
+
 /** 获取板块K线数据（行业成分股均价聚合） */
 export function getSectorKline(industry: string, days = 60): Promise<StockDaily[]> {
   return request.get('/market/sector-kline', { params: { industry, days } })
