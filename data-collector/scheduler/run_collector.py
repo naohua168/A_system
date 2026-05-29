@@ -373,6 +373,111 @@ class DataCollectorRunner:
         print(f"{'='*50}")
 
     # ==========================================================
+    # 基金数据（货币基金 + ETF）
+    # ==========================================================
+
+    def collect_money_market(self):
+        """采集货币基金 7日年化/万份收益"""
+        t0 = time.time()
+        print(f"[{datetime.now():%H:%M:%S}] 💰 货币基金: 采集 7日年化...")
+        try:
+            import akshare as ak
+            import pymysql
+            conn = pymysql.connect(host='mysql', user='root', password='hadoop123', database='stock_analysis', charset='utf8mb4')
+            cur = conn.cursor()
+            df = ak.fund_money_rank_em()
+            cnt = 0
+            for _, row in df.iterrows():
+                code = str(row['基金代码']).strip()
+                cur.execute("""
+                    INSERT INTO fund_money_market (fund_code, fund_name, nav_date, daily_return, seven_day_yield,
+                        yearly_return_14d, yearly_return_28d, monthly_return, quarterly_return, half_year_return, year_return)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE seven_day_yield=VALUES(seven_day_yield), daily_return=VALUES(daily_return)
+                """, (code, str(row['基金简称']), str(row['日期']),
+                    float(row['万份收益']) if row['万份收益'] else 0,
+                    float(row['年化收益率7日']) if row['年化收益率7日'] else 0,
+                    float(row.get('年化收益率14日', 0) or 0),
+                    float(row.get('年化收益率28日', 0) or 0),
+                    float(row.get('近1月', 0) or 0),
+                    float(row.get('近3月', 0) or 0),
+                    float(row.get('近6月', 0) or 0),
+                    float(row.get('近1年', 0) or 0)))
+                cnt += 1
+            conn.commit()
+            cur.close(); conn.close()
+            self.report.record("money_market", cnt, True, time.time() - t0)
+            print(f"   ✅ {cnt} 只货币基金")
+        except Exception as e:
+            self.report.record("money_market", 0, False, time.time() - t0)
+            print(f"   ❌ 货币基金采集失败: {e}")
+
+    def collect_etf_market(self):
+        """采集 ETF 实时行情"""
+        t0 = time.time()
+        print(f"[{datetime.now():%H:%M:%S}] 📊 ETF 行情: 采集实时行情...")
+        try:
+            import akshare as ak
+            import pymysql
+            conn = pymysql.connect(host='mysql', user='root', password='hadoop123', database='stock_analysis', charset='utf8mb4')
+            cur = conn.cursor()
+            df = ak.fund_etf_spot_em()
+            cnt = 0
+            for _, row in df.iterrows():
+                code = str(row['代码']).strip()
+                def sf(v):
+                    try: return float(v)
+                    except: return None
+                cur.execute("""
+                    INSERT INTO fund_etf_market (fund_code, fund_name, price, change_pct, change_amount,
+                        volume, amount, open_price, high_price, low_price, pre_close)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE price=VALUES(price), change_pct=VALUES(change_pct),
+                        volume=VALUES(volume), amount=VALUES(amount)
+                """, (code, str(row.get('名称', '')), sf(row.get('最新价')), sf(row.get('涨跌幅')),
+                    sf(row.get('涨跌额')), int(float(str(row.get('成交量',0)).replace(',',''))) if row.get('成交量') else 0,
+                    sf(row.get('成交额')), sf(row.get('开盘价')), sf(row.get('最高价')),
+                    sf(row.get('最低价')), sf(row.get('昨收'))))
+                cnt += 1
+            conn.commit()
+            cur.close(); conn.close()
+            self.report.record("etf_market", cnt, True, time.time() - t0)
+            print(f"   ✅ {cnt} 只 ETF")
+        except Exception as e:
+            self.report.record("etf_market", 0, False, time.time() - t0)
+            print(f"   ❌ ETF 采集失败: {e}")
+
+    # ==========================================================
+    # Spark ETL 批处理
+    # ==========================================================
+
+    def collect_spark_batch(self):
+        """Spark 分布式批处理：行业排行 + 写入 MySQL"""
+        t0 = time.time()
+        print(f"[{datetime.now():%H:%M:%S}] 🔥 Spark 批处理启动...")
+        try:
+            import subprocess
+            cmd = [
+                "docker", "exec", "spark-master", "spark-submit",
+                "--master", "spark://spark-master:7077",
+                "--driver-memory", "1g", "--executor-memory", "1g",
+                "/app/bigdata/spark_sector_mysql.py"
+            ]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if r.returncode == 0:
+                print(f"   ✅ Spark 完成")
+                self.report.record("spark_batch", 1, True, time.time() - t0)
+            else:
+                print(f"   ⚠️ Spark 失败(将跳过): {r.stderr[:200]}")
+                self.report.record("spark_batch", 0, False, time.time() - t0)
+        except subprocess.TimeoutExpired:
+            print(f"   ⚠️ Spark 超时(300s 后跳过)")
+            self.report.record("spark_batch", 0, False, time.time() - t0)
+        except Exception as e:
+            print(f"   ⚠️ Spark 异常(跳过): {e}")
+            self.report.record("spark_batch", 0, False, time.time() - t0)
+
+    # ==========================================================
     # 全量采集
     # ==========================================================
 
@@ -389,9 +494,28 @@ class DataCollectorRunner:
         self.collect_realtime()
         self.collect_kline()
 
+        # 基金数据（货币基金 7日年化 + ETF 实时行情）
+        self.collect_money_market()
+        self.collect_etf_market()
+
         # 资讯层（研报+新闻+公告）
         self.collect_cls_news()
         self.collect_global_news()
+
+        # 全量采集后自动上传到 HDFS（数据湖）
+        print(f"\n📤 上传原始数据到 HDFS...")
+        try:
+            from scheduler.upload_to_hdfs import HDFSUploader
+            uploader = HDFSUploader()
+            uploaded = uploader.upload_all()
+            print(f"   ✅ HDFS 上传: {uploaded} 个文件")
+            if uploaded > 0:
+                uploader.run_hive_msck()
+        except Exception as e:
+            print(f"   ⚠️ HDFS 上传失败(不影响MySQL): {e}")
+
+        # Spark 分布式批处理（行业排行等）
+        self.collect_spark_batch()
 
         print(self.report.summary())
         print(f"\n{'='*50}")
@@ -401,6 +525,20 @@ class DataCollectorRunner:
     # ==========================================================
     # 工具方法
     # ==========================================================
+
+    def _run_sync(self):
+        """执行 sync_to_mysql (兜底: 失败不影响采集)"""
+        try:
+            from sync_to_mysql import main as sync_main
+            import sys as _sys
+            saved = _sys.argv.copy()
+            _sys.argv = [_sys.argv[0]]
+            try:
+                sync_main()
+            finally:
+                _sys.argv = saved
+        except Exception as e:
+            print(f"   ⚠️ 同步失败(采集已完成): {e}")
 
     def _save(self, prefix: str, df: pd.DataFrame):
         """保存DataFrame到CSV"""
@@ -426,6 +564,8 @@ def main():
     parser.add_argument("--info", action="store_true", help="仅采集资讯层数据（研报+新闻+公告）")
     parser.add_argument("--stock", type=str, help="指定股票代码采集")
     parser.add_argument("--loop", type=int, default=0, help="循环间隔（分钟），0=不循环")
+    parser.add_argument("--mode", type=str, choices=["realtime","batch","incremental","full"],
+                        help="采集模式: realtime(盘中高频) / batch(收盘批处理) / full(全量)")
     parser.add_argument("--sync", action="store_true", help="采集后同步到MySQL")
 
     # 管道模式（新一代适配器+存储+管道）
@@ -481,38 +621,89 @@ def main():
             _run_pipeline(args)
             return
 
-        # ==================== 旧版调度模式（兼容保留） ====================
-        if args.all:
-            runner.collect_all()
-        elif args.realtime:
-            runner.collect_realtime()
-        elif args.kline:
+        # ==================== 新版 mode 调度 ====================
+        now_ts = datetime.now()
+        hour = now_ts.hour
+        is_market_day = now_ts.weekday() < 5  # 周一到周五
+        is_market_hours = is_market_day and ((9 <= hour < 11) or (13 <= hour < 15))
+
+        if args.mode == "realtime":
+            print(f"🔄 实时模式 (market_hours={is_market_hours})")
+            if is_market_hours:
+                runner.collect_realtime()
+                runner.collect_northbound()
+                runner.collect_etf_market()
+            else:
+                print("   非交易时段，仅更新财联社快讯")
+                runner.collect_cls_news()
+            if args.sync:
+                runner._run_sync()
+
+        elif args.mode == "batch":
+            print(f"🔄 批处理模式 (收盘后)")
             runner.collect_kline()
-        elif args.signals:
             runner.collect_hot_reason()
             runner.collect_northbound()
             runner.collect_industry_compare()
-        elif args.info:
-            runner.collect_info_all()
-        elif args.stock:
-            runner.collect_stock_signals([args.stock])
-        else:
-            parser.print_help()
-            return
-
-        if args.sync:
-            print(f"\n📤 同步到MySQL...")
-            from sync_to_mysql import main as sync_main
-            import sys as _sys
-            saved = _sys.argv.copy()
-            _sys.argv = [_sys.argv[0]]
+            # 基金数据
+            runner.collect_money_market()
+            runner.collect_etf_market()
+            # 资讯
+            runner.collect_cls_news()
+            runner.collect_global_news()
+            # 上传 HDFS + Spark
+            print(f"\n📤 上传 HDFS...")
             try:
-                sync_main()
-            finally:
-                _sys.argv = saved
+                from scheduler.upload_to_hdfs import HDFSUploader
+                u = HDFSUploader()
+                u.upload_all()
+                u.run_hive_msck()
+            except Exception as e:
+                print(f"   ⚠️ HDFS 失败(继续): {e}")
+            print(f"🔥 Spark 批处理...")
+            runner.collect_spark_batch()
+            if args.sync:
+                runner._run_sync()
+
+        elif args.mode == "full":
+            runner.collect_all()
+            if args.sync:
+                runner._run_sync()
+
+        elif args.mode == "incremental":
+            print(f"🔄 增量模式")
+            runner.collect_realtime()
+            runner.collect_cls_news()
+            if is_market_hours:
+                runner.collect_northbound()
+                runner.collect_etf_market()
+            if args.sync:
+                runner._run_sync()
+
+        else:
+            # ==================== 旧版调度模式（兼容保留） ====================
+            if args.all:
+                runner.collect_all()
+            elif args.realtime:
+                runner.collect_realtime()
+            elif args.kline:
+                runner.collect_kline()
+            elif args.signals:
+                runner.collect_hot_reason()
+                runner.collect_northbound()
+                runner.collect_industry_compare()
+            elif args.info:
+                runner.collect_info_all()
+            elif args.stock:
+                runner.collect_stock_signals([args.stock])
+            else:
+                parser.print_help()
+                return
+            if args.sync:
+                runner._run_sync()
 
     if args.loop > 0:
-        print(f"🔄 定时采集启动，间隔 {args.loop} 分钟")
+        print(f"🔄 智能定时采集启动")
         _running = True
         import signal as _signal
 
@@ -523,13 +714,73 @@ def main():
 
         _signal.signal(_signal.SIGINT, _handle_signal)
         _signal.signal(_signal.SIGTERM, _handle_signal)
+
+        last_batch_date = ""
+
         try:
             while _running:
-                run_once()
+                now = datetime.now()
+                h, wd = now.hour, now.weekday()
+                is_trading_day = wd < 5
+                am_session = 9 <= h < 11
+                pm_session = 13 <= h < 15
+                after_market = 15 <= h < 18
+                today_str = now.strftime("%Y-%m-%d")
+
+                if is_trading_day and (am_session or pm_session):
+                    # 交易时段: 每1分钟实时行情
+                    if am_session and h == 9 and now.minute < 30:
+                        interval = 30  # 9:00-9:30 集合竞价 30s
+                    else:
+                        interval = 1  # 盘中 1min
+                    runner.collect_realtime()
+                    if now.minute % 5 == 0:
+                        runner.collect_northbound()
+                        runner.collect_etf_market()
+                    runner.collect_cls_news()
+                    if args.sync:
+                        runner._run_sync()
+                    print(f"\n⏳ 交易时段: 等待 {interval} 分钟...\n")
+                    time.sleep(interval * 60)
+
+                elif is_trading_day and after_market and last_batch_date != today_str:
+                    # 收盘后: 一次性批处理
+                    print(f"📊 收盘批处理 [{now:%H:%M}]")
+                    runner.collect_kline()
+                    runner.collect_hot_reason()
+                    runner.collect_northbound()
+                    runner.collect_industry_compare()
+                    runner.collect_money_market()
+                    runner.collect_etf_market()
+                    runner.collect_cls_news()
+                    runner.collect_global_news()
+                    # HDFS + Spark
+                    try:
+                        from scheduler.upload_to_hdfs import HDFSUploader
+                        u = HDFSUploader()
+                        u.upload_all()
+                        u.run_hive_msck()
+                    except Exception as e:
+                        print(f"   ⚠️ HDFS 跳过: {e}")
+                    runner.collect_spark_batch()
+                    if args.sync:
+                        runner._run_sync()
+                    last_batch_date = today_str
+                    print(f"\n⏳ 批处理完成: 等待下次交易时段...\n")
+                    time.sleep(1800)  # 30min
+
+                else:
+                    # 非交易时段: 每30分钟增量采集
+                    runner.collect_cls_news()
+                    runner.collect_global_news()
+                    if args.sync:
+                        runner._run_sync()
+                    interval = 30
+                    print(f"\n⏳ 非交易时段: 等待 {interval} 分钟...\n")
+                    time.sleep(interval * 60)
+
                 if not _running:
                     break
-                print(f"\n⏳ 等待 {args.loop} 分钟后下次采集...\n")
-                time.sleep(args.loop * 60)
         finally:
             print("✅ 采集循环已安全退出")
     else:

@@ -20,56 +20,89 @@
       </div>
     </div>
 
-    <!-- 关键指标卡片 (蚂蚁财富风格) -->
-    <div class="nav-metrics">
-      <div class="metric-card metric-primary">
-        <span class="metric-label">最新净值</span>
-        <span class="metric-value">{{ fund.nav.toFixed(4) }}</span>
-        <span class="metric-change" :class="fund.dailyReturn >= 0 ? 'rise' : 'fall'">
-          日涨跌 {{ fund.dailyReturn >= 0 ? '+' : '' }}{{ (fund.dailyReturn * 100).toFixed(2) }}%
-        </span>
+    <!-- 关键指标卡片 -->
+    <template v-if="fund.isMoneyMarket">
+      <!-- 货币基金：显示七日年化卡片 -->
+      <div class="nav-metrics">
+        <div class="metric-card metric-primary">
+          <span class="metric-label">7日年化</span>
+          <span class="metric-value" style="color: #10b981;">{{ (fund.sevenDayYield ?? 0).toFixed(2) }}%</span>
+          <span class="metric-sub">万份收益 {{ (fund.dailyReturnMoney ?? 0).toFixed(4) }}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">近1月</span>
+          <span class="metric-value" style="color: #10b981;">{{ fund.monthReturnMoney ?? '--' }}%</span>
+          <span class="metric-sub">货币型</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">近1年</span>
+          <span class="metric-value" style="color: #10b981;">{{ fund.yearReturnMoney ?? '--' }}%</span>
+          <span class="metric-sub">累计收益</span>
+        </div>
       </div>
-      <div class="metric-card">
-        <span class="metric-label">累计净值</span>
-        <span class="metric-value">{{ fund.accumulatedNav.toFixed(4) }}</span>
-        <span class="metric-sub">成立以来</span>
+    </template>
+    <template v-else-if="fund.nav <= 0">
+      <!-- 无净值数据的基金 -->
+      <div class="nav-metrics">
+        <div class="metric-card metric-primary" style="grid-column: 1 / -1; padding: 24px;">
+          <span class="metric-label">基金状态</span>
+          <span class="metric-value" style="font-size: 18px; color: #999;">暂无净值数据</span>
+          <span class="metric-sub">{{ fund.name.includes('后端') ? '后端收费份额，通常无独立净值数据' : '该基金尚未获取到净值信息' }}</span>
+        </div>
       </div>
-      <div class="metric-card">
-        <span class="metric-label">近1月</span>
-        <span class="metric-value" :class="fund.returns.month >= 0 ? 'rise' : 'fall'">
-          {{ fund.returns.month >= 0 ? '+' : '' }}{{ fund.returns.month.toFixed(2) }}%
-        </span>
-        <span class="metric-sub">同类平均 {{ fund.avgReturns.month.toFixed(2) }}%</span>
+    </template>
+    <template v-else>
+      <div class="nav-metrics">
+        <div class="metric-card metric-primary">
+          <span class="metric-label">最新净值</span>
+          <span class="metric-value">{{ fund.nav.toFixed(4) }}</span>
+          <span class="metric-change" :class="fund.dailyReturn >= 0 ? 'rise' : 'fall'">
+            日涨跌 {{ fund.dailyReturn >= 0 ? '+' : '' }}{{ (fund.dailyReturn * 100).toFixed(2) }}%
+          </span>
+        </div>
+        <div class="metric-card" v-if="fund.accumulatedNav > 0">
+          <span class="metric-label">累计净值</span>
+          <span class="metric-value">{{ fund.accumulatedNav.toFixed(4) }}</span>
+          <span class="metric-sub">成立以来</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">近1月</span>
+          <span v-if="fund.returns.month !== 0" class="metric-value" :class="fund.returns.month >= 0 ? 'rise' : 'fall'">
+            {{ fund.returns.month >= 0 ? '+' : '' }}{{ fund.returns.month.toFixed(2) }}%
+          </span>
+          <span v-else class="metric-value muted">--</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">近3月</span>
+          <span v-if="fund.returns.quarter !== 0" class="metric-value" :class="fund.returns.quarter >= 0 ? 'rise' : 'fall'">
+            {{ fund.returns.quarter >= 0 ? '+' : '' }}{{ fund.returns.quarter.toFixed(2) }}%
+          </span>
+          <span v-else class="metric-value muted">--</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">近6月</span>
+          <span v-if="fund.returns.sixMonth !== 0" class="metric-value" :class="fund.returns.sixMonth >= 0 ? 'rise' : 'fall'">
+            {{ fund.returns.sixMonth >= 0 ? '+' : '' }}{{ fund.returns.sixMonth.toFixed(2) }}%
+          </span>
+          <span v-else class="metric-value muted">--</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">近1年</span>
+          <span v-if="fund.returns.year !== 0" class="metric-value" :class="fund.returns.year >= 0 ? 'rise' : 'fall'">
+            {{ fund.returns.year >= 0 ? '+' : '' }}{{ fund.returns.year.toFixed(2) }}%
+          </span>
+          <span v-else class="metric-value muted">--</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">成立以来</span>
+          <span v-if="fund.returns.inception !== 0" class="metric-value" :class="fund.returns.inception >= 0 ? 'rise' : 'fall'">
+            {{ fund.returns.inception >= 0 ? '+' : '' }}{{ fund.returns.inception.toFixed(2) }}%
+          </span>
+          <span v-else class="metric-value muted">--</span>
+          <span class="metric-sub">成立 {{ fund.establishedYears }}年</span>
+        </div>
       </div>
-      <div class="metric-card">
-        <span class="metric-label">近3月</span>
-        <span class="metric-value" :class="fund.returns.quarter >= 0 ? 'rise' : 'fall'">
-          {{ fund.returns.quarter >= 0 ? '+' : '' }}{{ fund.returns.quarter.toFixed(2) }}%
-        </span>
-        <span class="metric-sub">同类平均 {{ fund.avgReturns.quarter.toFixed(2) }}%</span>
-      </div>
-      <div class="metric-card">
-        <span class="metric-label">近6月</span>
-        <span class="metric-value" :class="fund.returns.sixMonth >= 0 ? 'rise' : 'fall'">
-          {{ fund.returns.sixMonth >= 0 ? '+' : '' }}{{ fund.returns.sixMonth.toFixed(2) }}%
-        </span>
-        <span class="metric-sub">同类平均 {{ fund.avgReturns.sixMonth.toFixed(2) }}%</span>
-      </div>
-      <div class="metric-card">
-        <span class="metric-label">近1年</span>
-        <span class="metric-value" :class="fund.returns.year >= 0 ? 'rise' : 'fall'">
-          {{ fund.returns.year >= 0 ? '+' : '' }}{{ fund.returns.year.toFixed(2) }}%
-        </span>
-        <span class="metric-sub">同类平均 {{ fund.avgReturns.year.toFixed(2) }}%</span>
-      </div>
-      <div class="metric-card">
-        <span class="metric-label">成立以来</span>
-        <span class="metric-value" :class="fund.returns.inception >= 0 ? 'rise' : 'fall'">
-          {{ fund.returns.inception >= 0 ? '+' : '' }}{{ fund.returns.inception.toFixed(2) }}%
-        </span>
-        <span class="metric-sub">成立 {{ fund.establishedYears }}年</span>
-      </div>
-    </div>
+    </template>
 
     <!-- 净值走势 (含周期切换) -->
     <section class="section">
@@ -154,6 +187,11 @@ const fund = ref({
   nav: 0,
   accumulatedNav: 0,
   dailyReturn: 0,
+  isMoneyMarket: false,
+  sevenDayYield: 0 as number | null,
+  dailyReturnMoney: 0 as number | null,
+  monthReturnMoney: 0 as number | null,
+  yearReturnMoney: 0 as number | null,
   returns: { month: 0, quarter: 0, sixMonth: 0, year: 0, inception: 0 },
   avgReturns: { month: 0, quarter: 0, sixMonth: 0, year: 0, inception: 0 },
   topHoldings: [] as { name: string; code: string; ratio: number }[],
@@ -179,6 +217,11 @@ async function loadFundData() {
         manager: info.manager || '',
         establishDate: info.establishDate || '',
         scale: info.scale || '',
+        isMoneyMarket: !!info.isMoneyMarket,
+        sevenDayYield: info.sevenDayYield ?? null,
+        dailyReturnMoney: info.dailyReturnMoney ?? null,
+        monthReturnMoney: info.monthReturnMoney ?? null,
+        yearReturnMoney: info.yearReturnMoney ?? null,
         establishedYears: info.establishDate
           ? Math.round((Date.now() - new Date(info.establishDate).getTime()) / 365.25 / 86400000 * 10) / 10
           : 0,
@@ -188,15 +231,35 @@ async function loadFundData() {
     }
     // 2. 加载净值数据
 // @ts-ignore - API type mismatch
-    const navData: any = await getFundNav(code, { days: 365 })
+    const navData: any = await getFundNav(code, 1095)
     if (Array.isArray(navData) && navData.length > 0) {
       cachedNavData = navData
+      // navData 按日期升序排列（旧→新）
       const last = navData[navData.length - 1]
       fund.value.nav = Number(last.nav) || fund.value.nav
       fund.value.accumulatedNav = Number(last.accumulatedNav) || fund.value.accumulatedNav
       if (navData.length >= 2) {
         const prev = navData[navData.length - 2]
         fund.value.dailyReturn = (Number(last.nav) - Number(prev.nav)) / Number(prev.nav)
+      }
+      // 计算各周期阶段收益率
+      const lookups = { month: 22, quarter: 66, sixMonth: 130, year: 250 }
+      const currentNav = Number(last.nav) || 0
+      for (const [key, offset] of Object.entries(lookups)) {
+        if (currentNav > 0 && navData.length > offset) {
+          const idx = navData.length - 1 - offset
+          const pastNav = Number(navData[idx]?.nav) || 0
+          if (pastNav > 0) {
+            fund.value.returns[key as keyof typeof fund.value.returns] = (currentNav - pastNav) / pastNav * 100
+          }
+        }
+      }
+      // 成立以来收益率
+      if (currentNav > 0 && navData.length >= 2) {
+        const firstNav = Number(navData[0]?.nav) || 0
+        if (firstNav > 0) {
+          fund.value.returns.inception = (currentNav - firstNav) / firstNav * 100
+        }
       }
     }
     // 3. 加载持仓
@@ -223,7 +286,7 @@ function getNavDataByPeriod(key: string) {
   return sliced.map(d => ({
     date: d.navDate || '',
     nav: Number(d.nav) || 0,
-    accNav: Number(d.accumulatedNav) || 0,
+    accNav: Number(d.accumulatedNav) > 0 ? Number(d.accumulatedNav) : null,
   }))
 }
 
@@ -233,16 +296,29 @@ function getCountByPeriod(key: string) {
 }
 
 function renderNavChart() {
-  if (!navChartRef.value) return
-  if (!navChart) navChart = echarts.init(navChartRef.value)
+  const el = navChartRef.value
+  if (!el) return
+  if (!navChart) {
+    try {
+      navChart = echarts.init(el)
+    } catch {
+      return
+    }
+  }
 
   const navData = getNavDataByPeriod(activeNavPeriod.value)
   const dates = navData.map(d => d.date)
 
   navChart.setOption({
     animation: false,
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(30,30,30,0.9)', borderColor: 'rgba(255,255,255,0.1)', textStyle: { color: '#fff' } },
-    legend: { data: ['单位净值', '累计净值'], bottom: 0, textStyle: { fontSize: 12, color: '#999' } },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(30,30,30,0.9)', borderColor: 'rgba(255,255,255,0.1)', textStyle: { color: '#fff' },
+      formatter: function(params: any) {
+        const p = Array.isArray(params) ? params[0] : params
+        return `<div style="font-size:13px;font-weight:500;margin-bottom:4px">${p.axisValue}</div>` +
+               `<div style="font-size:12px;color:#999">单位净值 <span style="float:right;color:#fff;font-weight:600;margin-left:16px">${Number(p.value).toFixed(4)}</span></div>`
+      }
+    },
+    legend: { data: ['单位净值'], bottom: 0, textStyle: { fontSize: 12, color: '#999' } },
     grid: { left: '5%', right: '5%', top: '5%', bottom: '18%' },
     xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { fontSize: 11, color: '#999', interval: Math.max(1, Math.floor(dates.length / 8)) } },
     yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: '#f5f5f5', type: 'dashed' } }, axisLabel: { fontSize: 11, color: '#999' } },
@@ -252,11 +328,6 @@ function renderNavChart() {
         smooth: true, symbol: 'none',
         lineStyle: { width: 2, color: '#0066cc' },
         areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(0,102,204,0.15)' }, { offset: 1, color: 'rgba(0,102,204,0)' }]) },
-      },
-      {
-        name: '累计净值', type: 'line', data: navData.map(d => d.accNav),
-        smooth: true, symbol: 'none',
-        lineStyle: { width: 1.5, color: '#f39c12', type: 'dashed' },
       },
     ],
   }, true)

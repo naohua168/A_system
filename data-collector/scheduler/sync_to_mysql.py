@@ -254,7 +254,7 @@ def check_connection(conn) -> bool:
     if conn is None:
         return False
     try:
-        conn.ping(reconnect=True)
+        conn.ping(reconnect=False)
         return True
     except Exception:
         return False
@@ -312,6 +312,20 @@ def _validate_mapped_data(df: pd.DataFrame, rule: dict, fname: str) -> pd.DataFr
 # 数据映射函数
 # ============================================================
 
+def _safe_str(val) -> str:
+    """安全转字符串，避免 numpy.nan → 'nan'"""
+    if val is None:
+        return ""
+    try:
+        import math
+        if isinstance(val, float) and math.isnan(val):
+            return ""
+    except Exception:
+        pass
+    s = str(val)
+    return "" if s.lower() in ("nan", "none", "null", "") else s
+
+
 def _map_kline(df: pd.DataFrame, fname: str) -> pd.DataFrame:
     """CSV K线 → stock_daily 表格式"""
     code_match = re.search(r"kline_(\w+)_", fname)
@@ -335,8 +349,8 @@ def _map_kline(df: pd.DataFrame, fname: str) -> pd.DataFrame:
             "pre_close": float(row.get("pre_close", 0)),
             "turnover_rate": float(row.get("turnover_rate", row.get("turnover_pct", 0))),
         }
-    if _validate_kline_row(record):
-        records.append(record)
+        if _validate_kline_row(record):
+            records.append(record)
     return pd.DataFrame(records)
 
 
@@ -403,8 +417,8 @@ def _map_fund_basic(df: pd.DataFrame) -> pd.DataFrame:
             "fund_code": str(row.get("fund_code", "")),
             "fund_name": str(row.get("fund_name", "")),
             "fund_type": str(row.get("fund_type", "")),
-            "company": str(row.get("company", "")),
-            "manager": str(row.get("manager", "")),
+            "company": _safe_str(row.get("company")),
+            "manager": _safe_str(row.get("manager")),
             "establish_date": str(row.get("establish_date", ""))[:10].replace("-", ""),
             "nav": float(row.get("nav") or 0),
             "accumulated_nav": float(row.get("accumulated_nav") or 0),
@@ -420,8 +434,8 @@ def _map_fund_detail(df: pd.DataFrame) -> pd.DataFrame:
     for _, row in df.iterrows():
         records.append({
             "fund_code": str(row.get("fund_code", "")),
-            "company": str(row.get("company", "")),
-            "manager": str(row.get("manager", "")),
+            "company": _safe_str(row.get("company")),
+            "manager": _safe_str(row.get("manager")),
             "scale": float(row.get("scale") or 0),
             "fund_type": str(row.get("fund_type", row.get("fund_type", ""))),
         })

@@ -43,7 +43,6 @@
           class="table-row"
           @click="$router.push(`/stock/${h.code}`)"
         >
-// @ts-ignore - dynamic type
           <span class="col-name"><strong>{{ h.name }}</strong></span>
           <span class="col-code caption">{{ h.code }}</span>
           <span class="col-amount">{{ h.shares }}</span>
@@ -74,7 +73,6 @@
           @click="$router.push(`/fund/${f.code}`)"
         >
           <div class="fund-header">
-// @ts-ignore - dynamic type
             <h4>{{ f.name }}</h4>
             <span class="caption">{{ f.code }}</span>
           </div>
@@ -85,7 +83,6 @@
             </div>
             <div class="fund-stat">
               <span class="label">最新净值</span>
-// @ts-ignore - dynamic type
               <span class="val">{{ f.nav.toFixed(4) }}</span>
             </div>
           </div>
@@ -120,6 +117,7 @@ import { formatMoney, formatPrice } from '@/utils/format'
 interface Holding {
   code: string; name: string; shares: number
   price: number; cost: number; pnl: number; returnRate: number
+  preClose?: number; dailyPnl?: number
 }
 interface FundHolding {
   code: string; name: string; shares: number
@@ -158,23 +156,22 @@ async function loadData() {
     const holdings: Holding[] = []
 
     for (const [code, cfg] of Object.entries(local.stocks)) {
-      const rec = codeMap.get(code)
+      const rec: any = codeMap.get(code)
       if (!rec) continue
-// @ts-ignore - dynamic type
       const price = Number(rec.price) || 0
+      const preClose = Number(rec.preClose) || 0
       const { shares, cost } = cfg as { shares: number; cost: number }
       const pnl = (price - cost) * shares
-// @ts-ignore - dynamic type
       const returnRate = cost > 0 ? ((price - cost) / cost) * 100 : 0
-// @ts-ignore - dynamic type
-      holdings.push({ code, name: rec.stockName || code, shares, price, cost, pnl, returnRate })
+      const dailyPnl = preClose > 0 ? (price - preClose) * shares : pnl
+      holdings.push({ code, name: rec.stockName || code, shares, price, cost, pnl, returnRate, dailyPnl, preClose })
       total += price * shares
       returns.push(returnRate)
     }
     stockHoldings.value = holdings
     totalAssets.value = total
     totalReturn.value = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0
-    dailyPnL.value = holdings.reduce((s, h) => s + h.pnl, 0)
+    dailyPnL.value = holdings.reduce((s, h) => s + (h as any).dailyPnl, 0)
   } catch (_e) {
     console.warn('[Portfolio] 加载股票失败:', _e)
     stockHoldings.value = []
@@ -185,17 +182,13 @@ async function loadData() {
     const fundMap = new Map((fundRes?.records || []).map((r: any) => [r.fundCode || r.code, r]))
     const holdings: FundHolding[] = []
     for (const [code, cfg] of Object.entries(local.funds)) {
-// @ts-ignore - dynamic type
-      const rec = fundMap.get(code)
+      const rec: any = fundMap.get(code)
       if (!rec) continue
-// @ts-ignore - dynamic type
       const nav = Number(rec.nav) || 1
       const { shares } = cfg as { shares: number }
-// @ts-ignore - dynamic type
       const cost = nav * 0.95
       const pnl = (nav - cost) * shares
       const returnRate = ((nav - cost) / cost) * 100
-// @ts-ignore - dynamic type
       holdings.push({ code, name: rec.fundName || rec.name || code, shares, nav, pnl, returnRate })
     }
     fundHoldings.value = holdings

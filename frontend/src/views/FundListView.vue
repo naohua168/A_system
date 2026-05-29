@@ -77,17 +77,25 @@
           <div class="card-metrics">
             <div class="metric">
               <span class="metric-label">净值</span>
-              <span class="metric-value mono">{{ fund.nav != null ? fund.nav.toFixed(4) : '--' }}</span>
+              <span v-if="fund.isMoneyMarket" class="metric-value mono muted">---</span>
+              <span v-else class="metric-value mono">{{ fund.nav != null && fund.nav > 0 ? fund.nav.toFixed(4) : '--' }}</span>
             </div>
             <div class="metric-divider" />
             <div class="metric">
-              <span class="metric-label">近1年</span>
-              <span v-if="fund.yearReturn != null" :class="['metric-value', fund.yearReturn >= 0 ? 'text-rise' : 'text-fall']">
-                <svg v-if="fund.yearReturn >= 0" class="trend-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="m7 14 5-5 5 5H7z"/></svg>
-                <svg v-else class="trend-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="m7 10 5 5 5-5H7z"/></svg>
-                {{ fund.yearReturn >= 0 ? '+' : '' }}{{ fund.yearReturn.toFixed(2) }}%
-              </span>
-              <span v-else class="metric-value muted">--</span>
+              <span class="metric-label">{{ fund.isMoneyMarket ? '7日年化' : (fund.yearReturn != null ? '近1年' : '规模') }}</span>
+              <template v-if="fund.isMoneyMarket">
+                <span :class="['metric-value', 'mono', (fund.sevenDayYield ?? 0) >= 1 ? '' : 'muted']" style="font-size: 14px;">
+                  {{ fund.sevenDayYield != null ? fund.sevenDayYield.toFixed(2) + '%' : '--' }}
+                </span>
+              </template>
+              <template v-else-if="fund.yearReturn != null">
+                <span :class="['metric-value', fund.yearReturn >= 0 ? 'text-rise' : 'text-fall']">
+                  <svg v-if="fund.yearReturn >= 0" class="trend-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="m7 14 5-5 5 5H7z"/></svg>
+                  <svg v-else class="trend-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="m7 10 5 5 5-5H7z"/></svg>
+                  {{ fund.yearReturn >= 0 ? '+' : '' }}{{ fund.yearReturn.toFixed(2) }}%
+                </span>
+              </template>
+              <span v-else class="metric-value mono">{{ fund.scale > 0 ? fund.scale.toFixed(1) + '亿' : '--' }}</span>
             </div>
           </div>
           <div class="card-footer">
@@ -142,6 +150,9 @@ interface FundItem {
   manager: string
   establishDate: string
   yearReturn: number | null
+  scale: number
+  isMoneyMarket: boolean
+  sevenDayYield: number | null
 }
 
 const router = useRouter()
@@ -196,22 +207,13 @@ function handleSearch() {
 
 function handlePageChange(page: number) {
   currentPage.value = page
+  fetchFunds()
 }
 
-function mapType(type: string): string {
-  if (!type) return 'other'
-  if (type.includes('混合')) return '混合型'
-  if (type.includes('股票')) return '股票型'
-  if (type.includes('债券') || type.includes('债')) return '债券型'
-  if (type.includes('指数')) return '指数型'
-  if (type.includes('货币')) return '货币型'
-  return 'other'
-}
-
-onMounted(async () => {
+async function fetchFunds() {
   loading.value = true
   try {
-    const res = await getFundList()
+    const res = await getFundList({ page: currentPage.value, size: pageSize.value })
     const pageData = (res as any)?.data || res || {}
     const records = pageData?.records || pageData || []
     const items = (Array.isArray(records) ? records : []).map((r: any) => {
@@ -226,9 +228,11 @@ onMounted(async () => {
         manager: r.manager || '',
         establishDate: r.establishDate || '',
         yearReturn: r.yearReturn ?? null,
+        scale: r.scale ?? 0,
+        isMoneyMarket: !!r.isMoneyMarket,
+        sevenDayYield: r.sevenDayYield ?? null,
       }
     })
-    // 取最新净值日期
     if (items.length > 0) {
       const dates = items.map(i => i.navDate).filter(d => d && d !== '--').sort().reverse()
       if (dates.length > 0) latestNavDate.value = dates[0]
@@ -241,6 +245,20 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+function mapType(type: string): string {
+  if (!type) return 'other'
+  if (type.includes('混合')) return '混合型'
+  if (type.includes('股票')) return '股票型'
+  if (type.includes('债券') || type.includes('债')) return '债券型'
+  if (type.includes('指数')) return '指数型'
+  if (type.includes('货币')) return '货币型'
+  return 'other'
+}
+
+onMounted(async () => {
+  fetchFunds()
 })
 </script>
 

@@ -18,6 +18,7 @@ export const useStockStore = defineStore('stock', () => {
   const keyword = ref('')
   const selectedIndustry = ref('')
   const selectedMarket = ref('')
+  const isEtfMode = computed(() => selectedMarket.value === 'etf')
 
   const stockDetail = ref<StockDetail | null>(null)
   const klineData = ref<StockDaily[]>([])
@@ -41,19 +42,46 @@ export const useStockStore = defineStore('stock', () => {
     loading.value = true
     error.value = null
     try {
-      const res = await marketApi.getStockList({
-        page: params?.page ?? currentPage.value,
-        size: params?.size ?? pageSize.value,
-        keyword: params?.keyword ?? keyword.value,
-        industry: params?.industry ?? selectedIndustry.value,
-        market: params?.market ?? selectedMarket.value,
-        sortField: params?.sortField,
-        sortOrder: params?.sortOrder,
-      }, listController.signal)
-      records.value = res.records
-      total.value = res.total
-      currentPage.value = res.page
-      pageSize.value = res.size
+      const mkt = params?.market ?? selectedMarket.value
+      if (mkt === 'etf') {
+        // ETF 模式：调用独立 ETF API
+        const res = await marketApi.getEtfList({
+          page: params?.page ?? currentPage.value,
+          size: params?.size ?? pageSize.value,
+          keyword: params?.keyword ?? keyword.value,
+        })
+        // 将 ETF 数据映射为统一的 StockListItem 格式
+        records.value = (res.records || []).map((r: any) => ({
+          stockCode: r.fund_code || '',
+          stockName: r.fund_name || '',
+          price: r.price,
+          changePct: r.change_pct,
+          change: r.change_amount,
+          volume: r.volume,
+          amount: r.amount,
+          open: r.open_price,
+          high: r.high_price,
+          low: r.low_price,
+          preClose: r.pre_close,
+        }))
+        total.value = res.total
+        currentPage.value = res.page
+        pageSize.value = res.size
+      } else {
+        const res = await marketApi.getStockList({
+          page: params?.page ?? currentPage.value,
+          size: params?.size ?? pageSize.value,
+          keyword: params?.keyword ?? keyword.value,
+          industry: params?.industry ?? selectedIndustry.value,
+          market: mkt,
+          sortField: params?.sortField,
+          sortOrder: params?.sortOrder,
+        }, listController.signal)
+        records.value = res.records
+        total.value = res.total
+        currentPage.value = res.page
+        pageSize.value = res.size
+      }
     } catch (e: unknown) {
       const canceled = e instanceof Error && (e.name === 'CanceledError' || (e as any)?.code === 'ERR_CANCELED')
       if (canceled) return

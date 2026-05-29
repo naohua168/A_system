@@ -1,14 +1,14 @@
 # 基金股票智能分析系统
 
-基于 **Hadoop 生态 + 多智能体决策** 的金融大数据分析平台，覆盖数据采集、大数据处理、算法分析、后端 API、前端展示、AI 智能对话全链路。**全部 16 项优化任务已完成，系统就绪可上线**。
+基于 **Hadoop 生态 + 多智能体决策** 的金融大数据分析平台，覆盖数据采集、大数据处理、算法分析、后端 API、前端展示、AI 智能对话全链路。**30 张数据库表、16 容器全部 healthy、74 后端测试全部通过、整体完成度 ~96%**。
 
-> **最终状态**（2026-05-20）：
-> - ✅ **L1 数据采集层** — 已完工（7 数据源, 16 数据类型, 并行管道编排）
-> - ✅ **L2 大数据处理层** — 已完工（Hive DML + Spark 批处理/流处理 + MLlib 预测 + ORC 优化）
-> - ✅ **L3 算法分析层** — 已完工（9 技术指标 + 缠论六步 + 4 量化策略 + 144 测试）
-> - ✅ **L4 后端 API 层** — 已完工（11 Controller, 28 Entity, JWT + RBAC + 熔断器）
-> - ✅ **L5 AI 智能服务层** — 已完工（7 Agent + SiliconFlow + FusionEngine + 173 测试）
-> - ✅ **L6 前端展示层** — 已完工（20 页面, 中英 i18n, 120+ 翻译键）
+> **最终状态**（2026-05-29）：
+> - ✅ **L1 数据采集层** — 95%（31 收集器, 30 张表, 775 万条记录）
+> - ✅ **L2 大数据处理层** — 90%（Hive 13 表, Spark 批处理/流处理, MLlib 预测）
+> - ✅ **L3 算法分析层** — 93%（9 指标 + 缠论六步 + 4 策略 + 144 测试）
+> - ✅ **L4 后端 API 层** — 96%（13 Controller, 50+ 端点, JWT + 熔断 + 缓存）
+> - ✅ **L5 AI 智能服务层** — 94%（7 Agent + FusionEngine + 173 测试, 已部署运行）
+> - ✅ **L6 前端展示层** — 96%（33 页面, 30 路由, ETF 板块, 货币基金 7 日年化）
 
 ---
 
@@ -521,93 +521,83 @@ L4: 后端查询预计算结果
 
 ## 5. 接口调用链路
 
-### 5.1 前端 → 后端 API (通过 Nginx 反向代理)
+### 5.1 前端 → 后端 API
 
-所有前端 API 请求统一经 Axios 实例处理:
+所有前端 API 请求统一经 Axios 实例处理（baseURL=`/api`, 15s 超时, 自动注入 JWT Token）：
 
-```
-Axios Instance: baseURL="/api", timeout=15000ms
-  ├── 请求拦截器: 从 localStorage 获取 JWT token → Authorization: Bearer <token>
-  └── 响应拦截器: 401 状态码 → 自动跳转 /login
-```
+#### 行情/股票模块 (`MarketController` — `/api/market`)
 
-#### 股票模块
+| 前端函数 | HTTP | 后端端点 | 说明 | 数据源 |
+|:---------|:----:|:---------|:-----|:-------|
+| `getStockList()` | GET | `/api/market/list` | 股票分页+搜索+行业+排序 | `stock_daily` (270万行) |
+| `getStockByCode(code)` | GET | `/api/market/{code}` | 股票详情+最新行情 | `stock` + `stock_daily` |
+| `getKlineData(code, days)` | GET | `/api/market/kline/{code}` | 日K线 | `stock_daily` |
+| `getKlineRange(code, start, end)` | GET | `/api/market/kline/range` | K线范围查询 | `stock_daily` |
+| `searchStocks(keyword)` | GET | `/api/market/search` | 全局搜索(股票+基金+ETF) | `stock` + `fund` + `fund_etf_market` |
+| `getIndustries()` | GET | `/api/market/industries` | 行业列表 | `stock` |
+| `getSectorRanking()` | GET | `/api/market/sector-ranking` | 行业涨跌排行 | `stock_daily` |
+| `getSectorKline(industry, days)` | GET | `/api/market/sector-kline` | 行业K线 | `stock_daily` |
+| `getIndustryTreemap()` | GET | `/api/market/industry-treemap` | 行业云图 | `stock_daily` |
+| **`getEtfList()`** | **GET** | **`/api/market/etf`** | **ETF行情列表(新增)** | **`fund_etf_market` (1,486只)** |
 
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `getStockList()` | GET | `/api/market/list` | 分页+搜索+行业筛选+排序 |
-| `getStockByCode(code)` | GET | `/api/market/{code}` | 详情含最新行情 |
-| `getKlineData(code)` | GET | `/api/market/kline/{code}` | 日K线 (支持 freq=daily/weekly/monthly) |
-| `searchStocks(keyword)` | GET | `/api/market/search` | 自动补全搜索 |
-| `getIndustries()` | GET | `/api/market/industries` | 行业列表 |
+#### 基金模块 (`FundController` — `/api/fund`)
 
-#### 分析模块
+| 前端函数 | HTTP | 后端端点 | 说明 | 数据源 |
+|:---------|:----:|:---------|:-----|:-------|
+| `getFundList()` | GET | `/api/fund/list` | 基金分页(含yearReturn/货币基金标记) | `fund` (27,004只) |
+| `getFundInfo(code)` | GET | `/api/fund/{code}` | 基金详情(含isMoneyMarket/sevenDayYield) | `fund` + `fund_money_market` |
+| `getFundNav(code, days)` | GET | `/api/fund/{code}/nav` | 基金净值历史(单位净值+累计净值) | `fund_nav` (423万条) |
+| `getFundHoldings(code)` | GET | `/api/fund/{code}/holdings` | 基金前十大持仓 | `fund_holding` |
 
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `getYearlyReturn(code)` | GET | `/analysis/{code}/yearly-return` | 年收益率 |
-| `getMonthlyReturn(code)` | GET | `/analysis/{code}/monthly-return` | 月收益率 |
-| `getTrend(code)` | GET | `/analysis/{code}/trend` | 趋势分析 (上升/下跌/震荡) |
-| `filterStocks(conditions)` | POST | `/analysis/filter` | 多条件筛选 (行业/价格/涨跌幅) |
-| `getCorrelation(codeA, codeB)` | GET | `/analysis/correlation` | Pearson 相关系数 |
-| `getSectorRanking()` | GET | `/analysis/sector-ranking` | 行业涨跌排行 (板块云图) |
-
-#### 基金模块
+#### 分析模块 (`AnalysisController` — `/api/analysis`)
 
 | 前端函数 | HTTP | 后端端点 | 说明 |
 |:---------|:----:|:---------|:-----|
-| `getFundList()` | GET | `/fund/list` | 基金分页列表 |
-| `getFundInfo(code)` | GET | `/fund/{code}` | 基金详情 |
-| `getFundNav(code)` | GET | `/fund/{code}/nav` | 基金净值历史 |
-| `getFundHoldings(code)` | GET | `/fund/{code}/holdings` | 基金持仓 |
+| `getYearlyReturn(code)` | GET | `/api/analysis/{code}/yearly-return` | 年收益率 |
+| `getMonthlyReturn(code)` | GET | `/api/analysis/{code}/monthly-return` | 月收益率 |
+| `getTrend(code)` | GET | `/api/analysis/{code}/trend` | 趋势分析 |
+| `filterStocks(conditions)` | POST | `/api/analysis/filter` | 多条件筛选 |
+| `getChanlunAnalysis(code)` | GET | `/api/analysis/{code}/chanlun` | 缠论分析 |
+| `getTechnicalIndicators(code)` | GET | `/api/analysis/technical/{code}` | 技术指标(MACD/KDJ/RSI/MA/BOLL) |
 
-#### 信号模块
+#### 信号模块 (`SignalDataController` — `/api/signal`)
+
+| 前端函数 | HTTP | 后端端点 | 说明 | 数据源 |
+|:---------|:----:|:---------|:-----|:-------|
+| `getHotReason()` | GET | `/api/signal/hot-reason` | 题材热点归因 | `signal_hot_reason` (27,518条) |
+| `getDragonTigerDaily()` | GET | `/api/signal/dragon-tiger/daily` | 龙虎榜 | `signal_dragon_tiger` (25,019条) |
+| `getNorthboundLatest()` | GET | `/api/signal/northbound/latest` | 北向资金 | `signal_northbound` |
+| `getFundFlow(code)` | GET | `/api/signal/fund-flow/{code}` | 资金流向 | `signal_fund_flow` |
+| `getLockupDetail(code)` | GET | `/api/signal/lockup-detail/{code}` | 限售解禁 | `signal_lockup_detail` |
+| `getIndustryCompare()` | GET | `/api/signal/industry-compare` | 行业对比 | `signal_daily_industry` |
+
+#### 资讯模块 (`InfoController` — `/api/info`)
 
 | 前端函数 | HTTP | 后端端点 | 说明 |
 |:---------|:----:|:---------|:-----|
-| `getHotReason(date)` | GET | `/signal/hot-reason` | 题材归因 |
-| `getDragonTigerDaily(date)` | GET | `/signal/dragon-tiger/daily` | 龙虎榜 |
-| `getNorthboundLatest(days)` | GET | `/signal/northbound/latest` | 北向资金 |
-| `getLockupByStock(code)` | GET | `/signal/lockup/stock/{code}` | 限售解禁 |
-| `getIndustryCompare(date)` | GET | `/signal/industry-compare` | 行业对比 |
+| `getResearchReports(code)` | GET | `/api/info/research/{code}` | 个股研报 |
+| `getClsNews()` | GET | `/api/info/cls-news` | 财联社快讯 (24,560条) |
+| `getGlobalNews()` | GET | `/api/info/global-news` | 全球资讯 (278,200条) |
+| `getFilings(code)` | GET | `/api/info/filings/{code}` | 公司公告 |
+| `getConsensusEps(code)` | GET | `/api/info/consensus-eps/{code}` | 一致预期 |
 
 #### 用户/自选模块
 
 | 前端函数 | HTTP | 后端端点 | 说明 |
 |:---------|:----:|:---------|:-----|
-| `login(username, pwd)` | POST | `/user/login` | 登录→JWT Token |
-| `register(data)` | POST | `/user/register` | 注册 |
-| `getUserInfo()` | GET | `/user/info` | 用户信息 |
-| `updateUser(data)` | **PUT** | `/user/update` | **更新用户信息 (新增)** |
-| `changePassword(data)` | **POST** | `/user/change-password` | **修改密码 (新增)** |
-| `logout()` | **POST** | `/user/logout` | **退出登录 (新增, Redis 黑名单)** |
-| `refreshToken()` | **POST** | `/user/refresh` | **刷新 JWT Token (新增)** |
-| `getWatchlist(userId)` | GET | `/watchlist/{userId}` | 自选列表 |
-| `addWatchlist(...)` | POST | `/watchlist/add` | 添加自选 |
-| `updateWatchlist(...)` | **PUT** | `/watchlist/update` | **更新排序/备注 (新增)** |
-| `removeWatchlist(...)` | DELETE | `/watchlist/remove` | 移除自选 |
+| `login()` | POST | `/api/user/login` | 登录→JWT Token |
+| `register()` | POST | `/api/user/register` | 注册 |
+| `getWatchlist()` | GET | `/api/watchlist/{userId}` | 自选列表 |
+| `addWatchlist()` | POST | `/api/watchlist/add` | 添加自选 |
+| `removeWatchlist()` | DELETE | `/api/watchlist/remove` | 移除自选 |
 
-#### AI 对话
+#### AI 对话 + 系统架构
 
 | 前端函数 | HTTP | 后端端点 | 说明 |
 |:---------|:----:|:---------|:-----|
-| `chatAI(data)` | POST | `/ai/chat` | AI 对话 (通过 Nginx → AI 服务, **异步+熔断**) |
-| `getAIStatus()` | GET | `/ai/status` | AI 服务状态 |
-
-#### 分析模块 (新增 DELETE)
-
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `deleteAnalysis(id)` | **DELETE** | `/analysis/{id}` | **删除分析结果 (新增)** |
-
-#### 系统架构
-
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `getLayerList()` | GET | `/layers` | **获取 L1-L6 全部层元数据 (新增)** |
-| `getLayerDetail(id)` | GET | `/layers/{id}` | **获取指定层详情 (新增)** |
-| `getLayerFlows()` | GET | `/layers/flows` | **获取层间数据流 (新增)** |
-| `getLayerHealth()` | GET | `/layers/health` | **获取各层运行状态 (新增)** |
+| `chatAI(data)` | POST | `/api/ai/chat` | AI 对话(→ai-service 7Agent) |
+| `getLayerFlows()` | GET | `/api/layer/flows` | L1-L6 架构数据流 |
+| `getLayerHealth()` | GET | `/api/layer/health` | 各层运行状态 |
 
 ### 5.2 AI 服务 → 后端 API (服务间调用)
 
@@ -667,48 +657,48 @@ UserController.login()
 
 **技术栈**: Vue 3 + TypeScript + Pinia + Vue Router + ECharts + Element Plus
 
-**页面路由** (20 个视图):
+**页面路由** (33 个视图):
 
 | 路由路径 | 视图组件 | 功能 |
 |:---------|:---------|:-----|
-| `/home` | `HomeView.vue` | 首页大盘 (指数轮播、板块云图、资金流向) |
-| `/stocks` | `StockListView.vue` | 股票列表 (搜索、行业筛选、排序、分页) |
-| `/stock/:code` | `StockDetailView.vue` | 个股详情 (K线、技术指标、缠论、AI分析) |
-| `/portfolio` | `PortfolioView.vue` | 持仓管理 |
+| `/home` | `HomeView.vue` | 首页大盘 (指数轮播、板块云图、信号卡片) |
+| `/stocks` | `StockListView.vue` | 股票列表 (含 **ETF 分类 tab**) |
+| `/stock/:code` | `StockDetailView.vue` | 个股详情 (K线、技术指标、缠论) |
+| `/index/:code` | `IndexDetailView.vue` | 指数详情 |
+| `/sector/:name` | `SectorDetailView.vue` | 板块详情 (成分股) |
+| `/funds` | `FundListView.vue` | 基金列表 (货币基金 **7日年化** 显示) |
+| `/fund/:code` | `FundDetailView.vue` | 基金详情 (阶段收益/净值走势/**货币基金7日年化**) |
+| `/portfolio` | `PortfolioView.vue` | 持仓管理 (localStorage 伪数据) |
 | `/watchlist` | `WatchlistView.vue` | 自选列表 |
-| `/funds` | `FundListView.vue` | 基金列表 (搜索/类型筛选/排序) |
-| `/fund/:code` | `FundDetailView.vue` | 基金详情 (净值、持仓) |
 | `/chat` | `ChatView.vue` | AI 智能对话 |
 | `/hot-reason` | `HotReasonView.vue` | 题材热点 |
-| `/dragon-tiger` | `DragonTigerView.vue` | 龙虎榜 |
 | `/northbound` | `NorthboundView.vue` | 北向资金 |
-| `/lockup` | `LockupView.vue` | 限售解禁 |
+| `/dragon-tiger` | `DragonTigerView.vue` | 龙虎榜 |
 | `/industry-compare` | `IndustryCompareView.vue` | 行业对比 |
-| `/sector/:name` | `SectorDetailView.vue` | 行业详情 |
-| `/index/:code` | `IndexDetailView.vue` | 指数详情 |
-| `/news` | `NewsView.vue` | 实时新闻 |
-| `/consensus-eps` | `ConsensusEpsView.vue` | 一致预期 |
 | `/fund-flow` | `FundFlowView.vue` | 资金流向 |
-| `/layers` | `LayerDetailView.vue` | 系统架构总览 |
+| `/lockup` | `LockupView.vue` | 限售解禁 |
+| `/consensus-eps` | `ConsensusEpsView.vue` | 一致预期 |
+| `/news` | `NewsView.vue` | 资讯(财联社+全球+日期导航) |
+| `/layers` | `LayerDetailView.vue` | 系统架构 L1-L6 |
 | `/login` | `LoginView.vue` | 登录/注册 |
 
 ### 6.2 后端模块 (Spring Boot)
 
-**11 个 REST Controller**:
+**13 个 REST Controller**:
 
 | Controller | 路径前缀 | 端点数 | 核心方法 |
 |:-----------|:---------|:------:|:---------|
-| `MarketController` | `/api/market` | 10 | list, getByCode, getKline, search, industries |
-| `AnalysisController` | `/api/analysis` | 9 | yearly/monthly return, trend, filter, correlation, sector-ranking, chanlun, DELETE |
-| `FundController` | `/api/fund` | 4 | list, detail, nav, holdings |
+| `MarketController` | `/api/market` | 12 | list, detail, kline, search, industries, sector-ranking, industry-treemap, sector-kline, **etf** |
+| `FundController` | `/api/fund` | 4 | list(含 **isMoneyMarket/sevenDayYield**), detail, nav, holdings |
+| `AnalysisController` | `/api/analysis` | 9 | yearly/monthly return, trend, filter, technical, chanlun |
 | `SignalDataController` | `/api/signal` | 14 | hot-reason, dragon-tiger, northbound, fund-flow, lockup, industry-compare |
-| `InfoController` | `/api/info` | 9 | research, consensus-eps, stock-news, cls-news, global-news, filing |
+| `InfoController` | `/api/info` | 8 | research, consensus-eps, news, cls-news, global-news, filings |
 | `IndexController` | `/api/index` | 4 | list, detail, kline |
-| `UserController` | `/api/user` | 7 | login, register, info, **update(PUT)**, **change-password**, **logout**, **refresh-token** |
-| `WatchlistController` | `/api/watchlist` | 4 | list, add, **update(PUT)**, remove |
+| `UserController` | `/api/user` | 5 | login, register, info, logout |
+| `WatchlistController` | `/api/watchlist` | 3 | list, add, remove |
 | `AiDialogueController` | `/api/ai` | 2 | chat, status |
-| `LayerController` | `/api/layers` | 4 | list, detail, flows, health |
-| `SecurityController` | `/api/security` | 2 | verify, info |
+| `LayerController` | `/api/layer` | 3 | flows, health, l2 |
+| `SecurityController` | `/api/security` | 2 | config, info |
 
 **安全配置** (`security/SecurityConfig.java`):
 - Spring Security + JWT 无状态认证
@@ -834,37 +824,35 @@ UserController.login()
 
 | AI 记忆持久化 | Redis(已支持, 含熔断降级) | Docker 内 Redis 服务 | 故障时自动回退文件系统 |
 
-### 7.2 容器清单 (18 个容器, 分两层部署, 含监控)
+### 7.2 容器清单 (16 个容器, 全部 healthy)
 
-> ⚡ 较上版本新增: Prometheus + Grafana (监控)、Hive UDF 模块、Spark MLlib 模块
+> 当前运行模式：前端 Vite 开发模式 (5173)，非 Nginx 生产部署
 
 #### Layer 1: 数据采集层 (独立 `collector-net`)
 
-| 服务 | 容器名 | 镜像 | CPU/Mem | 端口 | 网络 |
-|:-----|:-------|:-----|:-------:|:----:|:----:|
-| **Zookeeper** | `collector-zookeeper` | `cp-zookeeper:7.5.0` | 0.5C/512M | 2181 | collector-net |
-| **Kafka** | `collector-kafka` | `cp-kafka:7.5.0` | 1C/1G | 9092/29092/39092 | collector-net + bigdata-net |
-| **Data Collector** | `data-collector` | 自构建 (Python 3.11) | 1C/1G | - | collector-net |
+| 服务 | 容器名 | 镜像 | 实际内存 | 端口 | 网络 |
+|:-----|:-------|:-----|:--------:|:----:|:----:|
+| **Zookeeper** | `collector-zookeeper` | `cp-zookeeper:7.5.0` | 118MB | 2181 | collector-net |
+| **Kafka** | `collector-kafka` | `cp-kafka:7.5.0` | 430MB | 9092 | collector-net + bigdata-net |
+| **Data Collector** | `data-collector` | 自构建 (Python 3.11) | 103MB | — | collector-net |
 
 #### Layer 2: 大数据层 (共享 `bigdata-net`)
 
-| **服务** | **容器名** | **镜像/Dockerfile** | **CPU/Mem** | **端口** | **Tier** |
-|:---------|:-----------|:--------------------|:-----------:|:--------:|:--------:|
-| Frontend  | `frontend`   | 自构建 (Nginx)     | 0.5C/256M  | 80        | 应用服务 |
-| Backend   | `backend`    | 自构建 (Java 17)   | 2C/2G      | 8082      | 应用服务 |
-| AI Service| `ai-service` | 自构建 (Python 3.11)| 4C/4G     | 8000      | 应用服务 |
-| MySQL     | `mysql`      | `mysql:8.0`        | 2C/2G      | 3306      | 基础设施存储 |
-| Redis     | `redis`      | `redis:7-alpine`   | 0.5C/256M  | 6379      | 基础设施存储 |
-| NameNode  | `namenode`   | `hadoop-namenode:2.0.0` | 2C/2G | 9870      | 基础设施存储 |
-| DataNode1 | `datanode1`  | `hadoop-datanode:2.0.0` | 2C/2G | 9864      | 基础设施存储 |
-| DataNode2 | `datanode2`  | `hadoop-datanode:2.0.0` | 2C/2G | -         | 基础设施存储 |
-| RM        | `resourcemanager` | `hadoop-resourcemanager:2.0.0` | 1C/1G | 8088 | 计算引擎 |
-| NM        | `nodemanager1` | `hadoop-nodemanager:2.0.0` | 2C/2G | - | 计算引擎 |
-| Hive      | `hive-server` | `hive:2.3.2`       | 2C/2G      | 10000/10002 | 计算引擎 |
-| SparkMaster| `spark-master` | `apache/spark:3.5.0` | 1C/1G | 8080/7077 | 计算引擎 |
-| SparkWorker| `spark-worker` | `apache/spark:3.5.0` | 4C/4G | 8081      | 计算引擎 |
-| Prometheus | `prometheus` | `prom/prometheus:v2.51.0` | 1C/512M | 9090 | 监控 |
-| Grafana    | `grafana`    | `grafana/grafana:10.4.2` | 1C/256M | 3000 | 监控 |
+| 服务 | 容器名 | 镜像 | 实际内存 | 端口 | 层级 |
+|:-----|:-------|:-----|:--------:|:----:|:----:|
+| Backend   | `backend`    | 自构建 (Java 17) | 342MB | 8082 | 应用 |
+| AI Service | `ai-service` | 自构建 (Python 3.11) | — | 8000 | 应用 |
+| MySQL     | `mysql`      | `mysql:8.0` | 614MB | 3307→3306 | 存储 |
+| Redis     | `redis`      | `redis:7-alpine` | 8.5MB | 6379 | 缓存 |
+| NameNode  | `namenode`   | `hadoop-namenode:2.0.0` | 492MB | 9000/9870 | 存储 |
+| DataNode1 | `datanode1`  | `hadoop-datanode:2.0.0` | 358MB | 9864 | 存储 |
+| DataNode2 | `datanode2`  | `hadoop-datanode:2.0.0` | 356MB | — | 存储 |
+| RM        | `resourcemanager` | `hadoop-resourcemanager:2.0.0` | 571MB | 8088 | 计算 |
+| NM        | `nodemanager1` | `hadoop-nodemanager:2.0.0` | 557MB | — | 计算 |
+| Hive      | `hive-server` | `hive:2.3.2` | 890MB | 10000/10002 | 计算 |
+| SparkMaster| `spark-master` | `apache/spark:3.5.0` | 365MB | 8080/7077 | 计算 |
+| SparkWorker| `spark-worker` | `apache/spark:3.5.0` | 281MB | 8081 | 计算 |
+| Grafana    | `grafana`    | `grafana/grafana:10.4.2` | 75MB | 3001→3000 | 监控 |
 
 ---
 
@@ -964,24 +952,22 @@ ai:
 
 ### 8.5 端口分配
 
-| 宿主机端口 | 容器端口 | 服务 | 所属层 | 用途 |
-|:----------:|:--------:|:-----|:------:|:-----|
-| 80 | 80 | Nginx | 大数据层 | 前端访问入口 |
-| 8082 | 8082 | Spring Boot | 大数据层 | REST API |
-| 8000 | 8000 | FastAPI | 大数据层 | AI 服务 |
-| 3306 | 3306 | MySQL | 大数据层 | 业务数据库 |
-| 6379 | 6379 | Redis | 大数据层 | 缓存 |
-| 9870 | 9870 | NameNode | 大数据层 | HDFS Web UI |
-| 9864 | 9864 | DataNode1 | 大数据层 | DataNode Web UI |
-| 8088 | 8088 | ResourceManager | 大数据层 | YARN Web UI |
-| 10000 | 10000 | Hive | 大数据层 | HiveServer2 JDBC |
-| 10002 | 10002 | Hive | 大数据层 | Hive Web UI |
-| 8080 | 8080 | Spark | 大数据层 | Spark Master Web UI |
-| 8081 | 8081 | Spark | 大数据层 | Spark Worker Web UI |
-| 7077 | 7077 | Spark | 大数据层 | Spark Master RPC |
-| 9092 | 9092 | Kafka | 采集层 | Kafka (仅宿主机调试) |
-| 9090 | 9090 | Prometheus | 大数据层 | 指标采集与查询 |
-| 3000 | 3000 | Grafana | 大数据层 | 监控仪表板 |
+| 宿主机端口 | 容器端口 | 服务 | 用途 |
+|:----------:|:--------:|:-----|:-----|
+| 5173 | — | 前端(Vite dev) | 开发模式 |
+| 8082 | 8082 | Backend API | REST API |
+| 3307 | 3306 | MySQL | 业务数据库 |
+| 6379 | 6379 | Redis | 缓存 |
+| 9870 | 9870 | NameNode | HDFS Web UI |
+| 9864 | 9864 | DataNode1 | DataNode Web UI |
+| 8088 | 8088 | ResourceManager | YARN Web UI |
+| 10000 | 10000 | Hive | HiveServer2 JDBC |
+| 10002 | 10002 | Hive | Hive Web UI |
+| 8080 | 8080 | Spark | Spark Master Web UI |
+| 8081 | 8081 | Spark | Spark Worker Web UI |
+| 7077 | 7077 | Spark | Spark Master RPC |
+| 9092 | 9092 | Kafka | 消息队列 |
+| 3001 | 3000 | Grafana | 监控仪表板 |
 
 ---
 
@@ -1052,11 +1038,35 @@ docker compose -f docker-compose.yml ps
 
 ### 9.4 MySQL 初始化
 
-MySQL 容器首次启动时会自动执行 `docker/mysql/init.sql`，包含：
+MySQL 数据量为 **30 张表、775 万条记录**。核心表一览：
 
-- 创建 `stock_analysis` 数据库
-- 创建 **23 张业务表**: `user`, `stock`, `stock_daily`, `fund`, `fund_nav`, `fund_holding`, `market_index`, `index_daily`, `watchlist`, `signal_hot_reason`, `signal_dragon_tiger`, `signal_northbound`, `signal_lockup`, `signal_daily_industry`, `analysis_result`, `ai_chat` (含 7 张资讯层表 `info_research_report`, `info_consensus_eps`, `info_stock_news`, `info_cls_news`, `info_global_news`, `info_filing`, `info_pdf`)
-- 插入 **示例数据**: 2 个测试用户 (admin/test)、20 只股票、10 只基金、100 条 K 线、25 条持仓等
+| 表 | 行数 | 品类 |
+|:---|:----:|:-----|
+| `fund` | 27,004 | 基金基础信息(已去重) |
+| `fund_nav` | 4,236,022 | 基金净值历史(2,797只) |
+| `fund_money_market` | 542 | 货币基金7日年化 |
+| `fund_etf_market` | 1,486 | ETF 实时行情 |
+| `fund_holding` | 493 | 基金持仓 |
+| `stock` | 5,544 | 股票基础信息 |
+| `stock_daily` | 2,706,469 | K线数据(5,539只) |
+| `signal_hot_reason` | 27,518 | 题材热点 |
+| `signal_dragon_tiger` | 25,019 | 龙虎榜 |
+| `signal_dragon_tiger_detail` | 29,715 | 龙虎榜明细 |
+| `signal_fund_flow` | 5,251 | 资金流向 |
+| `signal_concept_block` | 7,926 | 概念板块 |
+| `signal_lockup_detail` | 27,014 | 限售解禁 |
+| `info_cls_news` | 24,560 | 财联社快讯 |
+| `info_global_news` | 278,200 | 全球资讯 |
+| `info_research_report` | 5,929 | 研究报告 |
+| `info_filing` | 4,832 | 公司公告 |
+| `info_consensus_eps` | 883 | 一致预期 |
+| `info_stock_news` | 4,228 | 个股新闻 |
+| `user` | 2 | 用户 |
+| `watchlist` | 7 | 自选 |
+| `ai_chat` | 0 | AI对话记录 |
+| `analysis_result` | 201 | 分析结果 |
+| `index_daily` | 14,440 | 指数日数据 |
+| `market_index` | 15 | 市场指数 |
 
 ### 9.5 Nginx 反向代理配置
 
@@ -1403,15 +1413,15 @@ Web UI:    http://localhost:9090 (Prometheus)
 
 | 模块 | 语言 | 文件数 | 代码行数 | 测试用例 | 备注 |
 |:-----|:-----|:------:|:--------:|:--------:|:-----|
-| data-collector | Python | 46 | 9,559 | 90 | 7数据源, 16类型, 并行管道 |
-| bigdata-processing | SQL/Python/Java | 43 | 7,025 | 28 | Hive/Spark/MLlib/ORC |
-| analysis-algorithms | Python | 46 | 3,552 | **144** | 9指标+缠论+量化+回测 |
-| backend | Java | 136 | 6,524 | **72** | 11Controller+28Entity+JWT+熔断 |
-| frontend | Vue/TS | 64 | 11,329 | **56** | 20页面+11API+120+i18n |
-| ai-service | Python | 33 | 3,331 | **173** | 7Agent+Fusion+SiliconFlow |
-| docker | 多语言 | 49 | 2,000+ | - | 18容器+监控 |
-| scripts | 多语言 | 16 | 1,000+ | - | 部署+验证+健康检查 |
-| **总计** | | **~433** | **~44,000+** | **563** | 全栈自动化覆盖 ✅ |
+| data-collector | Python | 127 | ~12K | 27 | 31收集器, 30表同步 |
+| bigdata-processing | SQL/Python | 78 | ~5K | — | Hive DDL 8 + DML 8, Spark |
+| analysis-algorithms | Python | 137 | ~15K | **144** | 9指标+缠论+量化+回测 |
+| backend | Java | 351 | ~25K | **74** | 13Controller+JWT+熔断+缓存 |
+| frontend | Vue/TS | 33(.vue) | ~8K | 16 | 33页面+30路由+30API |
+| ai-service | Python | 33 | ~8K | **173** | 7Agent+FusionEngine |
+| docker | 多语言 | 34 | ~2K | — | 16容器(全部healthy) |
+| scripts | Python/Shell | 78 | ~5K | — | 部署+验证 |
+| **总计** | | **~870** | **~80K** | **434** | 全栈自动化覆盖 ✅ |
 
 ---
 

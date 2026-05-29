@@ -81,13 +81,35 @@
       </div>
     </div>
 
-    <!-- 搜索层（待扩展） -->
+    <!-- 搜索层 -->
     <transition name="fade">
-      <div v-if="showSearch" class="search-overlay" @click="showSearch = false">
+      <div v-if="showSearch" class="search-overlay" @click="showSearch = false; searchQuery = ''">
         <div class="search-box" @click.stop>
-          <el-input placeholder="搜索股票/板块/代码..." size="large" clearable autofocus>
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索股票代码/名称..."
+            size="large"
+            clearable
+            autofocus
+            @input="handleSearchInput"
+            @keyup.enter="jumpToFirst"
+          >
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
+          <!-- 搜索结果 -->
+          <div v-if="searchResults.length > 0" class="search-results">
+            <div
+              v-for="r in searchResults"
+              :key="r.stockCode"
+              class="search-result-item"
+              @click="goToStock(r)"
+            >
+              <span class="sr-code">{{ r.stockCode }}</span>
+              <span class="sr-name">{{ r.stockName }}</span>
+              <span class="sr-market">{{ r.market }}</span>
+            </div>
+          </div>
+          <div v-else-if="searchQuery && !searchLoading" class="search-empty">未找到匹配的股票</div>
         </div>
       </div>
     </transition>
@@ -110,6 +132,12 @@ const router = useRouter()
 const showUserMenu = ref(false)
 const showSearch = ref(false)
 const openDropdown = ref('')
+const searchQuery = ref('')
+const searchResults = ref<{ stockCode: string; stockName: string; market: string }[]>([])
+const searchLoading = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+import { searchStocks } from '@/api/market'
 
 const DATA_ICON = { template: '<svg.../>' }
 
@@ -148,7 +176,9 @@ const dataItems = [
   { path: '/industry-compare', label: '行业对比', desc: '90 行业涨跌排行·资金流向', icon: Histogram },
   { path: '/northbound', label: '北向资金', desc: '沪深港通实时资金流向', icon: TrendCharts },
   { path: '/dragon-tiger', label: '龙虎榜', desc: '席位数据·净买入排行', icon: Aim },
+  { path: '/fund-flow', label: '资金流向', desc: '个股/行业/概念资金流入排行', icon: TrendCharts },
   { path: '/lockup', label: '限售解禁', desc: '解禁日历·个股查询', icon: Reading },
+  { path: '/consensus-eps', label: '一致预期', desc: '券商盈利预测·评级调整', icon: DataAnalysis },
 ]
 
 // ── 活跃判断 ──
@@ -164,6 +194,32 @@ function handleLogout() {
   showUserMenu.value = false
   userStore.logout()
   router.push('/login')
+}
+
+// ── 搜索 ──
+function handleSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  const q = searchQuery.value.trim()
+  if (!q || q.length < 1) { searchResults.value = []; return }
+  searchTimer = setTimeout(async () => {
+    searchLoading.value = true
+    try {
+      const res: any = await searchStocks(q)
+      searchResults.value = (Array.isArray(res) ? res : []).slice(0, 8)
+    } catch { searchResults.value = [] }
+    finally { searchLoading.value = false }
+  }, 300)
+}
+
+function goToStock(r: { stockCode: string }) {
+  showSearch.value = false
+  searchQuery.value = ''
+  searchResults.value = []
+  router.push(`/stock/${r.stockCode}`)
+}
+
+function jumpToFirst() {
+  if (searchResults.value.length > 0) goToStock(searchResults.value[0])
 }
 
 // Click outside directive
@@ -499,6 +555,39 @@ const vClickOutside = {
 .search-box {
   width: 520px;
   max-width: 90vw;
+}
+
+.search-results {
+  margin-top: 8px;
+  background: rgba(28,28,30,0.96);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  &:hover { background: rgba(255,255,255,0.08); }
+  &:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .sr-code { font-family: monospace; font-size: 13px; color: #2997ff; font-weight: 500; }
+  .sr-name { flex: 1; font-size: 13px; color: rgba(255,255,255,0.85); }
+  .sr-market { font-size: 11px; color: rgba(255,255,255,0.3); padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); }
+}
+
+.search-empty {
+  margin-top: 8px;
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(255,255,255,0.3);
+  background: rgba(28,28,30,0.96);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
 }
 
 /* ── 过渡动画 ── */

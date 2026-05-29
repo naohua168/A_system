@@ -37,6 +37,11 @@ export function getSectorRanking(tradeDate?: string): Promise<{ tradeDate: strin
 }
 
 /** 行业分层云图（一级行业 + 成分股明细，前端钻取用） */
+/** ETF 行情列表（股票行情下的子板块）*/
+export function getEtfList(params?: { page?: number; size?: number; keyword?: string }): Promise<PageResult<any>> {
+  return request.get('/market/etf', { params })
+}
+
 export function getIndustryTreemap(tradeDate?: string): Promise<{
   tradeDate: string
   records: {

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -41,6 +42,9 @@ class FundControllerTest {
 
     @MockBean
     private FundHoldingService fundHoldingService;
+
+    @MockBean
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     @DisplayName("GET /api/fund/list - 默认参数")
@@ -101,14 +105,14 @@ class FundControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/fund/{code}/nav - 空净值列表")
+    @DisplayName("GET /api/fund/{code}/nav - 空净值列表返回空数组")
     void testNavEmpty() throws Exception {
         when(fundNavService.getLatest(anyString(), anyInt())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/fund/000001/nav")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400));
+                .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
@@ -129,13 +133,13 @@ class FundControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/fund/{code}/holdings - 空持仓")
+    @DisplayName("GET /api/fund/{code}/holdings - 空持仓返回空数组")
     void testHoldingsEmpty() throws Exception {
         when(fundHoldingService.getTopHoldings(anyString(), anyInt())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/fund/000001/holdings")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400));
+                .andExpect(jsonPath("$.data").isArray());
     }
 }

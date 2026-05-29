@@ -36,6 +36,9 @@ public class MarketController {
     @Autowired
     private StockDailyMapper stockDailyMapper;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     // ==================== 股票列表 ====================
 
     @GetMapping("/list")
@@ -120,12 +123,58 @@ public class MarketController {
     @GetMapping("/search")
     public ApiResponse search(@RequestParam String keyword,
                               @RequestParam(defaultValue = "10") int size) {
+        String like = "%" + keyword + "%";
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        // 1. 股票
         LambdaQueryWrapper<Stock> wrapper = new LambdaQueryWrapper<>();
         wrapper.like(Stock::getStockName, keyword)
                .or().like(Stock::getStockCode, keyword)
                .last("LIMIT " + size);
-        List<Stock> list = stockService.list(wrapper);
-        return ApiResponse.ok(list);
+        for (Stock s : stockService.list(wrapper)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("stockCode", s.getStockCode());
+            m.put("stockName", s.getStockName());
+            m.put("market", s.getMarket());
+            m.put("type", "stock");
+            results.add(m);
+        }
+
+        // 2. 基金（补充搜索结果）
+        try {
+            List<Map<String, Object>> funds = jdbcTemplate.queryForList(
+                "SELECT fund_code, fund_name, fund_type FROM fund WHERE fund_name LIKE ? OR fund_code LIKE ? LIMIT ?",
+                like, like, size);
+            for (Map<String, Object> f : funds) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("stockCode", f.get("fund_code"));
+                m.put("stockName", f.get("fund_name"));
+                m.put("market", f.get("fund_type"));
+                m.put("type", "fund");
+                results.add(m);
+            }
+        } catch (Exception ignored) {}
+
+        // 3. ETF（补充搜索结果）
+        try {
+            List<Map<String, Object>> etfs = jdbcTemplate.queryForList(
+                "SELECT fund_code, fund_name FROM fund_etf_market WHERE fund_name LIKE ? OR fund_code LIKE ? LIMIT ?",
+                like, like, size);
+            for (Map<String, Object> e : etfs) {
+                // 去重（ETF可能在 fund 表也有记录）
+                boolean dup = results.stream().anyMatch(r -> e.get("fund_code").equals(r.get("stockCode")));
+                if (!dup) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("stockCode", e.get("fund_code"));
+                    m.put("stockName", e.get("fund_name"));
+                    m.put("market", "ETF");
+                    m.put("type", "etf");
+                    results.add(m);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return ApiResponse.ok(results);
     }
 
     @GetMapping("/industries")
@@ -307,5 +356,42 @@ public class MarketController {
             @RequestParam(defaultValue = "60") int days) {
         List<Map<String, Object>> kline = stockDailyMapper.selectSectorKline(industry, days);
         return ApiResponse.ok(kline);
+    }
+
+    // ==================== ETF 行情 ====================
+
+    /**
+     * 获取 ETF 行情列表（来自 fund_etf_market 表）
+     * 作为股票行情下的一个子板块
+     */
+    @GetMapping("/etf")
+    public ApiResponse getEtfList(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword) {
+        try {
+            String where = "";
+            List<Object> params = new ArrayList<>();
+            if (keyword != null && !keyword.isEmpty()) {
+                where = " WHERE fund_name LIKE ? OR fund_code LIKE ? ";
+                params.add("%" + keyword + "%");
+                params.add("%" + keyword + "%");
+            }
+            // 总数
+            Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM fund_etf_market" + where, Long.class, params.toArray());
+            // 分页
+            params.add(size);
+            params.add((page - 1) * size);
+            List<Map<String, Object>> records = jdbcTemplate.queryForList(
+                "SELECT fund_code, fund_name, price, change_pct, change_amount, " +
+                "volume, amount, open_price, high_price, low_price, pre_close " +
+                "FROM fund_etf_market" + where +
+                " ORDER BY ABS(change_pct) DESC LIMIT ? OFFSET ?",
+                params.toArray());
+            return ApiResponse.page(records, total, page, size);
+        } catch (Exception e) {
+            return ApiResponse.error("获取ETF行情失败: " + e.getMessage());
+        }
     }
 }

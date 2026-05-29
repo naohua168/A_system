@@ -118,8 +118,9 @@ class FundCrawler:
         """采集单只基金详细信息"""
         print(f"📊 采集基金详情: {code}")
 
-        # 使用东方财富基金详情 API
-        url = f"https://fund.eastmoney.com/pingzhongdata/{code}.js"
+        # 使用东方财富基金详情 API（代码需 6 位零填充）
+        padded_code = code.zfill(6)
+        url = f"https://fund.eastmoney.com/pingzhongdata/{padded_code}.js"
         try:
             r = self._session.get(url, timeout=15)
             text = r.text
@@ -131,51 +132,108 @@ class FundCrawler:
 
         # 从 JavaScript 变量中解析关键字段
         try:
-            # 提取 Data_netWorthTrend (净值趋势 - 用于验证)
-            import re
-            # 基金公司
-            m = re.search(r'Data_ManagerCompany\s*=\s*["\']([^"\']+)', text)
-            if m:
-                result["company"] = m.group(1)
-            # 基金经理
-            m = re.search(r'Data_Manager\s*=\s*["\']([^"\']+)', text)
-            if m:
-                result["manager"] = m.group(1)
-            # 基金规模
-            m = re.search(r'Data_FundScale\s*=\s*([\d.]+)', text)
-            if m:
-                result["scale"] = float(m.group(1))
-            # 基金类型
-            m = re.search(r'Data_FundType\s*=\s*["\']([^"\']+)', text)
-            if m:
-                result["fund_type"] = m.group(1)
+            import json
+            # 基金经理 (数组: [{"name": "郑晓辉", ...}])
+            mgr_raw = self._extract_js_var(text, "Data_currentFundManager")
+            if mgr_raw:
+                mgrs = json.loads(mgr_raw)
+                if mgrs:
+                    result["manager"] = mgrs[0].get("name", "")
+            # 基金规模 (对象: {"series":[{"y":26.0},...]})
+            scale_raw = self._extract_js_var(text, "Data_fluctuationScale")
+            if scale_raw:
+                scale_obj = json.loads(scale_raw)
+                series = scale_obj.get("series", [])
+                if series:
+                    result["scale"] = float(series[-1].get("y", 0))
         except Exception as e:
             logger.warning("基金详情解析失败 [%s]: %s", code, e)
 
-        print(f"  基金: {result.get('fund_name', code)} | "
-              f"公司: {result.get('company', '--')} | "
-              f"经理: {result.get('manager', '--')} | "
-              f"规模: {result.get('scale', '--')}亿")
+        if result.get("manager") or result.get("scale"):
+            print(f"  基金: {code} | 经理: {result.get('manager', '--')} | 规模: {result.get('scale', '--')}亿")
+        else:
+            print(f"  基金: {code} | 无详情数据")
 
-        if save and result.get("company") or result.get("manager"):
+        if save and (result.get("manager") or result.get("scale")):
             fp = str(DATA_DIR / f"fund_detail_{code}_{datetime.now():%Y%m%d}.csv")
             pd.DataFrame([result]).to_csv(fp, index=False, encoding="utf-8-sig")
-            print(f"💾 已保存: {fp}")
         return result
 
-    # ──────────────────────────────────────────────
-    # 3. 批量采集基金详情
-    # ──────────────────────────────────────────────
-    def batch_fetch_details(self, codes: list, save: bool = True):
-        """批量采集基金详情"""
+    @staticmethod
+    def _extract_js_var(text: str, var_name: str) -> str:
+        """从 JS 中提取变量值（括号计数法，支持嵌套 JSON）"""
+        idx = text.find(var_name + " =")
+        if idx < 0:
+            idx = text.find(var_name + "=")
+        if idx < 0:
+            return ""
+        start = text.index("=", idx) + 1
+        while start < len(text) and text[start] in " \t":
+            start += 1
+        if start >= len(text):
+            return ""
+        brace = text[start]
+        if brace in ("[", "{"):
+            open_b, close_b = ("[", "]") if brace == "[" else ("{", "}")
+            depth = 0
+            end = start
+            while end < len(text):
+                ch = text[end]
+                if ch == "\\":
+                    end += 2; continue
+                if ch == open_b:
+                    depth += 1
+                elif ch == close_b:
+                    depth -= 1
+                    if depth == 0:
+                        return text[start:end + 1]
+                elif ch in "\"'":
+                    q = ch; end += 1
+                    while end < len(text) and text[end] != q:
+                        if text[end] == "\\": end += 1
+                        end += 1
+                end += 1
+            return text[start:end]
+        # 简单值（字符串/数值）
+        if brace in "\"'":
+            q = brace; end = start + 1
+            while end < len(text) and text[end] != q:
+                if text[end] == "\\": end += 1
+                end += 1
+            return text[start:end + 1]
+        import re
+        m = re.search(r"(-?[\d.]+)", text[start:])
+        return text[start:start + m.end()] if m else ""
+
+# ──────────────────────────────────────────────
+# 3. 批量采集基金详情（多线程加速）
+# ──────────────────────────────────────────────
+    def batch_fetch_details(self, codes: list, save: bool = True, threads: int = 8):
+        """批量采集基金详情（多线程）"""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         total = len(codes)
-        results = []
-        for i, code in enumerate(codes):
-            print(f"[{i + 1}/{total}] ", end="")
-            detail = self.fetch_fund_detail(code, save=False)
-            if detail:
-                results.append(detail)
-            time.sleep(0.5)  # 防反爬
+        print(f"📋 批量采集 {total} 只基金详情 (并发 {threads} 线程)...")
+        results = [None] * total
+
+        def fetch_one(i, code):
+            try:
+                detail = self.fetch_fund_detail(code, save=False)
+                return i, detail
+            except Exception as e:
+                logger.warning("采集失败 [%s]: %s", code, e)
+                return i, None
+
+        with ThreadPoolExecutor(max_workers=threads) as pool:
+            futures = {pool.submit(fetch_one, i, c): i for i, c in enumerate(codes)}
+            done = 0
+            for f in as_completed(futures):
+                done += 1
+                if done % 100 == 0 or done == total:
+                    print(f"  进度: {done}/{total}")
+                i, detail = f.result()
+                results[i] = detail
+
+        results = [r for r in results if r]
         df = pd.DataFrame(results)
         if save and not df.empty:
             fp = str(DATA_DIR / f"fund_details_{datetime.now():%Y%m%d_%H%M%S}.csv")
@@ -230,14 +288,35 @@ class FundCrawler:
             logger.error("持仓采集失败 [%s]: %s", code, e)
             return pd.DataFrame()
 
+    # ──────────────────────────────────────────────
+    # 6. MySQL 连接（用于 details 命令）
+    # ──────────────────────────────────────────────
+    def _get_mysql_conn(self):
+        """获取 MySQL 连接"""
+        import pymysql
+        return pymysql.connect(
+            host="mysql",
+            port=3306,
+            user="root",
+            password="hadoop123",
+            database="stock_analysis",
+            charset="utf8mb4",
+        )
+
 
 def main():
     parser = argparse.ArgumentParser(description="📊 基金数据采集器 v2")
     sub = parser.add_subparsers(dest="command")
 
     # all — 全量基金列表
-    p_all = sub.add_parser("all", help="采集全量基金列表 + 批量详情")
+    p_all = sub.add_parser("all", help="采集全量基金列表")
+    p_all.add_argument("--limit", type=int, default=0, help="最多采集 N 只基金详情（0=全部）")
     p_all.add_argument("--skip-detail", action="store_true", help="跳过批量详情")
+
+    # details — 从 MySQL 采集已有基金的详情
+    p_det = sub.add_parser("details", help="从 MySQL 采集基金详情")
+    p_det.add_argument("--limit", type=int, default=200, help="最多采集 N 只（默认200, 0=全部）")
+    p_det.add_argument("--threads", type=int, default=8, help="并发线程数")
 
     # detail — 单只基金详情
     p_dtl = sub.add_parser("detail", help="采集基金详情")
@@ -258,9 +337,32 @@ def main():
     if args.command == "all":
         df = crawler.fetch_all_funds()
         if not df.empty and not args.skip_detail:
-            codes = df["fund_code"].head(50).tolist()  # 先采前50只
+            codes = df["fund_code"].head(args.limit).tolist() if args.limit else df["fund_code"].tolist()
             print(f"\n📋 开始批量采集 {len(codes)} 只基金详情...")
             crawler.batch_fetch_details(codes)
+    elif args.command == "details":
+        # 从 MySQL 读取已有基金代码
+        try:
+            import pymysql
+            conn = crawler._get_mysql_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT fund_code FROM fund ORDER BY scale DESC, fund_code")
+            all_codes = [r[0] for r in cur.fetchall()]
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"❌ 连接 MySQL 失败: {e}，回退到 fund_basic CSV")
+            import glob
+            files = sorted(Path(str(DATA_DIR)).glob("fund_basic_*.csv"))
+            if not files:
+                print("⚠️  也未找到 fund_basic CSV 文件")
+                return
+            df = pd.read_csv(files[-1])
+            all_codes = df["fund_code"].tolist()
+
+        codes = all_codes[:args.limit] if args.limit else all_codes
+        print(f"📋 从 MySQL 读取 {len(all_codes)} 只基金，本次采集 {len(codes)} 只")
+        crawler.batch_fetch_details(codes, threads=args.threads)
     elif args.command == "detail":
         crawler.fetch_fund_detail(args.code)
     elif args.command == "nav":

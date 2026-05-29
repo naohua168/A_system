@@ -389,19 +389,50 @@ class AkshareExtendedCollector(BaseCollector):
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> pd.DataFrame:
-        """获取基金净值（东方财富源）"""
+        """获取基金净值（东方财富源）
+        
+        从 akshare 获取单位净值和累计净值，合并返回。
+        默认覆盖最近 3650 天（10年），确保有足够数据计算各周期收益。
+        """
         if not start_date or not end_date:
             end_date = datetime.now().strftime("%Y%m%d")
-            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+            start_date = (datetime.now() - timedelta(days=3650)).strftime("%Y%m%d")
         try:
-            df = self.ak.fund_em_open_fund_info(symbol=code, indicator="单位净值走势")
-            if df.empty:
-                return df
-            df.columns = ["date", "nav", "accum_nav", "daily_change"]
-            df["code"] = code
-            df["source"] = self.source_name
-            df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
-            return df.reset_index(drop=True)
+            # 1. 单位净值走势（含日增长率）
+            df_nav = self.ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势")
+            if df_nav.empty:
+                return df_nav
+            col_map = {
+                df_nav.columns[0]: "date",
+                df_nav.columns[1]: "nav",
+                df_nav.columns[2]: "daily_change",
+            }
+            df_nav.rename(columns=col_map, inplace=True)
+            df_nav = df_nav[["date", "nav", "daily_change"]].copy()
+            df_nav["date"] = df_nav["date"].astype(str)
+
+            # 2. 累计净值走势
+            try:
+                df_acc = self.ak.fund_open_fund_info_em(symbol=code, indicator="累计净值走势")
+                if not df_acc.empty:
+                    acc_map = {
+                        df_acc.columns[0]: "date",
+                        df_acc.columns[1]: "accum_nav",
+                    }
+                    df_acc.rename(columns=acc_map, inplace=True)
+                    df_acc = df_acc[["date", "accum_nav"]].copy()
+                    df_acc["date"] = df_acc["date"].astype(str)
+                    # 合并到主表
+                    df_nav = df_nav.merge(df_acc, on="date", how="left")
+                else:
+                    df_nav["accum_nav"] = 0.0
+            except Exception:
+                df_nav["accum_nav"] = 0.0
+
+            df_nav["code"] = code
+            df_nav["source"] = self.source_name
+            df_nav = df_nav[(df_nav["date"] >= start_date) & (df_nav["date"] <= end_date)]
+            return df_nav.reset_index(drop=True)
         except Exception as e:
             raise RuntimeError(f"基金净值采集失败 [{code}]: {e}")
 

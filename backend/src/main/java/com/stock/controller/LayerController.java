@@ -1,6 +1,8 @@
 package com.stock.controller;
 
 import com.stock.dto.ApiResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -40,16 +42,44 @@ public class LayerController {
         return ApiResponse.ok(LAYER_FLOWS);
     }
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @GetMapping("/health")
     public ApiResponse getLayerHealth() {
-        Map<String, String> status = new LinkedHashMap<>();
+        Map<String, Object> status = new LinkedHashMap<>();
         status.put("L1", "online");
-        status.put("L2", "online");
         status.put("L3", "online");
         status.put("L4", "online");
         status.put("L5", "online");
         status.put("L6", "online");
+        // 实际检测 L2 (Hive)
+        try {
+            jdbcTemplate.queryForMap("SELECT 1");
+            status.put("L2", "online");
+        } catch (Exception e) {
+            status.put("L2", "degraded: " + e.getMessage());
+        }
         return ApiResponse.ok(status);
+    }
+
+    /** L2 大数据层 — Hive 代理查询 */
+    @PostMapping("/l2/query")
+    public ApiResponse hiveQuery(@RequestBody Map<String, String> body) {
+        String sql = body.get("sql");
+        if (sql == null || sql.trim().isEmpty()) {
+            return ApiResponse.error("SQL 不能为空");
+        }
+        // 安全检查：只允许 SELECT
+        if (!sql.trim().toUpperCase().startsWith("SELECT")) {
+            return ApiResponse.error("仅允许 SELECT 查询");
+        }
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+            return ApiResponse.ok(rows);
+        } catch (Exception e) {
+            return ApiResponse.error("Hive 查询失败: " + e.getMessage());
+        }
     }
 
     // ==================== 静态元数据 ====================

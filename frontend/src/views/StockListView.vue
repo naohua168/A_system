@@ -159,6 +159,7 @@ const marketTree: MarketNode[] = [
   { key: 'sh-kcb', label: '科创板' },
   { key: 'sz-cyb', label: '创业板' },
   { key: 'bj', label: '北交所' },
+  { key: 'etf', label: 'ETF' },
 ]
 
 /** 打开下拉菜单（关闭其他） */

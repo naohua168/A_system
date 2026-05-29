@@ -324,6 +324,23 @@ class HDFSUploader:
     # 批量操作
     # -----------------------------------------------------------
 
+    def run_hive_msck(self):
+        """上传后自动修复 Hive 分区元数据"""
+        print("   🔄 执行 Hive MSCK REPAIR TABLE...")
+        try:
+            import subprocess
+            tables = ["stock_basic", "stock_daily_staging", "fund_nav", "stock_daily"]
+            for tbl in tables:
+                cmd = f"docker exec hive-server hive -e 'USE stock_analysis; MSCK REPAIR TABLE {tbl};' 2>/dev/null"
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+                if r.returncode == 0:
+                    print(f"     ✅ {tbl} 修复完成")
+                else:
+                    print(f"     ⚠️ {tbl} 修复失败: {r.stderr[:100]}")
+        except Exception as e:
+            print(f"     ⚠️ MSCK 失败(不影响已上传文件): {e}")
+            import traceback; traceback.print_exc()
+
     def upload_all(self, target_dir: str = None, force: bool = False,
                    dry_run: bool = False, repair: bool = False) -> int:
         """上传所有未上传的数据文件"""
