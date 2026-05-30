@@ -38,6 +38,36 @@ STORED AS TEXTFILE
 LOCATION '/user/hadoop/stock_data/fund/nav'
 TBLPROPERTIES ('skip.header.line.count' = '1');
 
+--- 5. 基金列表 (来自 fund_details CSV)
+CREATE EXTERNAL TABLE IF NOT EXISTS fund_list (
+    fund_code STRING, scale DOUBLE
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+STORED AS TEXTFILE
+LOCATION '/user/hadoop/stock_data/fund/details'
+TBLPROPERTIES ('skip.header.line.count' = '1');
+
+--- 6. 全球资讯
+CREATE EXTERNAL TABLE IF NOT EXISTS info_global_news (
+    title STRING, summary STRING, publish_time STRING, url STRING
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+STORED AS TEXTFILE
+LOCATION '/user/hadoop/stock_data/info/global_news'
+TBLPROPERTIES ('skip.header.line.count' = '1');
+
+--- 7. 题材热点
+CREATE EXTERNAL TABLE IF NOT EXISTS signal_hot_reason (
+    id STRING, name STRING, code STRING, reason STRING, trade_date STRING,
+    close_price DOUBLE, change DOUBLE, change_pct DOUBLE, turnover_pct DOUBLE,
+    amount DOUBLE, volume DOUBLE, big_net_pct DOUBLE, market STRING,
+    source STRING, fetch_date STRING
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+STORED AS TEXTFILE
+LOCATION '/user/hadoop/stock_data/signals/hot_reason'
+TBLPROPERTIES ('skip.header.line.count' = '1');
+
 SHOW TABLES;
 SELECT 'stock_basic' AS tbl, COUNT(*) AS cnt FROM stock_basic
 UNION ALL
@@ -45,4 +75,10 @@ SELECT 'signal_northbound', COUNT(*) FROM signal_northbound
 UNION ALL
 SELECT 'info_cls_news', COUNT(*) FROM info_cls_news
 UNION ALL
-SELECT 'fund_nav', COUNT(*) FROM fund_nav;
+SELECT 'fund_nav', COUNT(*) FROM fund_nav
+UNION ALL
+SELECT 'fund_list', COUNT(*) FROM fund_list
+UNION ALL
+SELECT 'info_global_news', COUNT(*) FROM info_global_news
+UNION ALL
+SELECT 'signal_hot_reason', COUNT(*) FROM signal_hot_reason;
