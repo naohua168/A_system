@@ -88,12 +88,14 @@ const request: AxiosInstance = axios.create({
 
 /** 需要缓存的 API 路径前缀及其 TTL（毫秒） */
 const CACHE_RULES: [string, number][] = [
-  ['/api/market/list', 15000],       // 股票列表 15s
-  ['/api/market/industry', 30000],   // 行业列表 30s
-  ['/api/analysis', 60000],          // 技术分析 60s
-  ['/api/signal', 30000],           // 信号数据 30s
-  ['/api/fund', 60000],            // 基金数据 60s
-  ['/api/index', 60000],           // 指数数据 60s
+  ['/api/v2/market/list', 15000],   // 股票列表 15s
+  ['/api/v2/market/industry', 30000], // 行业列表 30s
+  ['/api/v2/market/sector', 30000],  // 行业排行 30s
+  ['/api/v2/analysis', 60000],      // 技术分析 60s
+  ['/api/v2/signal', 30000],       // 信号数据 30s
+  ['/api/v2/fund', 60000],        // 基金数据 60s
+  ['/api/v2/index', 60000],       // 指数数据 60s
+  ['/api/v2/info', 30000],       // 资讯数据 30s
 ]
 
 function getCacheTtl(url: string): number {
