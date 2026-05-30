@@ -33,13 +33,13 @@ def put(key, data, ttl):
 def sync_hive_tables():
     """从Hive表读取真实数据"""
     queries = [
-        ('market:stock_basic', 'SELECT stock_code, stock_name FROM stock_basic LIMIT 200', HH),
+        ('market:stock_basic', 'SELECT stock_code, stock_name FROM stock_basic LIMIT 2000', HH),
         ('market:cls_news', 'SELECT title, content, datetime, source FROM info_cls_news ORDER BY datetime DESC LIMIT 100', DD),
         ('market:global_news', 'SELECT title, summary, publish_time, url FROM info_global_news ORDER BY publish_time DESC LIMIT 50', DD),
         ('market:fund_nav', 'SELECT fund_code, nav_date, nav, accumulated_nav FROM fund_nav ORDER BY nav_date DESC LIMIT 100', DD),
-        ('market:fund_list', "SELECT fund_code, fund_name, fund_type, company, scale FROM fund_basic WHERE scale>0 ORDER BY scale DESC LIMIT 200", DD),
+        ('market:fund_list', "SELECT fund_code, fund_name, fund_type, company, scale FROM fund_basic WHERE scale>0 ORDER BY scale DESC LIMIT 500", DD),
         ('market:hot_reason', 'SELECT id, name AS stock_name, code AS stock_code, reason, trade_date FROM signal_hot_reason ORDER BY trade_date DESC LIMIT 100', HH),
-        ('market:sector_ranking', 'SELECT stock_code, stock_name, mcap_yi, turnover_pct FROM stock_basic ORDER BY mcap_yi DESC LIMIT 200', HH),
+        ('market:sector_ranking', 'SELECT stock_code, stock_name, mcap_yi, turnover_pct FROM stock_basic ORDER BY mcap_yi DESC LIMIT 2000', HH),
     ]
     # 北向资金（修复日期：从文件名取日期，CSV只有时间）
     rows = hive_q("SELECT * FROM signal_northbound ORDER BY trade_date DESC LIMIT 20")
@@ -68,9 +68,9 @@ def sync_kline():
 
 def gen_mock_from_stock():
     """从 stock_basic 生成资金流向/龙虎榜/研报/一致预期/新闻/公告等"""
-    stocks = hive_q("SELECT stock_code, stock_name FROM stock_basic LIMIT 200")
+    stocks = hive_q("SELECT stock_code, stock_name FROM stock_basic LIMIT 2000")
     total = 0
-    for s in stocks[:200]:
+    for i, s in enumerate(stocks):
         code = s['stock_code']
         name = s['stock_name']
 
@@ -129,11 +129,11 @@ def gen_mock_from_stock():
     # 限售解禁汇总
     upcoming = [{'stock_code': s['stock_code'], 'stock_name': s['stock_name'],
                  'lockupDate': f'2026-06-{10+i%20:02d}', 'shares': round(random.uniform(100,50000),0)}
-                for i,s in enumerate(stocks[:10])]
+                for i,s in enumerate(stocks[:20])]
     put('market:lockup_upcoming', upcoming, DD)
 
     # 基金持仓
-    for s in stocks[:10]:
+    for s in stocks[:50]:
         hl = [{'fund_code': f'{random.randint(0,9)}0000{i}', 'fund_name': f'{random.choice(["华夏","易方达","嘉实"])}{random.choice(["成长","稳健","优选"])}混合',
                'shares': round(random.uniform(10,500),2), 'mcap': round(random.uniform(0.5,20),2)}
               for _ in range(5)]
