@@ -76,7 +76,7 @@ def main():
     print("连接 Hive...")
     conn = hive.connect(host="hive-server", port=10000)
     c = conn.cursor()
-    c.execute("SELECT stock_code, stock_name FROM stock_basic LIMIT 500")
+    c.execute("SELECT stock_code, stock_name FROM stock_basic ORDER BY stock_code")
     stocks = [{"code": r[0], "name": r[1]} for r in c.fetchall()]
     c.close()
     print(f"获取 {len(stocks)} 只股票")

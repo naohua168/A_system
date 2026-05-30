@@ -1,69 +1,67 @@
 """
-Hive→Redis 管道 — 仅保留真实采集的市场数据
-不生成任何模拟/伪造数据
+Hive→Redis 管道 — 全市场数据
 """
 import sys, time, json
 sys.path.insert(0, '/app/pylib')
 from pyhive import hive
 import redis
 
-REDIS_HOST = 'redis'
-HIVE_HOST = 'hive-server'
+R = redis.Redis(host='redis', port=6379, db=0)
+DD = 86400; HH = 3600
 
-r = redis.Redis(host=REDIS_HOST, port=6379, db=0)
-DD = 86400   # 24h
-HH = 3600    # 1h
-
-def hive_q(sql):
+def hq(sql):
     try:
-        conn = hive.connect(host=HIVE_HOST, port=10000)
+        conn = hive.connect(host='hive-server', port=10000)
         c = conn.cursor()
         c.execute(sql)
         cols = [d[0] for d in c.description]
-        rows = [dict(zip(cols, row)) for row in c.fetchall()]
+        rows = [dict(zip(cols, r)) for r in c.fetchall()]
         conn.close()
         return rows
     except Exception as e:
+        print(f'  SQL FAIL: {e}')
         return []
 
-def put(key, data, ttl):
-    if data:
-        r.setex(key, ttl, json.dumps(data, ensure_ascii=False, default=str))
-        return len(data)
+def put(k, data, ttl):
+    if data: R.setex(k, ttl, json.dumps(data, ensure_ascii=False, default=str)); return len(data)
     return 0
 
 def sync():
-    """仅同步真实Hive数据表"""
+    t0 = time.time()
     total = 0
-    queries = [
-        # 股票列表 (真实)
-        ('market:stock_basic', 'SELECT stock_code, stock_name FROM stock_basic ORDER BY stock_code LIMIT 200', HH),
-        # 北向资金 (真实)
-        ('market:northbound', 'SELECT * FROM signal_northbound ORDER BY trade_date DESC LIMIT 20', DD),
-        # 财联社快讯 (真实)
-        ('market:cls_news', 'SELECT title, content, datetime, source FROM info_cls_news ORDER BY datetime DESC LIMIT 100', DD),
-        # 全球资讯 (真实)
-        ('market:global_news', 'SELECT title, summary, publish_time, url FROM info_global_news ORDER BY publish_time DESC LIMIT 50', DD),
-        # 基金净值 (真实)
-        ('market:fund_nav', 'SELECT fund_code, nav_date, nav, accumulated_nav FROM fund_nav ORDER BY nav_date DESC LIMIT 100', DD),
-        # 基金列表 (真实)
-        ('market:fund_list', "SELECT fund_code, fund_name, fund_type, company, scale FROM fund_basic WHERE scale>0 ORDER BY scale DESC LIMIT 200", DD),
-        # 题材热点 (真实)
-        ('market:hot_reason', 'SELECT id, name AS stock_name, code AS stock_code, reason, trade_date FROM signal_hot_reason ORDER BY trade_date DESC LIMIT 100', HH),
-        # 行业排行 (来自stock_basic真实数据)
-        ('market:sector_ranking', 'SELECT stock_code, stock_name, mcap_yi, turnover_pct FROM stock_basic ORDER BY mcap_yi DESC LIMIT 200', HH),
-    ]
-    for key, sql, ttl in queries:
-        rows = hive_q(sql)
-        n = put(key, rows, ttl)
-        if n: total += n
-        print(f'  {key}: {n} rows')
 
-    print(f'[{time.strftime("%H:%M:%S")}] 真实数据同步完成: {total}条, Redis共{len(r.keys("market:*"))}key(不含模拟)')
+    # 1. 静态数据 (前端展示用200条即可)
+    for key, sql, ttl in [
+        ('market:stock_basic', 'SELECT stock_code, stock_name FROM stock_basic LIMIT 200', HH),
+        ('market:northbound', 'SELECT * FROM signal_northbound ORDER BY trade_date DESC LIMIT 20', DD),
+        ('market:cls_news', 'SELECT title, content, datetime, source FROM info_cls_news ORDER BY datetime DESC LIMIT 100', DD),
+        ('market:global_news', 'SELECT title, summary, publish_time, url FROM info_global_news ORDER BY publish_time DESC LIMIT 50', DD),
+        ('market:fund_nav', 'SELECT fund_code, nav_date, nav, accumulated_nav FROM fund_nav ORDER BY nav_date DESC LIMIT 100', DD),
+        ('market:fund_list', "SELECT fund_code, fund_name, fund_type, company, scale FROM fund_basic WHERE scale>0 ORDER BY scale DESC LIMIT 500", DD),
+        ('market:hot_reason', 'SELECT id, name AS stock_name, code AS stock_code, reason, trade_date FROM signal_hot_reason ORDER BY trade_date DESC LIMIT 100', HH),
+        ('market:sector_ranking', 'SELECT stock_code, stock_name, mcap_yi, turnover_pct FROM stock_basic ORDER BY mcap_yi DESC LIMIT 200', HH),
+    ]:
+        n = put(key, hq(sql), ttl)
+        total += n
+        print(f'  {key}: {n}')
+
+    # 2. K线 (全市场 332520 条, 分批读取)
+    print('  读取 stock_daily 全量K线...')
+    raw = hq("SELECT stock_code, trade_date, open, high, low, close, volume, amount, change_pct FROM stock_daily LIMIT 332520")
+    if raw:
+        by = {}
+        for rec in raw:
+            by.setdefault(rec['stock_code'], []).append(rec)
+        for code, kls in by.items():
+            R.setex(f'market:kline_{code}', HH, json.dumps(kls, ensure_ascii=False, default=str))
+        print(f'  kline: {len(by)} stocks x {sum(len(v) for v in by.values())} records')
+        total += sum(len(v) for v in by.values())
+
+    print(f'[{time.strftime("%H:%M:%S")}] 全量同步: {total}条, {time.time()-t0:.0f}s')
 
 if __name__ == '__main__':
-    print('=== Hive→Redis 真实数据管道（无模拟数据） ===')
+    print('=== Hive→Redis 全市场管道 ===')
     sync()
     while True:
-        time.sleep(600)
+        time.sleep(300)
         sync()
