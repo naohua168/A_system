@@ -48,4 +48,44 @@
     <name>hive.exec.scratchdir</name>
     <value>/tmp/hive</value>
   </property>
+
+  <!-- ===== MapReduce 内存优化（Container资源受限） ===== -->
+  <property>
+    <name>mapreduce.map.memory.mb</name>
+    <value>512</value>
+  </property>
+  <property>
+    <name>mapreduce.reduce.memory.mb</name>
+    <value>512</value>
+  </property>
+  <property>
+    <name>yarn.app.mapreduce.am.resource.mb</name>
+    <value>512</value>
+  </property>
+  <property>
+    <name>mapreduce.map.java.opts</name>
+    <value>-Xmx384m</value>
+  </property>
+  <property>
+    <name>mapreduce.reduce.java.opts</name>
+    <value>-Xmx384m</value>
+  </property>
+  <property>
+    <name>hive.exec.mode.local.auto</name>
+    <value>true</value>
+    <description>小数据量查询自动使用本地模式（避免YARN容器调度）</description>
+  </property>
+  <property>
+    <name>hive.exec.mode.local.auto.inputbytes.max</name>
+    <value>134217728</value>
+    <description>本地模式最大输入: 128MB</description>
+  </property>
+  <property>
+    <name>hive.auto.convert.join</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.mapjoin.smalltable.filesize</name>
+    <value>25000000</value>
+  </property>
 </configuration>
