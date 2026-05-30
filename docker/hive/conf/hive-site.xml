@@ -4,7 +4,7 @@
   <!-- Hive Metastore: MySQL（使用已有 mysql 容器） -->
   <property>
     <name>javax.jdo.option.ConnectionURL</name>
-    <value>jdbc:mysql://mysql:3306/hive_metastore?createDatabaseIfNotExist=true&amp;useSSL=false&amp;serverTimezone=Asia/Shanghai</value>
+    <value>jdbc:mysql://host.docker.internal:3306/hive_metastore?createDatabaseIfNotExist=true&amp;useSSL=false&amp;serverTimezone=Asia/Shanghai</value>
     <description>JDBC connect string for MySQL metastore</description>
   </property>
   <property>
@@ -18,7 +18,7 @@
   </property>
   <property>
     <name>javax.jdo.option.ConnectionPassword</name>
-    <value>hadoop123</value>
+    <value>123456</value>
   </property>
   <property>
     <name>datanucleus.autoCreateSchema</name>

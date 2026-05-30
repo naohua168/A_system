@@ -26,7 +26,8 @@ logs/
 # --- 本地配置 (容器内使用环境变量覆盖) ---
 src/main/resources/application-local.yml
 src/main/resources/application-dev.yml
-src/main/resources/application-prod.yml
+# application-prod.yml 需要打包进 JAR（容器通过 SPRING_PROFILES_ACTIVE=prod 激活）
+# 内含 MySQL/Hive/Redis 生产配置
 
 # --- Git ---
 .git/

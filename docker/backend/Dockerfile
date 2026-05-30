@@ -43,7 +43,7 @@ VOLUME ["/app/logs"]
 EXPOSE 8082
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
-    CMD curl -sf http://localhost:8082/api/stock/list?page=1\&size=1 || exit 1
+    CMD curl -sf http://localhost:8082/api/v2/ping || exit 1
 
 ENTRYPOINT ["java", \
     "-Djava.security.egd=file:/dev/./urandom", \

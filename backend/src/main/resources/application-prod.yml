@@ -4,8 +4,6 @@ server:
 spring:
   application:
     name: stock-analysis-backend
-  profiles:
-    active: prod
   datasource:
     url: jdbc:mysql://${DB_HOST:mysql}:${DB_PORT:3306}/stock_analysis?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: ${DB_USERNAME:root}
@@ -26,6 +24,7 @@ spring:
         max-active: 16
         max-idle: 8
         min-idle: 2
+
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

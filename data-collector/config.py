@@ -163,7 +163,7 @@ MYSQL_SYNC = {
 # HDFS 配置（Day 2 T5 阶段使用）
 # ============================================================
 HDFS = {
-    "url": os.getenv("HDFS_URL", "http://localhost:9870"),
+    "url": os.getenv("HDFS_URL", "http://namenode:9870"),
     "user": os.getenv("HDFS_USER", "hadoop"),
     "base_path": "/user/hadoop/stock_data",
     "paths": {

@@ -263,8 +263,6 @@ services:
     depends_on:
       namenode:
         condition: service_started
-      mysql:
-        condition: service_healthy
     ports:
       - "10000:10000" # Hive Server2 (Thrift JDBC)
       - "10002:10002" # Hive Web UI
@@ -655,8 +653,5 @@ volumes:
 # ============================================================
 networks:
   bigdata-net:
-    driver: bridge
+    external: true
     name: bigdata-net
-    ipam:
-      config:
-        - subnet: 172.19.0.0/24    # 固定子网，与 collector-net(172.20.x) 隔离

@@ -377,72 +377,31 @@ class DataCollectorRunner:
     # ==========================================================
 
     def collect_money_market(self):
-        """采集货币基金 7日年化/万份收益"""
+        """采集货币基金 7日年化/万份收益（只写 CSV，不写 MySQL）"""
         t0 = time.time()
         print(f"[{datetime.now():%H:%M:%S}] 💰 货币基金: 采集 7日年化...")
         try:
             import akshare as ak
-            import pymysql
-            conn = pymysql.connect(host='mysql', user='root', password='hadoop123', database='stock_analysis', charset='utf8mb4')
-            cur = conn.cursor()
             df = ak.fund_money_rank_em()
-            cnt = 0
-            for _, row in df.iterrows():
-                code = str(row['基金代码']).strip()
-                cur.execute("""
-                    INSERT INTO fund_money_market (fund_code, fund_name, nav_date, daily_return, seven_day_yield,
-                        yearly_return_14d, yearly_return_28d, monthly_return, quarterly_return, half_year_return, year_return)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON DUPLICATE KEY UPDATE seven_day_yield=VALUES(seven_day_yield), daily_return=VALUES(daily_return)
-                """, (code, str(row['基金简称']), str(row['日期']),
-                    float(row['万份收益']) if row['万份收益'] else 0,
-                    float(row['年化收益率7日']) if row['年化收益率7日'] else 0,
-                    float(row.get('年化收益率14日', 0) or 0),
-                    float(row.get('年化收益率28日', 0) or 0),
-                    float(row.get('近1月', 0) or 0),
-                    float(row.get('近3月', 0) or 0),
-                    float(row.get('近6月', 0) or 0),
-                    float(row.get('近1年', 0) or 0)))
-                cnt += 1
-            conn.commit()
-            cur.close(); conn.close()
+            cnt = len(df)
+            self._save("money_market_", df)
             self.report.record("money_market", cnt, True, time.time() - t0)
-            print(f"   ✅ {cnt} 只货币基金")
+            print(f"   ✅ {cnt} 只货币基金 → CSV")
         except Exception as e:
             self.report.record("money_market", 0, False, time.time() - t0)
             print(f"   ❌ 货币基金采集失败: {e}")
 
     def collect_etf_market(self):
-        """采集 ETF 实时行情"""
+        """采集 ETF 实时行情（只写 CSV，不写 MySQL）"""
         t0 = time.time()
         print(f"[{datetime.now():%H:%M:%S}] 📊 ETF 行情: 采集实时行情...")
         try:
             import akshare as ak
-            import pymysql
-            conn = pymysql.connect(host='mysql', user='root', password='hadoop123', database='stock_analysis', charset='utf8mb4')
-            cur = conn.cursor()
             df = ak.fund_etf_spot_em()
-            cnt = 0
-            for _, row in df.iterrows():
-                code = str(row['代码']).strip()
-                def sf(v):
-                    try: return float(v)
-                    except: return None
-                cur.execute("""
-                    INSERT INTO fund_etf_market (fund_code, fund_name, price, change_pct, change_amount,
-                        volume, amount, open_price, high_price, low_price, pre_close)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON DUPLICATE KEY UPDATE price=VALUES(price), change_pct=VALUES(change_pct),
-                        volume=VALUES(volume), amount=VALUES(amount)
-                """, (code, str(row.get('名称', '')), sf(row.get('最新价')), sf(row.get('涨跌幅')),
-                    sf(row.get('涨跌额')), int(float(str(row.get('成交量',0)).replace(',',''))) if row.get('成交量') else 0,
-                    sf(row.get('成交额')), sf(row.get('开盘价')), sf(row.get('最高价')),
-                    sf(row.get('最低价')), sf(row.get('昨收'))))
-                cnt += 1
-            conn.commit()
-            cur.close(); conn.close()
+            cnt = len(df)
+            self._save("etf_market_", df)
             self.report.record("etf_market", cnt, True, time.time() - t0)
-            print(f"   ✅ {cnt} 只 ETF")
+            print(f"   ✅ {cnt} 只 ETF → CSV")
         except Exception as e:
             self.report.record("etf_market", 0, False, time.time() - t0)
             print(f"   ❌ ETF 采集失败: {e}")
@@ -826,82 +785,26 @@ def _run_pipeline(args):
 # 数据校验 + 缺失表自动创建
 # ============================================================
 def _ensure_tables():
-    """自动创建数据目录中 MySQL 表不存在的信息层表"""
+    """确保 MySQL 业务表存在（不再创建市场数据表，市场数据走 Hive）"""
     import pymysql
     from config import MYSQL_CONFIG
+    biz_tables = {
+        "user": "CREATE TABLE IF NOT EXISTS `user` (id BIGINT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) NOT NULL UNIQUE, password VARCHAR(255) NOT NULL, role INT DEFAULT 1, status INT DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "watchlist": "CREATE TABLE IF NOT EXISTS `watchlist` (id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, asset_code VARCHAR(20) NOT NULL, asset_type TINYINT DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+    }
     try:
         conn = pymysql.connect(**MYSQL_CONFIG)
         cur = conn.cursor()
-        missing = []
-        for tbl in ['info_cls_news', 'info_global_news', 'info_stock_news',
-                     'info_research_report', 'info_consensus_eps', 'info_filing']:
-            cur.execute("SELECT COUNT(*) FROM information_schema.tables "
-                        "WHERE table_schema=%s AND table_name=%s",
+        for tbl, ddl in biz_tables.items():
+            cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",
                         (MYSQL_CONFIG['database'], tbl))
             if cur.fetchone()[0] == 0:
-                missing.append(tbl)
-        if missing:
-            print(f"\n📋 自动创建 {len(missing)} 张缺失表...")
-            for tbl in missing:
-                if tbl in ('info_cls_news', 'info_global_news'):
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS `{tbl}` (
-                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                            title VARCHAR(500), content TEXT,
-                            datetime VARCHAR(50), source VARCHAR(100),
-                            url VARCHAR(1000), created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_dt (datetime)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """)
-                elif tbl == 'info_stock_news':
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS `{tbl}` (
-                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
-                            stock_name VARCHAR(50), title VARCHAR(500), content TEXT,
-                            datetime VARCHAR(50), source VARCHAR(100), url VARCHAR(1000),
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, INDEX idx_sc (stock_code)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """)
-                elif tbl == 'info_research_report':
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS `{tbl}` (
-                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
-                            stock_name VARCHAR(50), title VARCHAR(500), rating VARCHAR(50),
-                            eps_this_year DECIMAL(10,4), eps_next_year DECIMAL(10,4),
-                            publish_date VARCHAR(50), org_name VARCHAR(200), url VARCHAR(1000),
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, INDEX idx_sc (stock_code)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """)
-                elif tbl == 'info_consensus_eps':
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS `{tbl}` (
-                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
-                            stock_name VARCHAR(50), year INT, eps DECIMAL(10,4),
-                            num_analysts INT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_sc (stock_code)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """)
-                elif tbl == 'info_filing':
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS `{tbl}` (
-                            id BIGINT AUTO_INCREMENT PRIMARY KEY, stock_code VARCHAR(10),
-                            stock_name VARCHAR(50), title VARCHAR(500),
-                            filing_date VARCHAR(50), category VARCHAR(100), url VARCHAR(1000),
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, INDEX idx_sc (stock_code)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """)
-                else:
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS `{tbl}` (
-                            id BIGINT AUTO_INCREMENT PRIMARY KEY, content TEXT,
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """)
-                print(f"  ✅ 已创建 {tbl}")
+                cur.execute(ddl)
+                print(f"  ✅ 创建业务表: {tbl}")
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"  ⚠️ 表创建失败: {e}")
+        print(f"  ⚠️ 业务表创建跳过: {e}")
 
 
 def _validate_data():
