@@ -82,6 +82,9 @@ def collect_tencent_quote(codes):
             "price": vals[3] or 0, "pe_ttm": vals[39] or 0,
             "pb": vals[46] or 0, "mcap_yi": vals[44] or 0,
             "turnover_pct": vals[38] or 0, "change_pct": vals[32] or 0,
+            "change_amt": vals[31] or 0, "last_close": vals[4] or 0,
+            "volume": (float(vals[6]) * 100) if vals[6] else 0,
+            "amount_wan": vals[37] or 0,
         })
     return result
 
@@ -239,23 +242,132 @@ def collect_filings(code, limit=20):
         })
     return rows
 
+# ========== 9. 指数行情 + 指数K线 ==========
+INDEX_CODES = [
+    ('sh000001', '上证指数'), ('sz399001', '深证成指'),
+    ('sz399006', '创业板指'), ('sh000688', '科创50'), ('sh000300', '沪深300'),
+]
+
+def collect_index_quote():
+    """腾讯指数实时行情"""
+    codes = [c[0] for c in INDEX_CODES]
+    url = "https://qt.gtimg.cn/q=" + ",".join(codes)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        resp = urllib.request.urlopen(req, timeout=10)
+        data = resp.read().decode("gbk")
+    except:
+        return []
+    result = []
+    for line in data.strip().split(";"):
+        if not line.strip() or "=" not in line or '"' not in line:
+            continue
+        key = line.split("=")[0].split("_")[-1]
+        vals = line.split('"')[1].split("~")
+        if len(vals) < 40: continue
+        name = None
+        for ic, iname in INDEX_CODES:
+            if ic.endswith(key):
+                name = iname
+                break
+        result.append({
+            "index_code": key, "index_name": name or vals[1],
+            "price": vals[3] or 0, "change_pct": vals[32] or 0,
+            "open": vals[5] or 0, "high": vals[33] or 0,
+            "low": vals[34] or 0, "volume": vals[6] or 0,
+            "amount": vals[37] or 0,
+        })
+    return result
+
+def collect_index_kline(code):
+    """腾讯指数日K线（最近120天）"""
+    prefix = "sh" if code.startswith(("0","6","9")) else "sz"
+    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}{code},day,,,120,qfq"
+    try:
+        r = requests.get(url, headers={"User-Agent": UA}, timeout=10)
+        d = r.json()
+    except:
+        return []
+    data = d.get("data", {})
+    klines = (data.get(code) or data.get(prefix + code) or {}).get("day", [])
+    if not klines:
+        klines = data.get("qt", {}).get(code, {}).get("day", [])
+    rows = []
+    for k in klines:
+        if len(k) >= 6:
+            rows.append({
+                "index_code": code,
+                "trade_date": k[0].replace("-", ""),
+                "open": k[1], "close": k[2], "high": k[3],
+                "low": k[4], "volume": k[5] if len(k) > 5 else 0,
+                "amount": k[6] if len(k) > 6 else 0,
+                "change_pct": round((float(k[2]) - float(k[1])) / float(k[1]) * 100, 2) if float(k[1]) > 0 else 0,
+            })
+    return rows
+
+# ========== 10. 股票行业归属（从 Tencent 查询） ==========
+def collect_stock_industries(codes):
+    """从腾讯批量获取股票行业"""
+    all_rows = []
+    for batch_start in range(0, len(codes), 100):
+        batch = codes[batch_start:batch_start+100]
+        prefixed = [f"{'sh' if c.startswith(('6','9')) else 'bj' if c.startswith('8') else 'sz'}{c}" for c in batch]
+        url = "https://qt.gtimg.cn/q=" + ",".join(prefixed)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = resp.read().decode("gbk")
+        except:
+            time.sleep(0.5)
+            continue
+        for line in data.strip().split(";"):
+            if not line.strip() or "=" not in line or '"' not in line:
+                continue
+            vals = line.split('"')[1].split("~")
+            if len(vals) < 45: continue
+            code = vals[2]
+            industry = vals[43] if len(vals) > 43 else ""
+            if industry and industry.strip():
+                all_rows.append({
+                    "stock_code": code, "industry": industry,
+                    "industry_en": "",
+                })
+        time.sleep(0.5)
+    return all_rows
+
 # ========== 主采集流程 ==========
 def main():
     print(f'=== 全市场数据采集启动 {datetime.now():%H:%M:%S} ===\n')
 
-    # 0. 从 Hive 读取股票列表
+    # 0. 从 CSV 读取股票列表（Hive fallback）
+    stocks = []
     try:
-        sys.path.insert(0, '/app/pylib')
-        from pyhive import hive
-        conn = hive.connect(host='hive-server', port=10000)
-        c = conn.cursor()
-        c.execute("SELECT stock_code, stock_name FROM stock_basic ORDER BY stock_code")
-        stocks = [{'code': r[0], 'name': r[1]} for r in c.fetchall()]
-        conn.close()
-        print(f'从 Hive 读取 {len(stocks)} 只股票')
+        import glob
+        sbfiles = sorted(glob.glob('/data/raw/stock_basic_*.csv'))
+        if sbfiles:
+            with open(sbfiles[-1], 'r', encoding='utf-8-sig') as f:
+                import csv
+                reader = csv.DictReader(f)
+                for row in reader:
+                    code = row.get('stock_code', row.get('code', ''))
+                    name = row.get('stock_name', row.get('name', ''))
+                    if code: stocks.append({'code': code, 'name': name})
+            print(f'从 CSV 读取 {len(stocks)} 只股票')
     except Exception as e:
-        print(f'Hive连接失败: {e}')
-        return
+        print(f'CSV读取失败: {e}')
+    if not stocks:
+        try:
+            sys.path.insert(0, '/app/pylib')
+            from pyhive import hive
+            conn = hive.connect(host='hive-server', port=10000, timeout=10)
+            c = conn.cursor()
+            c.execute("SELECT stock_code, stock_name FROM stock_basic ORDER BY stock_code")
+            stocks = [{'code': r[0], 'name': r[1]} for r in c.fetchall()]
+            conn.close()
+            print(f'从 Hive 读取 {len(stocks)} 只股票')
+        except Exception as e:
+            print(f'Hive连接失败: {e}')
+            return
 
     codes = [s['code'] for s in stocks]
 
@@ -337,6 +449,25 @@ def main():
             print(f'   进度: {i+1}/{len(codes)}')
         time.sleep(0.3)
     save_csv('filings', all_f)
+
+    # 9. 指数行情 + 指数K线
+    print('\n9. 采集指数行情...')
+    idx_q = collect_index_quote()
+    save_csv('tencent_index', idx_q)
+    print('\n10. 采集指数K线...')
+    all_idx_k = []
+    for ic, _ in INDEX_CODES:
+        klines = collect_index_kline(ic)
+        if klines:
+            all_idx_k.extend(klines)
+            print(f'   {ic}: {len(klines)}天')
+        time.sleep(0.3)
+    save_csv('index_daily', all_idx_k)
+
+    # 11. 股票行业归属
+    print('\n11. 采集股票行业归属...')
+    inds = collect_stock_industries(codes)
+    save_csv('stock_industry', inds)
 
     print(f'\n=== 采集完成 {datetime.now():%H:%M:%S} ===')
     print(f'  总计保存 {len(os.listdir(CSV_DIR))} 个CSV文件')

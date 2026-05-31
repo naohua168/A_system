@@ -43,74 +43,87 @@ class Segment:
 
 
 def find_segments(pens: Optional[List[Pen]]) -> List[Segment]:
-    """将笔组合为线段：基于特征序列的线段划分（增强版）
+    """将笔组合为线段（修正版）
+
+    缠论定义：线段 = 至少 3 笔构成的方向性结构
+    严格模式下，交替笔 (up/down/up 或 down/up/down) 每 3 笔构成一段，
+    相邻段共享 1 笔（重叠），使段数充足，中枢可检测。
 
     算法:
-      1. 遍历笔序列，以奇数笔方向作为当前线段方向
-      2. 特征序列匹配：第1笔和第3笔同向，中间笔反向 → 形成线段
-      3. 线段破坏：反向线段出现 → 标记上一线段被破坏
-      4. 线段延续：同向连续线段合并
+      1. 严格模式：特征序列匹配，每 3 笔固定一段，步长 2（共享重叠笔）
+      2. 严格模式无结果时，方向分组回退（连续同向 ≥ 3 笔）
+      3. 线段破坏标记
+      4. 同向线段合并
     """
     if not pens or len(pens) < 3:
         return []
 
-    # Step 1: 基本线段识别（特征序列匹配）
-    raw_segments = []
+    n = len(pens)
+
+    # Step 1: 严格模式 — 每 3 笔构成一段，步长 1（滑动窗口，方向自然交替）
+    strict_segments = []
     i = 0
-    while i <= len(pens) - 3:
-        pen1, pen2, pen3 = pens[i], pens[i + 1], pens[i + 2]
-
-        # 特征序列: 奇数笔方向决定线段方向
-        if pen1.direction == pen3.direction and \
-           pen2.direction != pen1.direction:
-            direction = pen1.direction
+    while i <= n - 3:
+        p1, p2, p3 = pens[i], pens[i + 1], pens[i + 2]
+        if p1.direction == p3.direction and p2.direction != p1.direction:
             seg = Segment(
-                direction=direction,
-                pens=pens[i:i + 3],
-                start_date=pen1.start_date,
-                end_date=pen3.end_date,
-                start_price=pen1.start_price,
-                end_price=pen3.end_price,
-                height=round(abs(pen3.end_price - pen1.start_price), 2),
+                direction=p1.direction, pens=[p1, p2, p3],
+                start_date=p1.start_date, end_date=p3.end_date,
+                start_price=p1.start_price, end_price=p3.end_price,
+                height=round(abs(p3.end_price - p1.start_price), 2),
             )
-            raw_segments.append(seg)
-        i += 1
+            strict_segments.append(seg)
+        i += 1  # 步长 1，方向自然交替 (up/down/up/down...)
 
-    if not raw_segments:
+    if strict_segments:
+        raw = strict_segments
+    else:
+        # Step 2: 宽松模式 — 方向分组回退
+        loose_segments = []
+        i = 0
+        while i < n:
+            dir_current = pens[i].direction
+            group = [pens[i]]
+            j = i + 1
+            while j < n and pens[j].direction == dir_current:
+                group.append(pens[j])
+                j += 1
+            if len(group) >= 3:
+                seg = Segment(
+                    direction=dir_current, pens=group,
+                    start_date=group[0].start_date, end_date=group[-1].end_date,
+                    start_price=group[0].start_price, end_price=group[-1].end_price,
+                    height=round(abs(group[-1].end_price - group[0].start_price), 2),
+                )
+                loose_segments.append(seg)
+            i = j
+        raw = loose_segments
+
+    if not raw:
         return []
 
-    # Step 2: 线段破坏标记
-    for j in range(1, len(raw_segments)):
-        prev = raw_segments[j - 1]
-        curr = raw_segments[j]
+    # Step 3: 线段破坏标记
+    for j in range(1, len(raw)):
+        prev = raw[j - 1]
+        curr = raw[j]
         if curr.direction != prev.direction:
             prev.destroyed_by = curr.direction
-            # 反向线段确认了上一线段的结束
 
-    # Step 3: 线段延续合并（同向段合并）
-    merged = []
-    current = raw_segments[0]
-    for seg in raw_segments[1:]:
-        if seg.direction == current.direction:
-            # 同向延续：合并
-            all_pens = current.pens + seg.pens
-            if not current.destroyed_by:
-                current = Segment(
-                    direction=current.direction,
-                    pens=all_pens,
-                    start_date=current.start_date,
-                    end_date=seg.end_date,
-                    start_price=current.start_price,
-                    end_price=seg.end_price,
-                    height=round(abs(seg.end_price - current.start_price), 2),
-                )
-            else:
-                merged.append(current)
-                current = seg
+    # Step 4: 同向线段合并（只有未被破坏的相邻同向段才合并）
+    merged = [raw[0]]
+    for seg in raw[1:]:
+        last = merged[-1]
+        if seg.direction == last.direction and not last.destroyed_by:
+            all_pens = last.pens + seg.pens
+            last = Segment(
+                direction=last.direction, pens=all_pens,
+                start_date=last.start_date, end_date=seg.end_date,
+                start_price=last.start_price, end_price=seg.end_price,
+                height=round(abs(seg.end_price - last.start_price), 2),
+            )
+            merged[-1] = last
         else:
-            merged.append(current)
-            current = seg
-    merged.append(current)
+            merged.append(seg)
 
     return merged
 

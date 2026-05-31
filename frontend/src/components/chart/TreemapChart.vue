@@ -164,16 +164,18 @@ function renderChart() {
 }
 
 function handleResize() {
-  if (!chart || !chartDom.value?.offsetParent) return
-  try { chart.resize() } catch { /* ECharts 内部 DOM 引用已失效时静默跳过 */ }
+  try {
+    if (!chart || !chartDom.value?.offsetParent) return
+    chart.resize()
+  } catch { /* ECharts 内部 DOM 引用已失效时静默跳过 */ }
 }
 
 watch(() => props.data, () => {
-  nextTick(renderChart)
+  nextTick(() => { try { renderChart() } catch {} })
 }, { deep: true })
 
 onMounted(() => {
-  nextTick(renderChart)
+  nextTick(() => { try { renderChart() } catch {} })
   window.addEventListener('resize', handleResize)
 })
 

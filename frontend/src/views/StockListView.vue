@@ -79,20 +79,20 @@
       </el-table-column>
       <el-table-column label="最新价" width="120" align="right">
         <template #default="{ row }">
-          <span class="mono">{{ row.price?.toFixed(2) }}</span>
+          <span class="mono">{{ formatPrice(row.price) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="涨跌幅" width="110" align="right">
         <template #default="{ row }">
-          <span :class="['change-tag', (row.changePct ?? 0) >= 0 ? 'rise' : 'fall']">
-            {{ (row.changePct ?? 0) >= 0 ? '+' : '' }}{{ (row.changePct ?? 0).toFixed(2) }}%
+          <span :class="['change-tag', Number(row.changePct ?? 0) >= 0 ? 'rise' : 'fall']">
+            {{ formatPercent(row.changePct) }}
           </span>
         </template>
       </el-table-column>
       <el-table-column label="涨跌额" width="100" align="right">
         <template #default="{ row }">
-          <span :class="['mono', (row.change ?? 0) >= 0 ? 'text-rise' : 'text-fall']">
-            {{ (row.change ?? 0) >= 0 ? '+' : '' }}{{ (row.change ?? 0).toFixed(2) }}
+          <span :class="['mono', Number(row.change ?? 0) >= 0 ? 'text-rise' : 'text-fall']">
+            {{ formatPoints(row.change) }}
           </span>
         </template>
       </el-table-column>
@@ -104,7 +104,7 @@
       <el-table-column prop="industry" label="行业" width="100" />
       <el-table-column label="市盈率" width="90" align="right">
         <template #default="{ row }">
-          <span class="mono">{{ typeof row.pe === 'number' ? row.pe.toFixed(1) : '-' }}</span>
+          <span class="mono">{{ row.pe ? safeNum(row.pe, 1) : '-' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="80" fixed="right">
@@ -133,7 +133,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStockStore } from '@/stores/stock'
 import { getIndustries } from '@/api/market'
-import { formatVol } from '@/utils/format'
+import { formatVol, formatPrice, formatPercent, formatPoints, safeNum } from '@/utils/format'
 
 interface MarketNode {
   key: string

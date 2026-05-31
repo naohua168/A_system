@@ -1,14 +1,10 @@
-# ============================================================
-# Backend Dev Dockerfile — 使用本地预构建 JAR
-# 构建上下文: ../backend (即 f:/bs/A_system/backend/)
-# ============================================================
 FROM eclipse-temurin:17-jre-alpine
 
 RUN apk add --no-cache curl
+RUN apk add --no-cache python3 py3-pandas || apk add --no-cache python3 py3-pandas --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 WORKDIR /app
 
-# 从 target/ 拷贝预构建 JAR（上下文是 backend/）
 COPY target/stock-analysis-backend-1.0.0.jar app.jar
 
 EXPOSE 8082

@@ -33,8 +33,17 @@ public class RedisDataController {
     @GetMapping("/market/detail/{code}")
     public Map<String, Object> marketDetail(@PathVariable String code) {
         List<Map<String, Object>> list = redisReader.getAsList("market:stock_basic");
-        return list.stream().filter(m -> code.equals(m.get("stock_code"))).findFirst()
-            .orElse(Map.of("stock_code", code, "stock_name", "数据加载中"));
+        // 遍历查找 — 避免 stream filter 的 Jackson 类型推断问题
+        for (Map<String, Object> m : list) {
+            Object sc = m.get("stockCode");
+            if (sc != null) {
+                String scStr = sc.toString();
+                if (code.equals(scStr)) return m;
+            }
+            Object sc2 = m.get("stock_code");
+            if (sc2 != null && code.equals(sc2.toString())) return m;
+        }
+        return Map.of("stockCode", code, "stockName", "数据加载中");
     }
 
     @GetMapping("/market/kline/{code}")
@@ -58,8 +67,8 @@ public class RedisDataController {
         String kw = keyword.toLowerCase();
         return all.stream()
             .filter(m -> {
-                String code = String.valueOf(m.getOrDefault("stock_code", ""));
-                String name = String.valueOf(m.getOrDefault("stock_name", ""));
+                String code = m.get("stockCode") != null ? String.valueOf(m.get("stockCode")) : String.valueOf(m.getOrDefault("stock_code", ""));
+                String name = m.get("stockName") != null ? String.valueOf(m.get("stockName")) : String.valueOf(m.getOrDefault("stock_name", ""));
                 return code.contains(kw) || name.contains(kw);
             })
             .limit(size)
@@ -104,6 +113,11 @@ public class RedisDataController {
         return redisReader.getAsList("market:market_list");
     }
 
+    @GetMapping("/market/financial/{code}")
+    public List<Map<String, Object>> financial(@PathVariable String code) {
+        return redisReader.getAsList("market:financial_" + code);
+    }
+
     @GetMapping("/market/max-date")
     public Map<String, Object> maxDate() {
         List<Map<String, Object>> list = redisReader.getAsList("market:max_date");
@@ -124,7 +138,7 @@ public class RedisDataController {
     @GetMapping("/index/{code}")
     public Map<String, Object> indexInfo(@PathVariable String code) {
         List<Map<String, Object>> list = redisReader.getAsList("market:index_list");
-        return list.stream().filter(m -> code.equals(m.get("index_code"))).findFirst()
+        return list.stream().filter(m -> code.equals(m.get("indexCode")) || code.equals(m.get("index_code"))).findFirst()
             .orElse(Map.of("indexCode", code, "note", "数据加载中"));
     }
 
@@ -249,8 +263,8 @@ public class RedisDataController {
     @GetMapping("/fund/{code}")
     public Map<String, Object> fundInfo(@PathVariable String code) {
         List<Map<String, Object>> list = redisReader.getAsList("market:fund_list");
-        return list.stream().filter(m -> code.equals(m.get("fund_code"))).findFirst()
-            .orElse(Map.of("fund_code", code, "note", "数据加载中"));
+        return list.stream().filter(m -> code.equals(m.get("fundCode")) || code.equals(m.get("fund_code"))).findFirst()
+            .orElse(Map.of("fundCode", code, "note", "数据加载中"));
     }
 
     @GetMapping("/fund/{code}/nav")

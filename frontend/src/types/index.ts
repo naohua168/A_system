@@ -79,6 +79,7 @@ export interface StockListItem {
 
 export interface StockDetail extends Stock {
   price?: number
+  changePct?: number
   changePercent?: number
   open?: number
   high?: number

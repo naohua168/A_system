@@ -46,6 +46,6 @@ export function getSectorRanking(tradeDate?: string): Promise<SectorRanking[]> {
 }
 
 /** 获取缠论分析数据（前端K线图渲染用） */
-export function getChanlunAnalysis(stockCode: string, days = 365): Promise<ChanlunAnalysis> {
-  return request.get(`/analysis/${stockCode}/chanlun`, { params: { days } })
+export function getChanlunAnalysis(stockCode: string, days = 365, type: 'stock' | 'index' = 'stock'): Promise<ChanlunAnalysis> {
+  return request.get(`/analysis/${stockCode}/chanlun`, { params: { days, type } })
 }

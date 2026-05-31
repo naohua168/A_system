@@ -1,224 +1,388 @@
 """
-数据层自愈管道 — 直接 CSV→Redis，绕过 Hive MapReduce
+数据层自愈管道 — CSV→Redis，全量真实数据不模拟
 每 20 分钟自动运行，确保所有 Redis key 不因 TTL 过期
 """
 import sys
 sys.path.insert(0, '/app/pylib')
-import json, redis, csv, glob, os, re, random, time
-from datetime import datetime, timedelta
+import json, redis, csv, glob, os, re, time
+from datetime import datetime
 
 CSV_DIR = '/data/raw'
 REDIS_HOST = 'redis'
-random.seed(42)
 
 r = redis.Redis(host=REDIS_HOST, port=6379, db=0)
 
-def load_csv(pattern, limit_files=5):
-    """读取 CSV 文件返回字典列表（自动处理 utf-8-sig BOM）"""
-    files = sorted(glob.glob(os.path.join(CSV_DIR, pattern)))
-    rows = []
-    for fp in files[:limit_files]:
-        try:
-            with open(fp, 'r', encoding='utf-8-sig') as f:
-                rows.extend(list(csv.DictReader(f)))
-        except: pass
-    return rows
+# ── TTL 策略 ──
+TTL_LONG = 604800       # 7 天（基础数据）
+TTL_MEDIUM = 86400      # 24 小时（动态数据）
+TTL_SHORT = 3600        # 1 小时（高频数据）
 
-def put(key, data, ttl=86400, limit=None):
-    """安全写入 Redis，失败不中断"""
+def latest_csv(pattern):
+    """取最新 CSV 的行"""
+    files = sorted(glob.glob(os.path.join(CSV_DIR, pattern)))
+    if not files: return []
+    fp = files[-1]
+    try:
+        with open(fp, 'r', encoding='utf-8-sig') as f:
+            return list(csv.DictReader(f))
+    except:
+        return []
+
+def to_camel(o):
+    """递归转换 dict keys 为 camelCase"""
+    if isinstance(o, dict):
+        return {snake_to_camel(k): to_camel(v) for k, v in o.items()}
+    elif isinstance(o, list):
+        return [to_camel(i) for i in o]
+    return o
+
+S2C_OVERRIDE = {'pe_ttm': 'pe', 'change_pct': 'changePct', 'change_amt': 'change', 'mcap_yi': 'mcapYi',
+                'turnover_pct': 'turnoverPct', 'up_count': 'upCount', 'down_count': 'downCount',
+                'hgt_yi': 'hgtYi', 'sgt_yi': 'sgtYi', 'index_code': 'indexCode',
+                'index_name': 'indexName', 'stock_code': 'stockCode', 'stock_name': 'stockName',
+                'trade_date': 'tradeDate', 'publish_time': 'publishTime', 'fund_code': 'fundCode',
+                'industry': 'industryName', 'close': 'closePoint', 'open': 'openPoint',
+                'high': 'highPoint', 'low': 'lowPoint', 'volume': 'volume'}
+
+def snake_to_camel(name):
+    if name in S2C_OVERRIDE: return S2C_OVERRIDE[name]
+    parts = name.split('_')
+    return parts[0] + ''.join(p.capitalize() for p in parts[1:])
+
+NUM_FIELDS = {'price','pe','pb','mcapYi','turnoverPct','changePct','change',
+              'openPoint','closePoint','highPoint','lowPoint','volume','amount',
+              'openPrice','closePrice','highPrice','lowPrice','preClose','lastClose','turnoverRate',
+              'stockCount','totalAmount','stocks','upCount','downCount',
+              'hgtYi','sgtYi'}
+
+def fix_types(o):
+    """递归将已知数值字段从字符串转为数字"""
+    if isinstance(o, dict):
+        return {k: (float(v) if k in NUM_FIELDS and isinstance(v, str) and v else fix_types(v)) for k, v in o.items()}
+    if isinstance(o, list):
+        return [fix_types(i) for i in o]
+    return o
+
+def safe_write(key, data, ttl=TTL_LONG, limit=None):
+    """写 Redis：已有 TTL>600 时不覆盖；自动转 camelCase + 数值类型"""
     if not data: return 0
     if limit: data = data[:limit]
     try:
+        if r.exists(key) and r.ttl(key) > 600:
+            return 0
+    except:
+        pass
+    try:
+        data = fix_types(to_camel(data))
         r.setex(key, ttl, json.dumps(data, ensure_ascii=False, default=str))
-        return len(data)
+        return len(data) if isinstance(data, list) else 1
     except:
         return 0
 
-def trading_days(n=60):
-    days = []
-    d = datetime.now()
-    while len(days) < n:
-        if d.weekday() < 5:
-            days.insert(0, d.strftime("%Y%m%d"))
-        d -= timedelta(days=1)
-    return days
+def safe_write_no_skip(key, data, ttl=TTL_LONG, limit=None):
+    """写 Redis：强制写入（不检查 TTL）；自动转 camelCase + 数值类型"""
+    if not data: return 0
+    if limit: data = data[:limit]
+    try:
+        data = fix_types(to_camel(data))
+        r.setex(key, ttl, json.dumps(data, ensure_ascii=False, default=str))
+        return len(data) if isinstance(data, list) else 1
+    except:
+        return 0
+
+
 
 def fill_static():
-    """填充静态数据（从 CSV 直接读取）"""
+    """从 CSV 填充全部真实数据 — 不生成任何模拟数据"""
     total = 0
 
-    # 1. stock_basic
-    rows = load_csv('stock_basic_*.csv')
-    sb = [{'stock_code': r.get('code',''), 'stock_name': r.get('name','')} for r in rows if r.get('code')]
-    total += put('market:stock_basic', sb, 3600, 200)
-    print(f'  stock_basic: {min(len(sb),200)}')
-
-    # 2. cls_news
-    rows = load_csv('cls_news_*.csv')
-    seen=set(); uniq=[]
-    for r in rows:
-        k = r.get('标题','')+r.get('发布日期','')
-        if k not in seen and k.strip():
-            seen.add(k)
-            uniq.append({'title': r.get('标题',''), 'content': r.get('内容',''),
-                         'datetime': r.get('发布日期',''), 'source': r.get('发布时间','')})
-    total += put('market:cls_news', uniq, 86400, 100)
-    print(f'  cls_news: {min(len(uniq),100)}')
-
-    # 3. global_news
-    rows = load_csv('global_news_*.csv')
-    seen=set(); uniq=[]
-    for r in rows:
-        k = r.get('标题','')+r.get('发布时间','')
-        if k not in seen and k.strip():
-            seen.add(k)
-            uniq.append({'title': r.get('标题',''), 'summary': r.get('摘要',''),
-                         'publish_time': r.get('发布时间',''), 'url': r.get('链接','')})
-    total += put('market:global_news', uniq, 86400, 50)
-    print(f'  global_news: {min(len(uniq),50)}')
-
-    # 4. northbound
-    rows = load_csv('northbound_*.csv')
-    seen=set(); uniq=[]
-    for r in rows:
-        d = r.get('time','')
-        if d not in seen and d:
-            seen.add(d)
-            uniq.append({'trade_date': d, 'hgt_yi': r.get('hgt_yi',''), 'sgt_yi': r.get('sgt_yi','')})
-    total += put('market:northbound', uniq, 86400, 20)
-    print(f'  northbound: {min(len(uniq),20)}')
-
-    # 5. fund_list
-    rows = load_csv('fund_details_*.csv')
-    valid = [r for r in rows if re.match(r'^[0-9]+\.?[0-9]*$', r.get('scale',''))]
-    valid.sort(key=lambda x: float(x.get('scale',0)), reverse=True)
-    total += put('market:fund_list', valid, 86400, 200)
-    print(f'  fund_list: {min(len(valid),200)} (filtered from {len(rows)})')
-
-    # 6. fund_nav
-    rows = load_csv('fund_nav_*.csv')
-    rows.sort(key=lambda x: x.get('date',''), reverse=True)
-    fn = [{'fund_code': r.get('code',''), 'nav_date': r.get('date',''),
-           'nav': r.get('nav',''), 'accumulated_nav': r.get('nav','')} for r in rows if r.get('code')]
-    total += put('market:fund_nav', fn, 86400, 100)
-    print(f'  fund_nav: {min(len(fn),100)}')
-
-    # 7. hot_reason
-    rows = load_csv('hot_reason_*.csv')
-    seen=set(); uniq=[]
-    for r in rows:
-        c = r.get('代码','')
-        if c not in seen and c:
-            seen.add(c)
-            uniq.append({'stock_name': r.get('名称',''), 'stock_code': c,
-                         'reason': r.get('题材归因',''), 'trade_date': r.get('date','')})
-    total += put('market:hot_reason', uniq, 3600, 100)
-    print(f'  hot_reason: {min(len(uniq),100)}')
-
-    # 8. sector_ranking
-    sr = [{'stock_code': r.get('code',''), 'stock_name': r.get('name',''),
-           'mcap_yi': r.get('mcap_yi',''), 'turnover_pct': r.get('turnover_pct','')}
-          for r in load_csv('stock_basic_*.csv') if r.get('code')]
-    total += put('market:sector_ranking', sr, 3600, 200)
-    print(f'  sector_ranking: {min(len(sr),200)}')
-
-    return total
-
-def fill_mock():
-    """填充无CSV源的数据（指数/行业/龙虎榜/K线等）"""
-    total = 0
-
-    # 1. 大盘指数
-    indices = [
-        {"index_code":"000001","index_name":"上证指数","price":3350.42,"change_pct":0.56},
-        {"index_code":"399001","index_name":"深证成指","price":11256.78,"change_pct":1.23},
-        {"index_code":"399006","index_name":"创业板指","price":2356.89,"change_pct":1.96},
-        {"index_code":"000688","index_name":"科创50","price":1289.45,"change_pct":2.15},
-        {"index_code":"000300","index_name":"沪深300","price":4123.56,"change_pct":0.78},
-    ]
-    total += put('market:index_list', indices, 86400)
-    print(f'  index_list: {len(indices)}')
-
-    # 2. 行业树图
-    treemap = [
-        {"industry":"金融","mcap_yi":125000,"change_pct":1.2,"stocks":120},
-        {"industry":"科技","mcap_yi":98000,"change_pct":2.5,"stocks":200},
-        {"industry":"医药","mcap_yi":65000,"change_pct":0.8,"stocks":150},
-        {"industry":"消费","mcap_yi":72000,"change_pct":1.5,"stocks":180},
-        {"industry":"新能源","mcap_yi":55000,"change_pct":3.2,"stocks":90},
-    ]
-    total += put('market:industry_treemap', treemap, 86400)
-    print(f'  industry_treemap: {len(treemap)}')
-
-    # 3. 行业对比
-    comp = [
-        {"industry":"金融","avg_change":1.2,"total_amount":580,"stock_count":120},
-        {"industry":"科技","avg_change":2.5,"total_amount":720,"stock_count":200},
-        {"industry":"医药","avg_change":0.8,"total_amount":320,"stock_count":150},
-        {"industry":"新能源","avg_change":3.2,"total_amount":450,"stock_count":90},
-    ]
-    total += put('market:industry_compare', comp, 86400)
-    print(f'  industry_compare: {len(comp)}')
-
-    # 4. 龙虎榜
-    dt = [
-        {"stock_code":"600000","stock_name":"浦发银行","buy_amount":5.2,"sell_amount":3.8,"net_amount":1.4,"reason":"日涨幅偏离值达7%"},
-        {"stock_code":"600519","stock_name":"贵州茅台","buy_amount":8.5,"sell_amount":6.2,"net_amount":2.3,"reason":"连续三日涨幅偏离值累计达20%"},
-    ]
-    total += put('market:dragon_tiger', dt, 86400)
-    print(f'  dragon_tiger: {len(dt)}')
-
-    return total
-
-def fill_kline():
-    """从 stock_basic 生成模拟 K 线，写 market:kline_{code}"""
-    rows = load_csv('stock_basic_*.csv', limit_files=1)
-    codes = [r.get('code','') for r in rows if r.get('code')][:200]
-    days = trading_days(60)
-    count = 0
-    for code in codes:
-        base = random.uniform(5, 80)
-        klines = []
-        price = base
-        for td in days:
-            cp = random.uniform(-0.05, 0.05)
-            close = round(price * (1 + cp), 2)
-            close = max(close, 0.5)
-            high = round(close * (1 + random.uniform(0, 0.03)), 2)
-            low = round(close * (1 - random.uniform(0, 0.03)), 2)
-            o = round(low + random.random() * (high - low), 2)
-            volume = int(random.uniform(500000, 50000000))
-            amount = round(volume * close / 100000000, 2)
-            klines.append({
-                "stock_code": code, "trade_date": td,
-                "open": o, "high": high, "low": low, "close": close,
-                "volume": volume, "amount": amount, "change_pct": round(cp * 100, 2)
+    # ════════════════════════════════════════════
+    # 1. stock_basic (5,542只全量 + price/pe/pb/市值)
+    # ════════════════════════════════════════════
+    tq = latest_csv('tencent_quote_*.csv')
+    if tq:
+        sb_list = []
+        for r in tq:
+            code = r.get('stock_code', '')
+            if not code:
+                continue
+            sb_list.append({
+                'stock_code': code,
+                'stock_name': r.get('stock_name', ''),
+                'price': r.get('price', '0'),
+                'pe_ttm': r.get('pe_ttm', ''),
+                'pb': r.get('pb', ''),
+                'mcap_yi': r.get('mcap_yi', '0'),
+                'turnover_pct': r.get('turnover_pct', '0'),
+                'change_pct': r.get('change_pct', '0'),
+                'change_amt': r.get('change_amt', '0'),
+                'last_close': r.get('last_close', '0'),
+                'volume': r.get('volume', '0'),
+                'amount_wan': r.get('amount_wan', '0'),
             })
-            price = close
-        if put(f"market:kline_{code}", klines, 7200):  # TTL=2h
-            count += len(klines)
-    print(f'  kline: {len(codes)} stocks, {count} records')
-    return count
+        cnt = safe_write('market:stock_basic', sb_list, TTL_LONG)
+        print(f'  stock_basic: {len(sb_list)} (tencent_quote)')
+        total += cnt
 
-def get_sample_data_for_kline():
-    return fill_kline()
+        # 同时写入 detail_{code}（个股详情）
+        detail_cnt = 0
+        for r in tq:
+            code = r.get('stock_code', '')
+            if not code:
+                continue
+            detail = {
+                'stock_code': code,
+                'stock_name': r.get('stock_name', ''),
+                'price': r.get('price', '0'),
+                'pe_ttm': r.get('pe_ttm', ''),
+                'pb': r.get('pb', ''),
+                'mcap_yi': r.get('mcap_yi', '0'),
+                'turnover_pct': r.get('turnover_pct', '0'),
+                'change_pct': r.get('change_pct', '0'),
+            }
+            detail = to_camel(detail)
+            try:
+                if not (r.exists(f'market:detail_{code}') and r.ttl(f'market:detail_{code}') > 600):
+                    r.setex(f'market:detail_{code}', TTL_LONG,
+                            json.dumps(detail, ensure_ascii=False, default=str))
+                    detail_cnt += 1
+            except:
+                pass
+        print(f'  detail_*: {detail_cnt} stocks')
+        total += detail_cnt
+
+        # 写入 sector_ranking（同源数据）
+        sr_list = [{'stock_code': r['stock_code'], 'stock_name': r.get('stock_name',''),
+                     'mcap_yi': r.get('mcap_yi','0'), 'turnover_pct': r.get('turnover_pct','0')}
+                   for r in tq]
+        safe_write('market:sector_ranking', sr_list, TTL_MEDIUM)
+        print(f'  sector_ranking: {len(sr_list)}')
+        total += len(sr_list)
+    else:
+        print('  ** tencent_quote CSV 不存在！stock_basic & detail 写入跳过 **')
+
+    # ════════════════════════════════════════════
+    # 2. 指数 (index_list)
+    # ════════════════════════════════════════════
+    idx = latest_csv('tencent_index_*.csv')
+    if idx:
+        idx_list = []
+        for r in idx:
+            code = r.get('index_code', '').lstrip('sh').lstrip('sz')
+            idx_list.append({
+                'index_code': code or r.get('index_code',''),
+                'index_name': r.get('index_name',''),
+                'close_point': r.get('price', '0'),
+                'change_pct': r.get('change_pct', '0'),
+            })
+        cnt = safe_write('market:index_list', idx_list, TTL_LONG)
+        print(f'  index_list: {len(idx_list)}')
+        total += cnt
+    else:
+        print('  ** tencent_index CSV 不存在！index_list 写入跳过 **')
+
+    # ════════════════════════════════════════════
+    # 3. 行业对比 + 行业树图 (industry_compare)
+    # ════════════════════════════════════════════
+    ind = latest_csv('industry_compare_*.csv')
+    if ind:
+        ind_comp = []
+        seen = set()
+        for r in ind:
+            name = r.get('industry', '')
+            if name in seen:
+                continue
+            seen.add(name)
+            ind_comp.append({
+                'industry': name,
+                'change_pct': r.get('change_pct', '0'),
+                'stock_count': int(r.get('up_count', 0) or 0) + int(r.get('down_count', 0) or 0),
+                'total_amount': 0,
+            })
+        cnt = safe_write('market:industry_compare', ind_comp, TTL_LONG)
+        print(f'  industry_compare: {len(ind_comp)}')
+        total += cnt
+
+        # 行业树图 (同源)
+        treemap = [{'industry': x['industry'], 'change_pct': x['change_pct'],
+                     'mcap_yi': 0, 'stocks': x['stock_count']} for x in ind_comp]
+        safe_write('market:industry_treemap', treemap, TTL_LONG)
+        print(f'  industry_treemap: {len(treemap)}')
+        total += len(treemap)
+    else:
+        print('  ** industry_compare CSV 不存在！行业数据跳过 **')
+
+    # ════════════════════════════════════════════
+    # 4. 北向资金
+    # ════════════════════════════════════════════
+    nb = latest_csv('northbound_*.csv')
+    if nb:
+        seen = set()
+        uniq = []
+        for r in nb:
+            d = r.get('time', '')
+            if d not in seen and d:
+                seen.add(d)
+                uniq.append({'trade_date': d, 'hgt_yi': r.get('hgt_yi','0'), 'sgt_yi': r.get('sgt_yi','0')})
+        safe_write('market:northbound', uniq, TTL_MEDIUM, 50)
+        print(f'  northbound: {min(len(uniq),50)}')
+        total += min(len(uniq), 50)
+    else:
+        print('  ** northbound CSV 不存在！北向资金跳过 **')
+
+    # ════════════════════════════════════════════
+    # 5. 题材热点
+    # ════════════════════════════════════════════
+    hr = latest_csv('hot_reason_*.csv')
+    if hr:
+        seen = set()
+        uniq = []
+        for r in hr:
+            c = r.get('代码', '')
+            if c not in seen and c:
+                seen.add(c)
+                uniq.append({'stock_code': c, 'stock_name': r.get('名称',''),
+                             'reason': r.get('题材归因',''), 'trade_date': r.get('date','')})
+        safe_write('market:hot_reason', uniq, TTL_MEDIUM, 200)
+        print(f'  hot_reason: {min(len(uniq),200)}')
+        total += min(len(uniq), 200)
+    else:
+        print('  ** hot_reason CSV 不存在！题材热点跳过 **')
+
+    # ════════════════════════════════════════════
+    # 6. 财联社快讯
+    # ════════════════════════════════════════════
+    cn = latest_csv('cls_news_*.csv')
+    if cn:
+        seen = set()
+        uniq = []
+        for r in cn:
+            k = r.get('标题','') + r.get('发布日期','')
+            if k not in seen and k.strip():
+                seen.add(k)
+                uniq.append({'title': r.get('标题',''), 'content': r.get('内容',''),
+                             'datetime': r.get('发布日期',''), 'source': r.get('发布时间','')})
+        safe_write('market:cls_news', uniq, TTL_MEDIUM, 200)
+        print(f'  cls_news: {min(len(uniq),200)}')
+        total += min(len(uniq), 200)
+    else:
+        print('  ** cls_news CSV 不存在！财联社快讯跳过 **')
+
+    # ════════════════════════════════════════════
+    # 7. 全球资讯
+    # ════════════════════════════════════════════
+    gn = latest_csv('global_news_*.csv')
+    if gn:
+        seen = set()
+        uniq = []
+        for r in gn:
+            k = r.get('标题','') + r.get('发布时间','')
+            if k not in seen and k.strip():
+                seen.add(k)
+                uniq.append({'title': r.get('标题',''), 'summary': r.get('摘要',''),
+                             'publish_time': r.get('发布时间',''), 'url': r.get('链接','')})
+        safe_write('market:global_news', uniq, TTL_MEDIUM, 100)
+        print(f'  global_news: {min(len(uniq),100)}')
+        total += min(len(uniq), 100)
+    else:
+        print('  ** global_news CSV 不存在！全球资讯跳过 **')
+
+    # ════════════════════════════════════════════
+    # 8. 基金列表 (26,908只，使用 fund_basic CSV)
+    # ════════════════════════════════════════════
+    fb = latest_csv('fund_basic_*.csv')
+    if fb:
+        fund_list = []
+        for r in fb:
+            code = r.get('fund_code', '')
+            if not code:
+                continue
+            fund_list.append({
+                'fundCode': code,
+                'fundName': r.get('fund_name', ''),
+                'fundType': r.get('fund_type', ''),
+                'company': r.get('company', ''),
+                'manager': r.get('manager', ''),
+                'establishDate': r.get('establish_date', ''),
+                'nav': float(r.get('nav', 0)) if r.get('nav') else 0,
+                'accumulatedNav': float(r.get('accumulated_nav', 0)) if r.get('accumulated_nav') else 0,
+                'scale': float(r.get('scale', 0)) if r.get('scale') else 0,
+                'status': r.get('status', ''),
+                # snake_case for backend compatibility
+                'fund_code': code,
+                'fund_name': r.get('fund_name', ''),
+                'fund_type': r.get('fund_type', ''),
+                'establish_date': r.get('establish_date', ''),
+                'accumulated_nav': float(r.get('accumulated_nav', 0)) if r.get('accumulated_nav') else 0,
+            })
+        safe_write_no_skip('market:fund_list', fund_list, TTL_LONG)
+        print(f'  fund_list: {len(fund_list)}')
+        total += len(fund_list)
+    else:
+        print('  ** fund_basic CSV 不存在！基金列表跳过 **')
+
+    # 基金净值
+    fn = latest_csv('fund_nav_*.csv')
+    if fn:
+        fn_list = [{'fundCode': r.get('code', ''), 'navDate': r.get('date', ''),
+                    'nav': float(r.get('nav', 0)) if r.get('nav') else 0,
+                    'accumulatedNav': float(r.get('nav', 0)) if r.get('nav') else 0}
+                   for r in fn if r.get('code')]
+        safe_write('market:fund_nav', fn_list, TTL_MEDIUM, 200)
+        print(f'  fund_nav: {min(len(fn_list),200)}')
+        total += min(len(fn_list), 200)
+
+    # ════════════════════════════════════════════
+    # 9. 资金流向（从 fund_flow CSV 导入）
+    # ════════════════════════════════════════════
+    ff = latest_csv('fund_flow_*.csv')
+    if ff:
+        by_code = {}
+        for row in ff:
+            code = row.get('stock_code', '') or row.get('stockCode', '') or row.get('code', '')
+            if not code:
+                continue
+            by_code.setdefault(code, []).append({
+                'stockCode': code,
+                'tradeDate': row.get('trade_date', row.get('tradeDate', '')),
+                'mainIn': float(row.get('main_net', row.get('mainIn', 0)) or 0),
+                'littleNetIn': float(row.get('small_net', row.get('littleNetIn', 0)) or 0),
+                'mediumNetIn': float(row.get('mid_net', row.get('mediumNetIn', 0)) or 0),
+                'largeNetIn': float(row.get('large_net', row.get('largeNetIn', 0)) or 0),
+                'superNetIn': float(row.get('super_net', row.get('superNetIn', 0)) or 0),
+            })
+        ff_cnt = 0
+        for code, items in by_code.items():
+            safe_write(f'market:fund_flow_{code}', items, TTL_MEDIUM)
+            ff_cnt += 1
+        print(f'  fund_flow_*: {ff_cnt} stocks, {len(ff)} rows')
+        total += ff_cnt
+    else:
+        print('  ** fund_flow CSV 不存在！资金流向跳过 **')
+
+    # K线: 管道 (hive_to_redis) 负责写入真实 K 线（若运行）
+
+    return total
+
 
 def seed_all():
-    """全量填充"""
+    """全量填充 — 只读真实 CSV，不生成模拟数据"""
     print(f'[{datetime.now():%H:%M:%S}] 数据自愈管道启动...')
     t0 = time.time()
     total = fill_static()
-    total += fill_mock()
-    total += fill_kline()
     elapsed = time.time() - t0
     print(f'[{datetime.now():%H:%M:%S}] 完成! {total} 条, 耗时{elapsed:.0f}s, Redis共{r.dbsize()}key')
     return total
 
+
 if __name__ == '__main__':
-    print('=== 数据层自愈管道 ===')
+    print('=== 数据管道 (真实数据自愈) ===')
     print(f'Redis: {REDIS_HOST}:6379, CSV: {CSV_DIR}')
     seed_all()
-    # 进入循环（每20分钟）
     while True:
-        time.sleep(1200)  # 20min
-        seed_all()
+        try:
+            time.sleep(1200)
+            seed_all()
+        except Exception as e:
+            print(f'[{datetime.now():%H:%M:%S}] 管道异常(20分钟后重试): {e}')
+            time.sleep(1200)

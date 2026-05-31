@@ -5,6 +5,7 @@ import com.stock.entity.StockDaily;
 import com.stock.mapper.AnalysisResultMapper;
 import com.stock.mapper.StockDailyMapper;
 import com.stock.service.AnalysisService;
+import com.stock.service.RedisReader;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -18,6 +19,8 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * 分析服务 — 提供收益率计算、趋势判断、相关性分析等功能。
@@ -32,11 +35,14 @@ public class AnalysisServiceImpl implements AnalysisService {
 
     private final StockDailyMapper stockDailyMapper;
     private final AnalysisResultMapper analysisResultMapper;
+    private final RedisReader redisReader;
 
     public AnalysisServiceImpl(StockDailyMapper stockDailyMapper,
-                               AnalysisResultMapper analysisResultMapper) {
+                               AnalysisResultMapper analysisResultMapper,
+                               RedisReader redisReader) {
         this.stockDailyMapper = stockDailyMapper;
         this.analysisResultMapper = analysisResultMapper;
+        this.redisReader = redisReader;
     }
 
     @Override
@@ -252,50 +258,101 @@ public class AnalysisServiceImpl implements AnalysisService {
     }
 
     // ============================================================
-    // 缠论分析 — 调用 L3 Python 分析引擎
+    // 缠论分析 — 调用 Python chanlun_bridge（从 Redis 传入 K 线数据）
     // ============================================================
 
-    /** Python 运行路径（从环境变量读取，默认 python） */
-    private static final String PYTHON = System.getenv().getOrDefault("ANALYSIS_PYTHON", "python");
-    private static final String BRIDGE_SCRIPT = "../analysis-algorithms/chanlun_bridge.py";
+    private static final String PYTHON = System.getenv().getOrDefault("ANALYSIS_PYTHON", "python3");
+    private static final String BRIDGE_SCRIPT = "/analysis-algorithms/chanlun_bridge.py";
 
     @Override
     public Map<String, Object> getChanlunAnalysis(String stockCode, int days) {
+        return getChanlunAnalysis(stockCode, days, false);
+    }
+
+    public Map<String, Object> getChanlunAnalysis(String stockCode, int days, boolean preferIndex) {
+        Path klineFile = null;
         try {
+            // 1. 从 Redis 读取 K 线数据
+            //    优先股票K线 → 降级指数K线；preferIndex=true 时反转优先级
+            String klineJson = null;
+            if (preferIndex) {
+                klineJson = redisReader.getAsJson("market:index_kline_" + stockCode);
+                if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
+                    klineJson = redisReader.getAsJson("market:kline_" + stockCode);
+                }
+            } else {
+                klineJson = redisReader.getAsJson("market:kline_" + stockCode);
+                if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
+                    klineJson = redisReader.getAsJson("market:index_kline_" + stockCode);
+                }
+            }
+            if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
+                log.warn("缠论Redis K线数据为空: code={}", stockCode);
+                Map<String, Object> err = new HashMap<>();
+                err.put("error", "Redis无K线数据: " + stockCode);
+                err.put("bi", Collections.emptyList());
+                err.put("zhongshu", Collections.emptyList());
+                err.put("fengxing", Collections.emptyList());
+                err.put("buy_sell_points", Collections.emptyList());
+                err.put("stats", Map.of("top_fractals", 0, "bottom_fractals", 0, "pens", 0, "centers", 0, "signals", 0));
+                return err;
+            }
+
+            // 2. 写入临时文件
+            klineFile = Files.createTempFile("chanlun_" + stockCode + "_", ".json");
+            Files.writeString(klineFile, klineJson, java.nio.charset.StandardCharsets.UTF_8);
+
+            // 3. 调用 Python 分析引擎，传入 K 线文件路径
             ProcessBuilder pb = new ProcessBuilder(
                     PYTHON, "-W", "ignore", BRIDGE_SCRIPT,
                     "--code", stockCode,
-                    "--days", String.valueOf(days)
+                    "--days", String.valueOf(days),
+                    "--kline-file", klineFile.toAbsolutePath().toString()
             );
-            pb.directory(new java.io.File(".").getAbsoluteFile().getParentFile());
+            pb.redirectErrorStream(true);
 
             Process process = pb.start();
+            boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                log.warn("缠论Python进程超时(30s), code={}", stockCode);
+                process.destroyForcibly();
+                return errorMap("Python进程超时");
+            }
+
             String jsonOutput;
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 jsonOutput = reader.lines().collect(Collectors.joining("\n"));
             }
 
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                log.warn("缠论Python进程退出码={}, code={}", exitCode, stockCode);
-                Map<String, Object> error = new HashMap<>();
-                error.put("error", "Python进程退出码: " + exitCode);
-                return error;
-            }
-
+            // 4. 解析 Python 输出
             @SuppressWarnings("unchecked")
             Map<String, Object> result = new ObjectMapper().readValue(jsonOutput, Map.class);
-            log.info("缠论分析完成: code={}, bi={}, zhongshu={}",
-                    stockCode, result.getOrDefault("bi", "?"), result.getOrDefault("zhongshu", "?"));
+            log.info("缠论分析完成: code={}, bi={}, zhongshu={}, fx={}",
+                    stockCode, result.getOrDefault("bi", "?"),
+                    result.getOrDefault("zhongshu", "?"),
+                    result.getOrDefault("fengxing", "?"));
             return result;
 
         } catch (Exception e) {
             log.error("缠论分析失败: code={}", stockCode, e);
-            Map<String, Object> error = new HashMap<>();
-            error.put("error", "缠论分析失败: " + e.getMessage());
-            return error;
+            return errorMap("缠论分析失败: " + e.getMessage());
+        } finally {
+            if (klineFile != null) {
+                try { Files.deleteIfExists(klineFile); } catch (Exception ignored) {}
+            }
         }
+    }
+
+    private Map<String, Object> errorMap(String msg) {
+        Map<String, Object> err = new HashMap<>();
+        err.put("error", msg);
+        err.put("bi", Collections.emptyList());
+        err.put("zhongshu", Collections.emptyList());
+        err.put("fengxing", Collections.emptyList());
+        err.put("buy_sell_points", Collections.emptyList());
+        err.put("stats", Map.of("top_fractals", 0, "bottom_fractals", 0, "pens", 0, "centers", 0, "signals", 0));
+        return err;
     }
 
     // ============================================================

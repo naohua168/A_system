@@ -52,6 +52,21 @@ SCHEMAS = {
         'table': 'stock_filings',
         'columns': 'stock_code STRING, title STRING, type STRING, publish_date STRING',
     },
+    'tencent_index': {
+        'hdfs': '/user/hadoop/stock_data/index/quote',
+        'table': 'tencent_index',
+        'columns': 'index_code STRING, index_name STRING, price DOUBLE, change_pct DOUBLE, open DOUBLE, high DOUBLE, low DOUBLE, volume BIGINT, amount DOUBLE',
+    },
+    'index_daily': {
+        'hdfs': '/user/hadoop/stock_data/index/daily',
+        'table': 'index_daily',
+        'columns': 'index_code STRING, trade_date STRING, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT, amount DOUBLE, change_pct DOUBLE',
+    },
+    'stock_industry': {
+        'hdfs': '/user/hadoop/stock_data/industry',
+        'table': 'stock_industry',
+        'columns': 'stock_code STRING, industry STRING, industry_en STRING',
+    },
 }
 
 def webhdfs_put(local_path, hdfs_path):

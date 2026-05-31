@@ -73,4 +73,7 @@ public interface AnalysisService {
      * @return {bi, zhongshu, fengxing, buy_sell_points, stats}
      */
     Map<String, Object> getChanlunAnalysis(String stockCode, int days);
+
+    /** 缠论分析（可指定优先使用指数K线） */
+    Map<String, Object> getChanlunAnalysis(String stockCode, int days, boolean preferIndex);
 }

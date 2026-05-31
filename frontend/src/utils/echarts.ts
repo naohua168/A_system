@@ -15,6 +15,7 @@ import {
   TreemapChart,
   ScatterChart,
   HeatmapChart,
+  CustomChart,
 } from 'echarts/charts'
 import {
   TitleComponent,
@@ -37,6 +38,7 @@ use([
   TreemapChart,
   ScatterChart,
   HeatmapChart,
+  CustomChart,
   TitleComponent,
   TooltipComponent,
   LegendComponent,

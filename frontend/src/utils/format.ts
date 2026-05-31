@@ -63,9 +63,17 @@ export function formatPoints(p: unknown): string {
  */
 export function parseTradeDate(dateStr: string): number {
   if (!dateStr) return 0
+  // "YYYY-MM-DD" / "YYYY/MM/DD"
   const parts = dateStr.split(/[-/]/)
   if (parts.length === 3) {
     return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime()
+  }
+  // "YYYYMMDD" (8-digit, e.g. index kline)
+  if (/^\d{8}$/.test(dateStr)) {
+    const y = Number(dateStr.slice(0, 4))
+    const m = Number(dateStr.slice(4, 6)) - 1
+    const d = Number(dateStr.slice(6, 8))
+    return new Date(y, m, d).getTime()
   }
   return new Date(dateStr).getTime() || 0
 }

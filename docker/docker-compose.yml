@@ -443,6 +443,7 @@ services:
       - "8082:8082"
     volumes:
       - backend-logs:/app/logs
+      - ../analysis-algorithms:/analysis-algorithms
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -452,6 +453,7 @@ services:
       - SPRING_REDIS_PORT=6379
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - AI_SERVICE_URL=http://ai-service:8000
+      - ANALYSIS_PYTHON=python3
     healthcheck:
       test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/ | grep -q ."]
       interval: 15s

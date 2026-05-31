@@ -304,7 +304,6 @@ import TreemapChart from '@/components/chart/TreemapChart.vue'
 import SectorDetailPanel from '@/components/chart/SectorDetailPanel.vue'
 import { getStockList, getIndustryTreemap, getSectorKline } from '@/api/market'
 import { getIndexList } from '@/api/index'
-import { getSectorRanking } from '@/api/analysis'
 import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare } from '@/api/signal'
 import { formatPrice, formatPercent, formatPoints, getChangeClass } from '@/utils/format'
 import { safeNum } from '@/composables/useApiRetry'
@@ -313,7 +312,6 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import type {
   HotReason, IndustryTopItem, IndexCard, SectorNode, HomeStockCard,
   Northbound, HotReasonResponse, IndustryCompareResponse, DragonTigerDaily,
-  SectorRanking,
 } from '@/types'
 
 const router = useRouter()
@@ -335,13 +333,13 @@ const hotReasons = ref<HotReason[]>([])
 const industryTop = ref<IndustryTopItem[]>([])
 const dtCount = ref(0)
 
-// ── 共享请求缓存：loadMarketStats 和 loadSectorData fallback 共用一次 getSectorRanking ──
-let sectorRankingPromise: Promise<any[]> | null = null
-function getCachedSectorRanking(): Promise<any[]> {
-  if (!sectorRankingPromise) {
-    sectorRankingPromise = (getSectorRanking() as Promise<any[]>).catch(() => [])
-  }
-  return sectorRankingPromise
+/** 工具函数：无论 API 返回数组还是 {records} 都提取为数组 */
+function asArray(raw: any): any[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (Array.isArray(raw.records)) return raw.records
+  if (Array.isArray(raw.data)) return raw.data
+  return []
 }
 
 /** 并行加载信号层数据（各接口独立容错，无论成功失败都标记加载完成） */
@@ -352,42 +350,38 @@ async function loadSignalData() {
     getIndustryCompare().catch(() => null),
     getDragonTigerDaily().catch(() => null),
   ])
-  // 北向资金
+  // 北向资金 — 取最后一条（最新时间）
   if (nbRes.status === 'fulfilled' && nbRes.value) {
-    const nbData = nbRes.value as Northbound[]
-    if (Array.isArray(nbData) && nbData.length > 0 && nbData[0]) {
-      nbHgt.value = safeNum(nbData[0].hgtYi)
-      nbSgt.value = safeNum(nbData[0].sgtYi)
+    const nbData = asArray(nbRes.value)
+    if (nbData.length > 0) {
+      const last = nbData[nbData.length - 1]
+      nbHgt.value = safeNum(last.hgtYi) + safeNum(last.sgtYi)
     }
   }
-  // 题材热点
+  // 题材热点 — 适配数组或 {records} 格式
   if (hotRes.status === 'fulfilled' && hotRes.value) {
-    const raw = hotRes.value as any
-    hotReasons.value = (raw?.records && Array.isArray(raw.records)) ? raw.records : []
+    hotReasons.value = asArray(hotRes.value)
   }
-  // 行业排行
+  // 行业排行 — 适配数组或 {records} 格式
   if (indRes.status === 'fulfilled' && indRes.value) {
-    const raw = indRes.value as any
-    const all = (raw?.records && Array.isArray(raw.records)) ? raw.records : []
+    const all = asArray(indRes.value)
     if (all.length > 0) {
       try {
         industryTop.value = all
           .filter((a: any) => a && a.industryName)
           .sort((a: any, b: any) => (b.changePct || 0) - (a.changePct || 0))
           .slice(0, 5)
-          .map((item: any) => ({ industryName: item.industryName, changePct: safeNum(item.changePct) }))
-      } catch { /* ignore individual item parse errors */ }
+          .map((item: any) => ({ industryName: item.industryName || item.industry, changePct: safeNum(item.changePct) }))
+      } catch { /* ignore */ }
     }
   }
-  // 龙虎榜
+  // 龙虎榜 — 适配多种返回格式
   if (dtRes.status === 'fulfilled' && dtRes.value) {
     const raw = dtRes.value as any
     if (raw && typeof raw.total === 'number') {
       dtCount.value = raw.total
-    } else if (Array.isArray(raw)) {
-      dtCount.value = raw.length
     } else {
-      dtCount.value = 0
+      dtCount.value = asArray(raw).length
     }
   }
   // 批量更新信号卡片加载状态（合并为一次渲染）
@@ -422,8 +416,8 @@ async function loadIndices() {
         code: item.indexCode,
         name: item.indexName,
         price: Number(item.closePoint) || 0,
-        changePercent: Number(item.changePercent) || 0,
-        changePoints: Number(item.closePoint) ? (Number(item.closePoint) * Number(item.changePercent) / 100) : 0,
+        changePercent: Number(item.changePct ?? item.changePercent) || 0,
+        changePoints: Number(item.closePoint) ? (Number(item.closePoint) * Number(item.changePct ?? item.changePercent) / 100) : 0,
         isCustom: !DEFAULT_INDICES_CODES.includes(item.indexCode),
       }))
       const defaults = allIndexData.value.filter(d => DEFAULT_INDICES_CODES.includes(d.code))
@@ -527,30 +521,35 @@ const hotStocks = ref<HomeStockCard[]>([])
 async function loadHotStocks() {
   try {
     const res = await getStockList({ page: 1, size: 12 })
-    if (res?.records?.length) {
-      hotStocks.value = res.records.map((r) => ({
-        code: r.stockCode,
-        name: r.stockName,
-        price: r.price || 0,
-        changePercent: r.changePct || 0,
+    const list = res?.records?.length ? res.records : (Array.isArray(res) ? res : [])
+    if (list.length) {
+      hotStocks.value = list.map((r: any) => ({
+        code: r.stockCode || r.code,
+        name: r.stockName || r.name,
+        price: r.price || r.mcapYi || 0,
+        changePercent: r.changePct || r.changePercent || 0,
       }))
     }
   } catch (_e) { console.warn('[Home] loadHotStocks failed:', _e) }
 }
 
-/** 市场整体涨跌家数 — 从行业排行汇总 */
+/** 市场整体涨跌家数 — 从 stock_basic 实时价格统计 */
 const marketStats = ref({ total: 0, up: 0, down: 0, flat: 0 })
 async function loadMarketStats() {
   try {
-    const ranking = await getCachedSectorRanking()
-    if (Array.isArray(ranking) && ranking.length > 0) {
-      let total = 0, up = 0, down = 0
-      ranking.forEach((s) => {
-        total += Number(s.stockCount) || 0
-        up += Number(s.upCount) || 0
-        down += Number(s.downCount) || 0
+    // 读取全部股票的前 500 条统计涨跌比例
+    const res = await getStockList({ page: 1, size: 500 }).catch(() => null)
+    const list = res?.records?.length ? res.records : (Array.isArray(res) ? res : [])
+    if (list.length > 0) {
+      let up = 0, down = 0, flat = 0
+      list.forEach((s: any) => {
+        const pct = Number(s.changePercent || s.changePct || 0)
+        if (pct > 0) up++
+        else if (pct < 0) down++
+        else flat++
       })
-      marketStats.value = { total, up, down, flat: Math.max(0, total - up - down) }
+      const total = res?.total || list.length
+      marketStats.value = { total, up, down, flat }
     }
   } catch { /* 非关键功能，静默失败 */ }
 }
@@ -558,55 +557,44 @@ async function loadMarketStats() {
 /** 加载板块云图数据（双层钻取：一级行业 → 成分股） */
 async function loadSectorData() {
   try {
-    // 优先使用新 API，2秒超时降级到旧 API（避免串行等待）
-    let data: { name: string; stockCount: number; avgChangePct: number; children: any[] }[] | null = null
+    // 读取 industry_treemap API — 返回 [{industryName, mcapYi, changePercent, stocks(count)}]
+    let rawData: any[] | null = null
     try {
       const newApi = getIndustryTreemap()
       const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
       const res = await Promise.race([newApi, timeout])
-      if (res && (res as any)?.records?.length) data = (res as any).records
-    } catch { /* fallback */ }
-    if (!data) {
-      // 旧 API：复用 loadMarketStats 的缓存，避免重复请求
-      const oldData = await getCachedSectorRanking()
-      const arr = Array.isArray(oldData) ? oldData : (oldData?.records || [])
-      const map = new Map<string, { cnt: number; sumPct: number }>()
-      for (const d of arr) {
-        const pct = Number(d.avgChangePct) || 0
-        const rawIndustry = (d.industry || '').trim()
-        const top = rawIndustry ? rawIndustry.split('-')[0] : '其他'
-        const c = Number(d.stockCount) || 1
-        const e = map.get(top)
-        if (e) { const t = e.cnt + c; e.sumPct = (e.sumPct * e.cnt + pct * c) / t; e.cnt = t }
-        else { map.set(top, { cnt: c, sumPct: pct }) }
+      if (res) {
+        const arr = Array.isArray(res) ? res : (res as any)?.records || []
+        if (arr.length) rawData = arr
       }
-      sectorData.value = Array.from(map.entries())
-        .map(([n, v]) => ({ name: n, value: v.cnt, changePercent: Math.round(v.sumPct * 100) / 100 }))
-        .sort((a, b) => b.value - a.value)
-    } else {
-      // 新 API 有成分股明细，存入映射表供详情面板使用
-      const stockMap = new Map<string, { stockCode: string; stockName: string; changePercent: number }[]>()
-      sectorData.value = data.map((r) => {
-        const name = (r.name || '').trim() || '其他'
-        const stocks = (r.children || [])
-          .filter((c: any) => c.changePercent !== 0)
-          .slice(0, 500)
-          .map((c: any) => ({
-            stockCode: c.stockCode,
-            stockName: c.stockName,
-            changePercent: c.changePercent,
+    } catch { /* fallback */ }
+    if (!rawData) {
+      // Fallback: 从 industry_compare 数据构建
+      const indData = await getIndustryCompare().catch(() => null)
+      const arr = indData ? (Array.isArray(indData) ? indData : (indData as any)?.records || []) : []
+      if (arr.length) {
+        sectorData.value = arr
+          .filter((a: any) => a && a.industryName)
+          .map((a: any) => ({
+            name: a.industryName || '',
+            value: Number(a.stockCount) || 0,
+            changePercent: Number(a.changePct) || 0,
           }))
-        stockMap.set(name, stocks)
-        return {
-          name,
-          value: r.stockCount,
-          changePercent: r.avgChangePct,
-        }
-      })
-      sectorStockMap.value = stockMap
+          .sort((a: any, b: any) => b.value - a.value)
+      }
+    } else {
+      // industry_treemap 格式: {industryName, mcapYi, changePercent, stocks(数量)}
+      sectorData.value = rawData
+        .filter((r: any) => r && r.industryName)
+        .map((r: any) => ({
+          name: r.industryName || '',
+          value: Number(r.stocks) || Number(r.stockCount) || Number(r.mcapYi) || 0,
+          changePercent: Number(r.changePct ?? r.changePercent) || 0,
+        }))
+        .sort((a: any, b: any) => b.value - a.value)
     }
     // 云图数据已加载，如果行业排行卡片为空则补充
-    if (industryTop.value.length === 0) {
+    if (industryTop.value.length === 0 && sectorData.value.length > 0) {
       const top3 = sectorData.value
         .slice()
         .sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))

@@ -476,6 +476,18 @@ class DataCollectorRunner:
         # Spark 分布式批处理（行业排行等）
         self.collect_spark_batch()
 
+        # 刷新 Redis K线数据（从腾讯API直接写入，7天TTL）
+        print(f"\n📊 刷新Redis K线数据...")
+        try:
+            import subprocess
+            subprocess.run([sys.executable, str(Path(__file__).parent.parent / "collect_kline.py")],
+                          timeout=600, capture_output=True, text=True)
+            print(f"   ✅ Redis K线已刷新")
+        except subprocess.TimeoutExpired:
+            print(f"   ⚠️ Redis K线刷新超时")
+        except Exception as e:
+            print(f"   ❌ Redis K线刷新失败: {e}")
+
         print(self.report.summary())
         print(f"\n{'='*50}")
         print(f"🏁 全量采集完成 [{datetime.now():%Y-%m-%d %H:%M:%S}]")
@@ -734,6 +746,12 @@ def main():
                     runner.collect_global_news()
                     if args.sync:
                         runner._run_sync()
+                    # Redis 数据自愈：从 CSV 刷新全量数据到 Redis
+                    try:
+                        import subprocess as _sp
+                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=60)
+                    except:
+                        pass
                     interval = 30
                     print(f"\n⏳ 非交易时段: 等待 {interval} 分钟...\n")
                     time.sleep(interval * 60)

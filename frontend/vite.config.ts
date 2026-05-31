@@ -19,6 +19,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/api/analysis': {
+        target: 'http://localhost:8899',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
       '/api': {
         target: 'http://localhost:8082',
         changeOrigin: true,

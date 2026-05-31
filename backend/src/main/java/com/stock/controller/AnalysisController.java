@@ -18,6 +18,8 @@ import java.util.Map;
 @RequestMapping("/api/analysis")
 public class AnalysisController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AnalysisController.class);
+
     @Autowired
     private AnalysisService analysisService;
 
@@ -27,15 +29,20 @@ public class AnalysisController {
     public ApiResponse getAnalysis(
             @PathVariable String assetCode,
             @RequestParam(required = false) String type) {
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AnalysisResult> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
-        wrapper.eq(AnalysisResult::getAssetCode, assetCode);
-        if (type != null) {
-            wrapper.eq(AnalysisResult::getAnalysisType, type);
+        try {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AnalysisResult> wrapper =
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+            wrapper.eq(AnalysisResult::getAssetCode, assetCode);
+            if (type != null) {
+                wrapper.eq(AnalysisResult::getAnalysisType, type);
+            }
+            wrapper.orderByDesc(AnalysisResult::getAnalysisDate);
+            List<AnalysisResult> list = analysisService.list(wrapper);
+            return ApiResponse.ok(list);
+        } catch (Exception e) {
+            log.warn("getAnalysis({}) failed: {}", assetCode, e.getMessage());
+            return ApiResponse.ok(java.util.Collections.emptyList());
         }
-        wrapper.orderByDesc(AnalysisResult::getAnalysisDate);
-        List<AnalysisResult> list = analysisService.list(wrapper);
-        return ApiResponse.ok(list);
     }
 
     @PostMapping("/save")
@@ -58,64 +65,55 @@ public class AnalysisController {
     public ApiResponse getYearlyReturn(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "3") int years) {
-        return ApiResponse.ok(analysisService.getYearlyReturn(stockCode, years));
+        try { return ApiResponse.ok(analysisService.getYearlyReturn(stockCode, years));
+        } catch (Exception e) { log.warn("yearly-return {}: {}", stockCode, e.getMessage()); return ApiResponse.ok(java.util.Collections.emptyList()); }
     }
 
     @GetMapping("/{stockCode}/monthly-return")
     public ApiResponse getMonthlyReturn(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "12") int months) {
-        return ApiResponse.ok(analysisService.getMonthlyReturn(stockCode, months));
+        try { return ApiResponse.ok(analysisService.getMonthlyReturn(stockCode, months));
+        } catch (Exception e) { log.warn("monthly-return {}: {}", stockCode, e.getMessage()); return ApiResponse.ok(java.util.Collections.emptyList()); }
     }
-
-    // ==================== 趋势分析 ====================
 
     @GetMapping("/{stockCode}/trend")
     public ApiResponse getTrend(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "30") int days) {
-        Map<String, Object> trend = analysisService.getTrendAnalysis(stockCode, days);
-        if (trend == null || trend.isEmpty()) {
-            return ApiResponse.error("无数据");
-        }
-        return ApiResponse.ok(trend);
+        try {
+            Map<String, Object> trend = analysisService.getTrendAnalysis(stockCode, days);
+            if (trend == null || trend.isEmpty()) return ApiResponse.error("无数据");
+            return ApiResponse.ok(trend);
+        } catch (Exception e) { log.warn("trend {}: {}", stockCode, e.getMessage()); return ApiResponse.error("无数据"); }
     }
-
-    // ==================== 筛选 ====================
 
     @PostMapping("/filter")
     public ApiResponse filterStocks(@RequestBody Map<String, Object> conditions) {
-        List<Map<String, Object>> result = analysisService.filterStocks(conditions);
-        return ApiResponse.ok(result);
+        try { return ApiResponse.ok(analysisService.filterStocks(conditions));
+        } catch (Exception e) { log.warn("filter: {}", e.getMessage()); return ApiResponse.ok(java.util.Collections.emptyList()); }
     }
-
-    // ==================== 相关性 ====================
 
     @GetMapping("/correlation")
     public ApiResponse getCorrelation(
-            @RequestParam String codeA,
-            @RequestParam String codeB,
+            @RequestParam String codeA, @RequestParam String codeB,
             @RequestParam(defaultValue = "60") int days) {
-        return ApiResponse.ok(Map.of(
-                "codeA", codeA,
-                "codeB", codeB,
-                "correlation", analysisService.getCorrelation(codeA, codeB, days)
-        ));
+        try { return ApiResponse.ok(Map.of("codeA",codeA,"codeB",codeB,"correlation",analysisService.getCorrelation(codeA,codeB,days)));
+        } catch (Exception e) { log.warn("correlation {}/{}: {}", codeA, codeB, e.getMessage()); return ApiResponse.ok(Map.of("correlation", 0.0)); }
     }
-
-    // ==================== 行业排行 ====================
 
     @GetMapping("/sector-ranking")
     public ApiResponse getSectorRanking(@RequestParam(required = false) String tradeDate) {
-        return ApiResponse.ok(analysisService.getSectorRanking(tradeDate));
+        try { return ApiResponse.ok(analysisService.getSectorRanking(tradeDate));
+        } catch (Exception e) { log.warn("sector-ranking: {}", e.getMessage()); return ApiResponse.ok(java.util.Collections.emptyList()); }
     }
 
-    // ==================== 缠论分析 ====================
-
     @GetMapping("/{stockCode}/chanlun")
-    public ApiResponse getChanlun(
-            @PathVariable String stockCode,
-            @RequestParam(defaultValue = "365") int days) {
-        return ApiResponse.ok(analysisService.getChanlunAnalysis(stockCode, days));
+    public ApiResponse getChanlun(@PathVariable String stockCode, @RequestParam(defaultValue = "365") int days,
+                                  @RequestParam(defaultValue = "stock") String type) {
+        try {
+            boolean preferIndex = "index".equals(type);
+            return ApiResponse.ok(analysisService.getChanlunAnalysis(stockCode, days, preferIndex));
+        } catch (Exception e) { log.warn("chanlun {}: {}", stockCode, e.getMessage()); return ApiResponse.ok((Object)null); }
     }
 }

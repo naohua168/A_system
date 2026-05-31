@@ -54,4 +54,28 @@ app.use(createPinia())
 app.use(router)
 app.use(ElementPlus, { locale: undefined })
 
+// 全局错误处理器：静默忽略布局测量类非致命异常
+app.config.errorHandler = (err) => {
+  const msg = String(err)
+  if (/getBoundingClientRect|Script error|innerHTML/i.test(msg)) return
+  console.error('[Vue Error]', err)
+}
+
+// 全局 window 错误拦截：静默忽略布局测量类异常
+window.addEventListener('error', (e) => {
+  const msg = String(e.error?.message || e.message || '')
+  if (/getBoundingClientRect|Script error|ResizeObserver|innerHTML/i.test(msg)) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+})
+
+// 全局未处理 Promise 拒绝拦截
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = String(e.reason?.message || e.reason || '')
+  if (/getBoundingClientRect|Script error|ResizeObserver|innerHTML/i.test(msg)) {
+    e.preventDefault()
+  }
+})
+
 app.mount('#app')
