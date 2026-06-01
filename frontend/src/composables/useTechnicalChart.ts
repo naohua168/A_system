@@ -29,6 +29,7 @@ export function useTechnicalChart(
   let klineChart: echarts.ECharts | null = null
   let bottomChart: echarts.ECharts | null = null
   let disposed = false
+  let connected = false
 
   /** dataZoom 索引模式 — endValue 永远 = dataLen - 1 */
   let startValue = 0
@@ -47,7 +48,6 @@ export function useTechnicalChart(
   function setChanlunData(data: ChanlunAnalysis | null, visible: boolean) {
     internalChanlunData = data
     internalChanlunVisible = visible
-    console.log(`[Chart] setChanlunData called: visible=${visible}, data=${data ? `bi=${data.bi?.length},zs=${data.zhongshu?.length}` : 'null'}`)
     renderChart()
   }
 
@@ -78,25 +78,6 @@ export function useTechnicalChart(
       Math.floor((mn - pad) * 100) / 100,
       Math.ceil((mx + pad) * 100) / 100,
     ]
-  }
-
-  /** 同步 dataZoom 到另一个图表 */
-  function syncZoom(sv: number, ev: number, source: 'kline' | 'bottom') {
-    if (isSyncing || disposed) return
-    isSyncing = true
-    try {
-      startValue = sv
-      endValue = ev
-      if (source !== 'kline' && klineChart && !klineChart.isDisposed() &&
-          klineChartRef.value?.isConnected && klineChartRef.value?.offsetParent) {
-        klineChart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }] }, false)
-      }
-      if (source !== 'bottom' && bottomChart && !bottomChart.isDisposed() &&
-          bottomChartRef.value?.isConnected && bottomChartRef.value?.offsetParent) {
-        bottomChart.setOption({ dataZoom: [{ type: 'inside', startValue: sv, endValue: ev }] }, false)
-      }
-    } catch { /* ignore sync errors */ }
-    finally { isSyncing = false }
   }
 
   function renderChart() {
@@ -157,101 +138,88 @@ export function useTechnicalChart(
 
     const series: any[] = [klineSeries]
 
-    // ── 缠论渲染（专业版：中枢+分型编号+买卖信号+笔线）──
+    // ── 缠论渲染（中枢 markArea + 分型 markPoint + 笔线 line + 买卖信号 scatter）──
     if (internalChanlunVisible && internalChanlunData) {
       const cld = internalChanlunData
-      console.log(`[Chart] 缠论渲染: bi=${cld.bi?.length}, zs=${cld.zhongshu?.length}, fx=${cld.fengxing?.length}, bp=${cld.buy_sell_points?.length}`)
-
-      // ========== 1. 中枢 — markArea 矩形 ==========
-      if ((cld.zhongshu || []).length > 0) {
-        klineSeries.markArea = {
-          silent: true, animation: false, z: 10,
-          data: (cld.zhongshu || []).map((z: any, idx: number) => ([
-            {
-              xAxis: z.startX, yAxis: z.high,
-              label: { show: true, position: 'insideTopLeft', fontSize: 10, fontWeight: 'bold', color: '#3498db', formatter: `中枢${idx + 1}` }
-            },
-            { xAxis: z.endX, yAxis: z.low },
-          ])),
-          itemStyle: { color: 'rgba(52,152,219,0.08)', borderColor: '#3498db', borderWidth: 1.5, borderType: 'dashed' },
+      try {
+        // 1. 中枢 — markArea（比 custom series 更稳定）
+        if (cld.zhongshu?.length) {
+          klineSeries.markArea = {
+            silent: true, animation: false, z: 10,
+            data: cld.zhongshu.map((z: any, idx: number) => [
+              { xAxis: z.startX, yAxis: z.high, label: { show: true, position: 'insideTopLeft', fontSize: 10, fontWeight: 'bold', color: '#3498db', formatter: `中枢${idx + 1}` } },
+              { xAxis: z.endX, yAxis: z.low },
+            ]),
+            itemStyle: { color: 'rgba(52,152,219,0.08)', borderColor: '#3498db', borderWidth: 1.5, borderType: 'dashed' },
+          }
         }
-        // ZG/ZD 价格标签
-        series.push({
-          type: 'scatter', z: 11, symbol: 'none',
-          data: (cld.zhongshu || []).flatMap((z: any) => [
-            { value: [z.startX, z.high], label: { show: true, formatter: `ZG:${z.high.toFixed(2)}`, color: '#3498db', fontSize: 9, position: 'top', fontWeight: 'bold' } },
-            { value: [z.startX, z.low], label: { show: true, formatter: `ZD:${z.low.toFixed(2)}`, color: '#3498db', fontSize: 9, position: 'bottom', fontWeight: 'bold' } },
-          ]),
-        })
-      }
 
-      // ========== 2. 分型 — markPoint（编号+价格） ==========
-      const dings = (cld.fengxing || []).filter((f: any) => f.type === 'ding')
-      const dis = (cld.fengxing || []).filter((f: any) => f.type === 'di')
-      if (dings.length > 0 || dis.length > 0) {
-        const mpData: any[] = []
-        dings.forEach((f: any, idx: number) => mpData.push({
-          name: `顶${idx + 1}`, coord: [f.x, f.price],
-          symbol: 'triangle', symbolSize: 18, symbolRotate: 180,
-          itemStyle: { color: '#ef5350' },
-          label: { show: true, formatter: `{a|顶${idx + 1}}\n{b|${Number(f.price).toFixed(2)}}`,
-            rich: { a: { color: '#ef5350', fontSize: 10, fontWeight: 'bold', align: 'center' }, b: { color: '#ef5350', fontSize: 9, align: 'center' } },
-            position: 'top', distance: 6 },
-        }))
-        dis.forEach((f: any, idx: number) => mpData.push({
-          name: `底${idx + 1}`, coord: [f.x, f.price],
-          symbol: 'triangle', symbolSize: 18,
-          itemStyle: { color: '#26a69a' },
-          label: { show: true, formatter: `{a|底${idx + 1}}\n{b|${Number(f.price).toFixed(2)}}`,
-            rich: { a: { color: '#26a69a', fontSize: 10, fontWeight: 'bold', align: 'center' }, b: { color: '#26a69a', fontSize: 9, align: 'center' } },
-            position: 'bottom', distance: 6 },
-        }))
-        klineSeries.markPoint = { silent: true, animation: false, z: 15, data: mpData }
-      }
+        // 2. 分型 — markPoint
+        if (cld.fengxing?.length) {
+          const mpData: any[] = []
+          cld.fengxing.forEach((f: any, idx: number) => {
+            const isDing = f.type === 'ding'
+            mpData.push({
+              name: isDing ? `顶${idx + 1}` : `底${idx + 1}`,
+              coord: [f.x, f.price],
+              symbol: 'triangle', symbolSize: 18, symbolRotate: isDing ? 180 : 0,
+              itemStyle: { color: isDing ? '#ef5350' : '#26a69a' },
+              label: {
+                show: true,
+                formatter: `{a|${isDing ? '顶' : '底'}${idx + 1}}\n{b|${Number(f.price).toFixed(2)}}`,
+                rich: {
+                  a: { color: isDing ? '#ef5350' : '#26a69a', fontSize: 10, fontWeight: 'bold', align: 'center' },
+                  b: { color: isDing ? '#ef5350' : '#26a69a', fontSize: 9, align: 'center' },
+                },
+                position: isDing ? 'top' : 'bottom', distance: 6,
+              },
+            })
+          })
+          klineSeries.markPoint = { silent: true, animation: false, z: 15, data: mpData }
+        }
 
-      // ========== 3. 买卖信号（buy=红图钉/sell=绿图钉）==========
-      const bps = (cld.buy_sell_points || []).filter((p: any) => p.x >= 0)
-      const buys = bps.filter((p: any) => p.type.startsWith('buy_'))
-      const sells = bps.filter((p: any) => p.type.startsWith('sell_'))
-      if (buys.length > 0) {
-        series.push({
-          type: 'scatter', z: 16, symbol: 'pin', symbolSize: 24,
-          itemStyle: { color: '#ef5350' },
-          data: buys.map((p: any) => ({
-            value: [p.x, p.price],
-            name: p.type,
-            label: { show: true, formatter: `{a|${p.type.replace('buy_','B').toUpperCase()}}\n{b|${p.price.toFixed(2)}}`,
-              rich: { a: { color: '#ef5350', fontSize: 9, fontWeight: 'bold', align: 'center' }, b: { color: '#ef5350', fontSize: 8, align: 'center' } },
-              position: 'top', distance: 4 },
-          })),
-        })
-      }
-      if (sells.length > 0) {
-        series.push({
-          type: 'scatter', z: 16, symbol: 'pin', symbolSize: 24,
-          itemStyle: { color: '#26a69a' },
-          data: sells.map((p: any) => ({
-            value: [p.x, p.price],
-            name: p.type,
-            label: { show: true, formatter: `{a|${p.type.replace('sell_','S').toUpperCase()}}\n{b|${p.price.toFixed(2)}}`,
-              rich: { a: { color: '#26a69a', fontSize: 9, fontWeight: 'bold', align: 'center' }, b: { color: '#26a69a', fontSize: 8, align: 'center' } },
-              position: 'bottom', distance: 4 },
-          })),
-        })
-      }
-    }
+        // 3. 笔线
+        if (cld.bi?.length) {
+          cld.bi.forEach((b: any) => {
+            series.push({
+              type: 'line',
+              data: [[b.x0, b.y0], [b.x1, b.y1]],
+              symbol: 'none',
+              lineStyle: { width: 2, color: b.y1 >= b.y0 ? '#ef5350' : '#26a69a' },
+              z: 11,
+            })
+          })
+        }
 
-    // 笔 — 每笔一个 line series（独立颜色，上红下绿）
-    if (internalChanlunVisible && internalChanlunData?.bi?.length) {
-      (internalChanlunData.bi).forEach((b: any) => {
-        series.push({
-          type: 'line',
-          data: [[b.x0, b.y0], [b.x1, b.y1]],
-          symbol: 'none',
-          lineStyle: { width: 2, color: b.y1 >= b.y0 ? '#ef5350' : '#26a69a' },
-          z: 11,
-        })
-      })
+        // 4. 买卖信号
+        if (cld.buy_sell_points?.length) {
+          const bps = cld.buy_sell_points.filter((p: any) => (p.x ?? -1) >= 0)
+          const buys = bps.filter((p: any) => p.type?.startsWith('buy_'))
+          const sells = bps.filter((p: any) => p.type?.startsWith('sell_'))
+          if (buys.length) {
+            series.push({
+              type: 'scatter', z: 16, symbol: 'pin', symbolSize: 24,
+              itemStyle: { color: '#ef5350' },
+              data: buys.map((p: any) => ({
+                value: [p.x, p.price],
+                label: { show: true, formatter: `${p.type.replace('buy_','B').toUpperCase()}\n${p.price.toFixed(2)}`, position: 'top', distance: 4, fontSize: 9, color: '#ef5350' },
+              })),
+            })
+          }
+          if (sells.length) {
+            series.push({
+              type: 'scatter', z: 16, symbol: 'pin', symbolSize: 24,
+              itemStyle: { color: '#26a69a' },
+              data: sells.map((p: any) => ({
+                value: [p.x, p.price],
+                label: { show: true, formatter: `${p.type.replace('sell_','S').toUpperCase()}\n${p.price.toFixed(2)}`, position: 'bottom', distance: 4, fontSize: 9, color: '#26a69a' },
+              })),
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('[Chart] 缠论 series 构建失败:', e)
+      }
     }
 
     if (showMA.value) {
@@ -273,9 +241,6 @@ export function useTechnicalChart(
       )
     }
 
-    // ── 缠论日志 ──
-    console.log(`[Chart] doRender cl state: visible=${internalChanlunVisible}, data=${internalChanlunData ? `bi=${internalChanlunData.bi?.length}` : 'null'}, klineLen=${klineData.length}`)
-
     // ── 东方财富风格：底部滑块 + 滚轮缩放 ──
     const sliderStyle = {
       height: 24, bottom: 8, left: 56, right: 16,
@@ -292,20 +257,6 @@ export function useTechnicalChart(
 
     // 先移除旧 dataZoom 事件，再 setOption（避免旧 handler 在渲染期间干扰）
     klineChart.off('dataZoom')
-
-    // ── dataZoom 事件处理器（只追踪 startValue，不调用 setOption 避免影响 series） ──
-    const handleDataZoom = (params: any) => {
-      try {
-        if (disposed || !klineChart || klineChart.isDisposed()) return
-        if (isSyncing) return
-        const zoom = params.batch?.[0] ?? params
-        const sv = Number(zoom.startValue ?? startValue)
-        if (sv !== startValue) {
-          startValue = sv
-        }
-        syncZoom(startValue, endValue, 'kline')
-      } catch { /* ignore zoom error */ }
-    }
 
     klineChart.setOption({
       animation: false,
@@ -332,17 +283,64 @@ export function useTechnicalChart(
         { type: 'slider', startValue, endValue, ...sliderStyle },
       ],
       series,
-    }, true)
+    })
 
-    // 注册新 dataZoom 事件
-    klineChart.on('dataZoom', handleDataZoom)
+    // ── dataZoom 事件：dispatchAction 强制右端固定，echarts.connect 自动同步 ──
+    klineChart.off('dataZoom')
+    klineChart.on('dataZoom', (params: any) => {
+      try {
+        if (disposed || !klineChart || klineChart.isDisposed()) return
+        if (isSyncing) return
+        const zoom = params.batch?.[0] ?? params
+        const newSV = Number(zoom.startValue ?? startValue)
+        if (newSV === startValue && (zoom.endValue ?? dataLen - 1) === dataLen - 1) return
+        startValue = newSV
+        endValue = dataLen - 1
+        isSyncing = true
+        try {
+          // dispatchAction 会更新内部状态并重绘 slider，触发的 datazoom 事件被 isSyncing 锁阻挡
+          klineChart.dispatchAction({
+            type: 'dataZoom',
+            startValue: startValue,
+            endValue: dataLen - 1,
+          })
+        } finally {
+          isSyncing = false
+        }
+      } catch { /* ignore zoom error */ }
+    })
 
     // ── 底部指标图 ──
     if (!bottomChart && bottomChartRef.value?.isConnected) bottomChart = echarts.init(bottomChartRef.value)
     if (!bottomChart) return
 
-    const bottomDataZoom = [{ type: 'inside' as const, startValue, endValue }]
+    // 底部图 dataZoom 事件：同步到底部，dispatchAction 确保 slider 同步
+    bottomChart.off('dataZoom')
+    bottomChart.on('dataZoom', (params: any) => {
+      try {
+        if (disposed || !bottomChart || bottomChart.isDisposed()) return
+        if (isSyncing) return
+        const zoom = params.batch?.[0] ?? params
+        const newSV = Number(zoom.startValue ?? startValue)
+        if (newSV === startValue && (zoom.endValue ?? dataLen - 1) === dataLen - 1) return
+        startValue = newSV
+        endValue = dataLen - 1
+        isSyncing = true
+        try {
+          if (!klineChart || klineChart.isDisposed()) return
+          klineChart.dispatchAction({
+            type: 'dataZoom',
+            startValue: startValue,
+            endValue: dataLen - 1,
+          })
+        } finally {
+          isSyncing = false
+        }
+      } catch { /* ignore zoom error */ }
+    })
 
+    // 底部图 dataZoom：只需 inside，echarts.connect 自动同步
+    const botDZ = [{ type: 'inside' as const }]
     let bottomOption: echarts.EChartsOption
     if (bottomActive.value === 'macd') {
       const macdData = calcMACD(klineData, paramsVal.macd.fast, paramsVal.macd.slow, paramsVal.macd.signal)
@@ -350,7 +348,7 @@ export function useTechnicalChart(
         animation: false, grid: { left: '7%', right: '7%', top: '12%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
-        dataZoom: bottomDataZoom,
+        dataZoom: botDZ,
         series: [
           { name: 'DIF', type: 'line', data: macdData.dif, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db' } },
           { name: 'DEA', type: 'line', data: macdData.dea, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#e67e22' } },
@@ -363,7 +361,7 @@ export function useTechnicalChart(
         animation: false, grid: { left: '7%', right: '7%', top: '10%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
-        dataZoom: bottomDataZoom,
+        dataZoom: botDZ,
         series: [
           { name: 'K', type: 'line', data: kdjData.k, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db' } },
           { name: 'D', type: 'line', data: kdjData.d, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#e67e22' } },
@@ -376,7 +374,7 @@ export function useTechnicalChart(
         animation: false, grid: { left: '7%', right: '7%', top: '10%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { scale: false, min: 0, max: 100, splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
-        dataZoom: bottomDataZoom,
+        dataZoom: botDZ,
         series: [{
           name: 'RSI', type: 'line', data: rsiData, smooth: true, symbol: 'none',
           lineStyle: { width: 1, color: '#e67e22' },
@@ -387,12 +385,12 @@ export function useTechnicalChart(
         }],
       }
     } else {
-      // VOL 量能柱（现在无 slider，slider 在主图）
+      // VOL 量能柱
       bottomOption = {
         animation: false, grid: { left: '7%', right: '7%', top: '4%', bottom: '4%' },
         xAxis: { type: 'category', data: dates, axisTick: { show: false }, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
         yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { fontSize: 9, color: '#999' } },
-        dataZoom: bottomDataZoom,
+        dataZoom: botDZ,
         series: [{
           type: 'bar', barMinHeight: 1,
           data: volumes.map((v, i) => ({ value: v, itemStyle: { color: klineData[i][2] >= klineData[i][1] ? '#e74c3c' : '#27ae60', opacity: 0.5 } })),
@@ -400,21 +398,15 @@ export function useTechnicalChart(
         }],
       }
     }
-    bottomChart.setOption(bottomOption, true)
+    bottomChart.setOption(bottomOption)
 
-    // 底部图 dataZoom 事件 → 反向同步到 K线图
-    bottomChart.off('dataZoom')
-    bottomChart.on('dataZoom', (params: any) => {
+    // ── echarts.connect 双图缩放同步 ──
+    if (!connected && klineChart && bottomChart && !klineChart.isDisposed() && !bottomChart.isDisposed()) {
       try {
-        if (disposed || !bottomChart || bottomChart.isDisposed()) return
-        const zoom = params.batch?.[0] ?? params
-        const sv = Number(zoom.startValue ?? startValue)
-        const ev = Number(zoom.endValue ?? endValue)
-        if (sv !== startValue || ev !== endValue) {
-          syncZoom(sv, Math.min(ev, dataLen - 1), 'bottom')
-        }
-      } catch { /* ignore bottom zoom error */ }
-    })
+        (echarts as any).connect([klineChart, bottomChart])
+        connected = true
+      } catch { /* ignore connect error */ }
+    }
   } catch (e) { console.warn('[Chart] render error:', e) }
   finally {
     isRendering = false
@@ -453,6 +445,7 @@ export function useTechnicalChart(
     } catch { /* ignore dispose errors */ }
     klineChart = null
     bottomChart = null
+    connected = false
   }
 
   return { renderChart, handleResize, dispose, setChanlunData }

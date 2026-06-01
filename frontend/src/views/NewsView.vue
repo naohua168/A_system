@@ -252,12 +252,14 @@ const canGoNext = computed(() => activeDate.value < tomorrowStr)
 // ══════════════════════════════════════════
 
 function cls2feed(item: ClsNewsItem): FeedItem {
-  const { date, time } = parsePubTime(item.publishTime)
+  const pubTime = (item as any).publishTime || (item as any).datetime || ''
+  const { date, time } = parsePubTime(pubTime)
   return { id: `cls-${item.id}`, type: 'cls', title: item.title, date, time, content: item.content || '', source: '财联社' }
 }
 
 function global2feed(item: GlobalNewsItem): FeedItem {
-  const { date, time } = parsePubTime(item.publishTime)
+  const pubTime = (item as any).publishTime || (item as any).datetime || ''
+  const { date, time } = parsePubTime(pubTime)
   return { id: `global-${item.id}`, type: 'global', title: item.title, date, time, content: item.summary || '', source: item.source || '全球资讯', url: item.url }
 }
 

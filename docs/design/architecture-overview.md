@@ -26,20 +26,20 @@
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 数据流
+## 数据流 (v3.0)
 
 ```
-[外部数据源] → L1 采集器 → MySQL (业务库) + Kafka (实时流)
-                                ↓
-                          L2 Hive 数据仓库
-                                ↓
-                     ┌──── Spark 批处理 ────┐
-                     │ MA/趋势/排名/相关/预测 │
-                     └─────────┬────────────┘
-                               ↓
-                     L4 Backend REST API
-                     ↙         ↓         ↘
-              L3 算法分析   L5 AI 服务   L6 前端
+[外部数据源] → L1 采集器 → CSV → HDFS → Hive (大数据仓库)
+                    ↓                                  ↓
+               Kafka → Spark Streaming → Hive    Spark 批处理
+                                                     ↓
+                ┌─ hive_to_redis.py (每5min) ──→ Redis (市场数据)
+                │  + auto_seed.py (自愈兜底)
+                │
+         L4 Backend REST API (Redis优先, 不回查MySQL市场表)
+         ↙         ↓           ↘            ↘
+   Market    Signal/Info     AI 服务     Fund/用户
+  (Redis)    (Redis)        (Redis)    (MySQL业务)
 ```
 
 ## 容器拓扑
@@ -62,12 +62,15 @@ collector-net (独立子网)
 └── data-collector
 ```
 
-## 关键技术决策
+## 关键技术决策 (v3.0)
 
 | 决策 | 选择 | 原因 |
 |:-----|:-----|:-----|
 | AI 模型网关 | SiliconFlow (主) → DeepSeek (备) → Mock (降级) | 三路故障转移, 零依赖可用 |
 | ORC 格式 | ZLIB 压缩 + BloomFilter 索引 | 存储节省 60%, 查询加速 3x |
 | 缓存策略 | Redis + Spring Cache + 前端 TTL 缓存 | 三级缓存, 15-60s TTL |
+| 数据来源 | **市场数据=Redis(源自Hive)**, MySQL仅存业务数据 | 解耦采集与查询, 大数据层单一数据源 |
 | 认证授权 | JWT + RBAC + 4 级安全层级 | 无状态, 可水平扩展 |
 | 测试策略 | pytest + Vitest + JUnit 5 + MockMvc | 全栈统一, Mock 优先 |
+
+> 详细数据层规范见 [data-layer-architecture.md](data-layer-architecture.md)

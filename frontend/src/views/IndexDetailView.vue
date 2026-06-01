@@ -315,11 +315,23 @@ function safeNum(v: unknown, decimals = 2): string {
 async function loadData() {
   loading.value = true
   try {
+    // 1. 指数实时行情 — 从 market:index_list (auto_seed CSV 写入, 含实时 price/changePct)
     const idxInfo: any = await getIndexInfo(code)
     if (idxInfo) {
       info.name = idxInfo.indexName || idxInfo.indexCode || code
       info.market = idxInfo.market || ''
+      // 实时行情优先使用 index_list 数据（与首页大盘卡片同源）
+      info.price = Number(idxInfo.closePoint) || 0
+      info.changePercent = Number(idxInfo.changePct ?? idxInfo.changePercent) || 0
+      info.open = Number(idxInfo.openPoint) || 0
+      info.high = Number(idxInfo.highPoint) || 0
+      info.low = Number(idxInfo.lowPoint) || 0
+      info.preClose = Number(idxInfo.preClose) || 0
+      info.volume = Number(idxInfo.volume) || 0
+      info.amount = Number(idxInfo.amount) || 0
     }
+
+    // 2. K线数据 — 仅用于图表渲染和量化指标计算
     const kline: any[] = await getIndexKline(code, 120) as any[]
     if (Array.isArray(kline) && kline.length > 10) {
       // API 返回降序 [newest...oldest]，第一条是最新
@@ -330,18 +342,16 @@ async function loadData() {
         safeVal(d.volume),
       ]).sort((a, b) => a[0] - b[0])
 
-      // 最新行情: API 返回降序 [newest...oldest]，取第一条
+      // 最新行情: K线数据作为兜底（如 index_list 字段缺失时补全）
       const last = kline[0]
-      Object.assign(info, {
-        price: Number(last.closePoint),
-        open: Number(last.openPoint),
-        high: Number(last.highPoint),
-        low: Number(last.lowPoint),
-        preClose: Number(last.preClose) || Number(last.closePoint) * 0.99,
-        volume: Number(last.volume),
-        amount: Number(last.amount),
-        changePercent: Number(last.changePct ?? last.changePercent),
-      })
+      if (!info.price) info.price = Number(last.closePoint) || 0
+      if (!info.changePercent) info.changePercent = Number(last.changePct ?? last.changePercent) || 0
+      if (!info.open) info.open = Number(last.openPoint) || 0
+      if (!info.high) info.high = Number(last.highPoint) || 0
+      if (!info.low) info.low = Number(last.lowPoint) || 0
+      if (!info.volume) info.volume = Number(last.volume) || 0
+      if (!info.amount) info.amount = Number(last.amount) || 0
+      if (!info.preClose) info.preClose = Number(last.preClose) || Number(last.closePoint) * 0.99
       // 量化指标 — cachedKlineData 已是升序，slice(-N) 取最后 N 个 = 最近 N 天
       const closes = cachedKlineData.map(d => d[2])
       const lows = cachedKlineData.map(d => d[3])

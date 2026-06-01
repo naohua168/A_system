@@ -80,6 +80,7 @@ public class SignalDataServiceImpl implements SignalDataService {
     }
 
     @Override
+    @Cacheable(cacheNames = "signalDragonTiger", key = "'dragonTigerDetail:' + #date + ':' + #code", unless = "#result == null")
     public SignalDragonTigerDetail getDragonTigerDetail(String date, String code) {
         return dragonTigerDetailMapper.selectByDateAndStock(date, code);
     }
@@ -99,6 +100,7 @@ public class SignalDataServiceImpl implements SignalDataService {
     }
 
     @Override
+    @Cacheable(cacheNames = "signalMarketData", key = "'northboundByDate:' + #date", unless = "#result == null")
     public SignalNorthbound getNorthboundByDate(String date) {
         String targetDate = (date != null) ? date : LocalDate.now().toString();
         return northboundMapper.selectByDate(targetDate);

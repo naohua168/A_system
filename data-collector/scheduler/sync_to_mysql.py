@@ -64,18 +64,24 @@ MYSQL_CONFIG = _get_mysql_config()
 
 # ============================================================
 # 文件 → 数据库表 映射规则
+# 市场数据表 (stock/stock_daily/market_index/index_daily) 已废弃,
+# 所有市场数据通过 hive_to_redis.py 从 Hive 写入 Redis.
+# 以下仅保留业务数据和资讯/信号表的写入（兼容过渡期）。
 # ============================================================
 SYNC_RULES = [
-    {
-        "prefix": "kline_",
-        "table": "stock_daily",
-        "columns": ["stock_code", "trade_date", "open_price", "close_price",
-                     "high_price", "low_price", "pre_close", "volume", "amount",
-                     "change_percent", "turnover_rate"],
-        "mapper": lambda df, fname: _map_kline(df, fname),
-    },
-    # K线周K/月K（从日K聚合生成的CSV）
-    {
+    # ⚠️ 市场数据表 (stock/stock_daily) 已废弃 — 数据通过 Hive→Redis 管道提供
+    # 以下规则保留注释以作参考，不再执行
+    #{     "prefix": "kline_", "table": "stock_daily",
+    #    "columns": ["stock_code", "trade_date", "open_price", "close_price",
+    #                 "high_price", "low_price", "pre_close", "volume", "amount",
+    #                 "change_percent", "turnover_rate"],
+    #    "mapper": lambda df, fname: _map_kline(df, fname),
+    #},
+    #{     "prefix": "realtime_", "table": "stock",
+    #    "columns": ["stock_code", "stock_name", "pe", "pb", "total_market_cap",
+    #                 "turnover_rate", "change_percent"],
+    #    "mapper": lambda df, _: _map_realtime(df),
+    #},
         "prefix": "kline_weekly_",
         "table": "stock_kline_weekly",
         "columns": ["stock_code", "week_label", "open_price", "high_price",
@@ -89,13 +95,13 @@ SYNC_RULES = [
                      "low_price", "close_price", "volume", "source"],
         "mapper": lambda df, fname: _map_aggregated_kline(df, fname, "month_label"),
     },
-    {
-        "prefix": "realtime_",
-        "table": "stock",
-        "columns": ["stock_code", "stock_name", "pe", "pb", "total_market_cap",
-                     "turnover_rate", "change_percent"],
-        "mapper": lambda df, _: _map_realtime(df),
-    },
+    # ⚠️ 市场数据表 (stock) 已废弃 — 数据通过 Hive→Redis 管道提供
+    #{     "prefix": "realtime_",
+    #    "table": "stock",
+    #    "columns": ["stock_code", "stock_name", "pe", "pb", "total_market_cap",
+    #                 "turnover_rate", "change_percent"],
+    #    "mapper": lambda df, _: _map_realtime(df),
+    #},
     {
         "prefix": "fund_nav_",
         "table": "fund_nav",

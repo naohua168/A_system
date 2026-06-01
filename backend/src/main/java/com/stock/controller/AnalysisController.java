@@ -4,6 +4,7 @@ import com.stock.dto.ApiResponse;
 import com.stock.entity.AnalysisResult;
 import com.stock.service.AnalysisService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,6 +27,7 @@ public class AnalysisController {
     // ==================== 分析结果 CRUD ====================
 
     @GetMapping("/{assetCode}")
+    @Cacheable(cacheNames = "signalReferenceData", key = "'analysis:' + #assetCode + ':' + (#type ?: '')", unless = "#result == null || #result.code != 200")
     public ApiResponse getAnalysis(
             @PathVariable String assetCode,
             @RequestParam(required = false) String type) {
@@ -62,6 +64,7 @@ public class AnalysisController {
     // ==================== 收益率 ====================
 
     @GetMapping("/{stockCode}/yearly-return")
+    @Cacheable(cacheNames = "infoReport", key = "'yearlyReturn:' + #stockCode + ':' + #years", unless = "#result == null || #result.code != 200")
     public ApiResponse getYearlyReturn(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "3") int years) {
@@ -70,6 +73,7 @@ public class AnalysisController {
     }
 
     @GetMapping("/{stockCode}/monthly-return")
+    @Cacheable(cacheNames = "infoReport", key = "'monthlyReturn:' + #stockCode + ':' + #months", unless = "#result == null || #result.code != 200")
     public ApiResponse getMonthlyReturn(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "12") int months) {
@@ -78,6 +82,7 @@ public class AnalysisController {
     }
 
     @GetMapping("/{stockCode}/trend")
+    @Cacheable(cacheNames = "signalReferenceData", key = "'trend:' + #stockCode + ':' + #days", unless = "#result == null || #result.code != 200")
     public ApiResponse getTrend(
             @PathVariable String stockCode,
             @RequestParam(defaultValue = "30") int days) {
@@ -109,6 +114,7 @@ public class AnalysisController {
     }
 
     @GetMapping("/{stockCode}/chanlun")
+    @Cacheable(cacheNames = "infoReport", key = "'chanlun:' + #stockCode + ':' + #days + ':' + #type", unless = "#result == null || #result.code != 200")
     public ApiResponse getChanlun(@PathVariable String stockCode, @RequestParam(defaultValue = "365") int days,
                                   @RequestParam(defaultValue = "stock") String type) {
         try {

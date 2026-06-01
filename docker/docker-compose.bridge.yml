@@ -1,29 +1,17 @@
 # ============================================================
-# 跨层网络桥接配置
-# 用于需要双网卡桥接采集层和/or 大数据层/应用层的服务
+# 网络桥接配置 (v4)
+# 声明跨 Compose 的外部网络
 # ============================================================
-# 当我们使用 docker compose -f 组合运行时，可以和其他层共享网络
-#
 # 用法:
-#   # 全量部署（采集层 + 大数据层 + 应用层）
 #   docker compose -f docker-compose.collector.yml \
-#                  -f docker-compose.yml \
-#                  up -d
-#
-#   # 仅部署已运行的采集层 + 大数据层
-#   docker compose -f docker-compose.collector.yml \
-#                  -f docker-compose.yml \
 #                  -f docker-compose.bridge.yml \
 #                  up -d
 # ============================================================
 
 networks:
-  # 大数据层网络（已有定义，此处为占位声明）
-  bigdata-net:
+  app-net:
     external: true
-    name: bigdata-net
-
-  # 采集层网络（已有定义，此处为占位声明）
+    name: app-net
   collector-net:
     external: true
     name: collector-net

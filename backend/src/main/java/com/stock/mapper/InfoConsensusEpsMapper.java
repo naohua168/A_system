@@ -11,7 +11,7 @@ import java.util.List;
 @Mapper
 public interface InfoConsensusEpsMapper extends BaseMapper<InfoConsensusEps> {
 
-    @Select("SELECT * FROM info_consensus_eps WHERE stock_code = #{code} ORDER BY year DESC")
+    @Select("SELECT * FROM info_consensus_eps WHERE stock_code = #{code} ORDER BY year DESC LIMIT 10")
     List<InfoConsensusEps> selectByStock(@Param("code") String code);
 
     @Select("SELECT * FROM info_consensus_eps WHERE stock_code = #{code} AND year = #{year} LIMIT 1")

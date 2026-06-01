@@ -25,6 +25,9 @@ import {
   DataZoomComponent,
   ToolboxComponent,
   MarkLineComponent,
+  MarkPointComponent,
+  MarkAreaComponent,
+  GraphicComponent,
   VisualMapComponent,
   CalendarComponent,
 } from 'echarts/components'
@@ -46,6 +49,9 @@ use([
   DataZoomComponent,
   ToolboxComponent,
   MarkLineComponent,
+  MarkPointComponent,
+  MarkAreaComponent,
+  GraphicComponent,
   VisualMapComponent,
   CalendarComponent,
 ])

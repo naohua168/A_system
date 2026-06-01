@@ -62,3 +62,16 @@ hierarchy_analysis_result.json
 
 # ===== Deployment Reports =====
 reports/
+
+# ===== Generated CSV files =====
+tencent_index_*.csv
+realtime_*.csv
+kline_*.csv
+stock_basic_*.csv
+industry_compare_*.csv
+northbound_*.csv
+sector_ranking_*.csv
+
+# ===== Temp scripts =====
+temp_*.py
+temp_*.sh

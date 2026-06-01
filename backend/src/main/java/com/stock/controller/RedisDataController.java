@@ -27,7 +27,9 @@ public class RedisDataController {
     @GetMapping("/market/list")
     public Map<String, Object> marketList(@RequestParam(defaultValue = "1") int page,
                                           @RequestParam(defaultValue = "20") int size) {
-        return pageResult(redisReader.getAsList("market:stock_basic"), page, size);
+        List<Map<String, Object>> all = redisReader.getAsList("market:stock_basic");
+        // stock_basic 已含 changePct/price（由 auto_seed.py 从 CSV 写入），无需额外 enrich
+        return pageResult(all, page, size);
     }
 
     @GetMapping("/market/detail/{code}")
@@ -82,7 +84,9 @@ public class RedisDataController {
 
     @GetMapping("/market/sector-ranking")
     public List<Map<String, Object>> sectorRanking(@RequestParam(required = false) String tradeDate) {
-        return redisReader.getAsList("market:sector_ranking");
+        // industry_compare 有真实的行业排行数据（industryName, changePct, upCount, downCount）
+        // sector_ranking 是旧的 stock-level 数据，已废弃
+        return redisReader.getAsList("market:industry_compare");
     }
 
     @GetMapping("/market/sector-kline")
@@ -122,7 +126,12 @@ public class RedisDataController {
     public Map<String, Object> maxDate() {
         List<Map<String, Object>> list = redisReader.getAsList("market:max_date");
         Map<String, Object> r = new LinkedHashMap<>();
-        r.put("tradeDate", list.isEmpty() ? "2026-05-29" : list.get(0).get("trade_date"));
+        if (!list.isEmpty()) {
+            Object td = list.get(0).get("tradeDate");
+            r.put("tradeDate", td != null ? td.toString() : "2026-06-01");
+        } else {
+            r.put("tradeDate", "2026-06-01");
+        }
         return r;
     }
 

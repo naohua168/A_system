@@ -476,20 +476,66 @@ class DataCollectorRunner:
         # Spark 分布式批处理（行业排行等）
         self.collect_spark_batch()
 
-        # 刷新 Redis K线数据（从腾讯API直接写入，7天TTL）
-        print(f"\n📊 刷新Redis K线数据...")
+        # 刷新 Redis 市场数据 — K线从CSV写入 + 实时行情从auto_seed写入
+        print(f"\n📊 刷新Redis全量市场数据...")
         try:
             import subprocess
-            subprocess.run([sys.executable, str(Path(__file__).parent.parent / "collect_kline.py")],
-                          timeout=600, capture_output=True, text=True)
-            print(f"   ✅ Redis K线已刷新")
+            base = Path(__file__).parent.parent
+            # K线: 从本地CSV文件写入Redis (零网络依赖,比调API快10倍)
+            r1 = subprocess.run([sys.executable, str(base / "write_kline_to_redis.py")],
+                               timeout=180, capture_output=True, text=True)
+            if r1.stdout:
+                last = r1.stdout.strip().split('\n')[-1]
+                print(f'   write_kline: {last}')
+            # 实时行情 + 信号: auto_seed (socket RESP)
+            r2 = subprocess.run([sys.executable, str(base / "auto_seed.py")],
+                               timeout=120, capture_output=True, text=True)
+            if r2.stdout:
+                last2 = r2.stdout.strip().split('\n')[-1]
+                print(f'   auto_seed: {last2}')
+            print(f"   ✅ Redis 已刷新")
         except subprocess.TimeoutExpired:
-            print(f"   ⚠️ Redis K线刷新超时")
+            print(f"   ⚠️ Redis 刷新超时")
         except Exception as e:
-            print(f"   ❌ Redis K线刷新失败: {e}")
+            print(f"   ❌ Redis 刷新失败: {e}")
 
         print(self.report.summary())
         print(f"\n{'='*50}")
+
+        # 通知后端清理缓存
+        self._evict_cache()
+
+        print(f"🏁 全量采集完成 [{datetime.now():%Y-%m-%d %H:%M:%S}]")
+        print(f"{'='*50}")
+
+    def _evict_cache(self):
+        """直连 Redis 删除 Spring Cache 所有缓存 key（不依赖后端 HTTP）"""
+        print(f"\n[{datetime.now():%H:%M:%S}] 🗑️  清理后端缓存...")
+        try:
+            import redis
+            rd = redis.Redis(host='redis', port=6379, db=0, socket_timeout=5)
+            # Spring Cache Redis key 格式: {cacheName}::{key}
+            patterns = [
+                'realtime::*', 'signalMarketData::*',
+                'signalHotData::*', 'signalDragonTiger::*',
+                'signalReferenceData::*', 'stockList::*', 'stockDaily::*',
+                'infoReport::*', 'infoNews::*', 'infoFiling::*', 'fundNav::*',
+            ]
+            total = 0
+            for pattern in patterns:
+                cursor = 0
+                while True:
+                    cursor, keys = rd.scan(cursor=cursor, match=pattern, count=200)
+                    if keys:
+                        rd.delete(*keys)
+                        total += len(keys)
+                    if cursor == 0:
+                        break
+            print(f"   ✅ 已清理 {total} 个缓存 key")
+        except ImportError:
+            print(f"   ⚠️ redis 模块未安装，跳过缓存清理")
+        except Exception as e:
+            print(f"   ⚠️ 缓存清理失败(不影响数据): {e}")
         print(f"🏁 全量采集完成 [{datetime.now():%Y-%m-%d %H:%M:%S}]")
         print(f"{'='*50}")
 

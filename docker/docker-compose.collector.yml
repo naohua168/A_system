@@ -64,7 +64,7 @@ services:
       - "127.0.0.1:9092:9092"    # 仅供宿主机调试
     networks:
       - collector-net             # 采集层内网（数据接收）
-      - bigdata-net               # 大数据层内网（数据消费）— 双网卡桥接
+      - app-net                   # 应用层网络（Redis/MySQL/Backend 访问）
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: collector-zookeeper:2181
@@ -117,14 +117,14 @@ services:
         condition: service_healthy
     networks:
       - collector-net
-      - bigdata-net
+      - app-net
     environment:
       # 采集配置
       - LOG_LEVEL=INFO
       - COLLECTOR_MODE=continuous
       # Kafka 连接（采集层内网地址）
       - KAFKA_BOOTSTRAP_SERVERS=collector-kafka:29092
-      # MySQL 配置（直连写入，确保前端数据实时同步）
+      # MySQL 配置（仅用于业务数据 user/watchlist/ai_chat，市场数据走 Redis）
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_USER=root
@@ -139,11 +139,11 @@ services:
       # 日志持久化
       - collector-logs:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os; exit(0) if os.path.exists('/proc/1') else exit(1)\""]
+      test: ["CMD-SHELL", "redis-cli -h redis -p 6379 EXISTS market:stock_basic | grep -q '^1' && redis-cli -h redis -p 6379 STRLEN market:stock_basic | grep -q '^[0-9]' || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 20s
+      retries: 5
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -178,6 +178,6 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/24
-  # 大数据层网络（外部引用，由 docker-compose.yml 创建）
-  bigdata-net:
+  # 应用层网络（外部引用，由 docker-compose.yml 创建）
+  app-net:
     external: true

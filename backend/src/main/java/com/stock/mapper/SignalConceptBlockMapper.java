@@ -11,9 +11,9 @@ import java.util.List;
 @Mapper
 public interface SignalConceptBlockMapper extends BaseMapper<SignalConceptBlock> {
 
-    @Select("SELECT * FROM signal_concept_block WHERE stock_code = #{code} AND block_type = #{type}")
+    @Select("SELECT * FROM signal_concept_block WHERE stock_code = #{code} AND block_type = #{type} LIMIT 50")
     List<SignalConceptBlock> selectByStockAndType(@Param("code") String code, @Param("type") String type);
 
-    @Select("SELECT * FROM signal_concept_block WHERE stock_code = #{code}")
+    @Select("SELECT * FROM signal_concept_block WHERE stock_code = #{code} LIMIT 50")
     List<SignalConceptBlock> selectByStock(@Param("code") String code);
 }

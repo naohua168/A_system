@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.stock.mapper.StockDailyMapper">
 
-    <!-- 查询某年第一个交易日 -->
+    <!-- 查询某年第一个交易日（供 AnalysisService 使用） -->
     <select id="selectFirstOfYear" resultType="com.stock.entity.StockDaily">
         SELECT * FROM stock_daily
         WHERE stock_code = #{stockCode}
@@ -12,7 +12,7 @@
         LIMIT 1
     </select>
 
-    <!-- 查询某年最后一个交易日 -->
+    <!-- 查询某年最后一个交易日（供 AnalysisService 使用） -->
     <select id="selectLastOfYear" resultType="com.stock.entity.StockDaily">
         SELECT * FROM stock_daily
         WHERE stock_code = #{stockCode}
@@ -21,214 +21,12 @@
         LIMIT 1
     </select>
 
-    <!-- 按日期范围查询 -->
+    <!-- 按日期范围查询（供 AnalysisService 使用） -->
     <select id="selectByDateRange" resultType="com.stock.entity.StockDaily">
         SELECT * FROM stock_daily
         WHERE stock_code = #{stockCode}
           AND trade_date BETWEEN #{startDate} AND #{endDate}
         ORDER BY trade_date ASC
-    </select>
-
-    <!-- 按条件筛选股票（join stock 获取名称和行业） -->
-    <select id="selectStocksByFilter" resultType="java.util.Map">
-        SELECT
-            eff.stock_code AS stockCode,
-            s.stock_name AS stockName,
-            s.industry,
-            eff.close_price AS price,
-            eff.eff_cp AS changePct,
-            eff.volume
-        FROM (
-            SELECT d.stock_code, d.close_price, d.volume,
-                   CASE WHEN d.change_percent IS NOT NULL AND d.change_percent != 0
-                        THEN d.change_percent
-                        ELSE ROUND((d.close_price - COALESCE(y.close_price, d.pre_close, 0))
-                             / GREATEST(COALESCE(y.close_price, d.pre_close, 0.01), 0.01) * 100, 4)
-                   END AS eff_cp
-            FROM stock_daily d
-            LEFT JOIN stock_daily y ON d.stock_code = y.stock_code
-                AND y.trade_date = DATE_SUB(d.trade_date, INTERVAL 1 DAY)
-            WHERE d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
-              AND d.close_price IS NOT NULL
-        ) eff
-        JOIN stock s ON eff.stock_code = s.stock_code
-        <if test="industry != null and industry != ''">
-            WHERE s.industry LIKE CONCAT(#{industry}, '%')
-        </if>
-        <if test="minPrice != null">
-            AND eff.close_price >= #{minPrice}
-        </if>
-        <if test="maxPrice != null">
-            AND eff.close_price &lt;= #{maxPrice}
-        </if>
-        <if test="minChange != null">
-            AND eff.eff_cp >= #{minChange}
-        </if>
-        ORDER BY eff.eff_cp DESC
-        LIMIT #{limit}
-    </select>
-
-    <!-- 行业涨跌排行（按一级行业名聚合） -->
-    <select id="selectSectorRanking" resultType="java.util.Map">
-        SELECT
-            SUBSTRING_INDEX(s.industry, '-', 1) AS industry,
-            COUNT(*) AS stockCount,
-            ROUND(AVG(eff.eff_cp), 4) AS avgChangePct,
-            SUM(CASE WHEN eff.eff_cp > 0 THEN 1 ELSE 0 END) AS upCount,
-            SUM(CASE WHEN eff.eff_cp &lt; 0 THEN 1 ELSE 0 END) AS downCount,
-            ROUND(SUM(CASE WHEN eff.eff_cp > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS upRatio
-        FROM (
-            SELECT d.stock_code,
-                   CASE WHEN d.change_percent IS NOT NULL AND d.change_percent != 0
-                        THEN d.change_percent
-                        ELSE ROUND((d.close_price - COALESCE(y.close_price, d.pre_close, 0))
-                             / GREATEST(COALESCE(y.close_price, d.pre_close, 0.01), 0.01) * 100, 4)
-                   END AS eff_cp
-            FROM stock_daily d
-            LEFT JOIN stock_daily y ON d.stock_code = y.stock_code
-                AND y.trade_date = DATE_SUB(d.trade_date, INTERVAL 1 DAY)
-            WHERE d.trade_date = #{tradeDate}
-              AND d.close_price IS NOT NULL
-        ) eff
-        JOIN stock s ON eff.stock_code = s.stock_code
-        WHERE s.industry IS NOT NULL AND TRIM(s.industry) != ''
-        GROUP BY SUBSTRING_INDEX(s.industry, '-', 1)
-        ORDER BY avgChangePct DESC
-    </select>
-
-    <!-- 行业分层云图（一级行业 + 成分股明细，供前端钻取）
-         当 stored change_percent=0 时，用 (close-pre_close)/pre_close*100 兜底 -->
-    <select id="selectIndustryTreeMap" resultType="java.util.Map">
-        SELECT
-            SUBSTRING_INDEX(s.industry, '-', 1) AS topIndustry,
-            s.stock_code AS stockCode,
-            s.stock_name AS stockName,
-            CASE WHEN d.change_percent IS NOT NULL AND d.change_percent != 0
-                 THEN d.change_percent
-                 ELSE ROUND((d.close_price - COALESCE(y.close_price, d.pre_close, 0))
-                      / GREATEST(COALESCE(y.close_price, d.pre_close, 0.01), 0.01) * 100, 4)
-            END AS changePercent
-        FROM stock_daily d
-        JOIN stock s ON d.stock_code = s.stock_code
-        LEFT JOIN stock_daily y ON d.stock_code = y.stock_code
-            AND y.trade_date = DATE_SUB(d.trade_date, INTERVAL 1 DAY)
-        WHERE d.trade_date = #{tradeDate}
-          AND s.industry IS NOT NULL AND TRIM(s.industry) != ''
-          AND d.close_price IS NOT NULL
-        ORDER BY topIndustry, changePercent DESC
-    </select>
-
-    <!-- 板块K线聚合（按行业成分股每日OHLC均价，最高/最低取极值） -->
-    <select id="selectSectorKline" resultType="java.util.Map">
-        SELECT
-            d.trade_date AS tradeDate,
-            ROUND(AVG(d.open_price), 2) AS openPrice,
-            ROUND(MAX(d.high_price), 2) AS highPrice,
-            ROUND(MIN(d.low_price), 2) AS lowPrice,
-            ROUND(AVG(d.close_price), 2) AS closePrice,
-            SUM(d.volume) AS volume,
-            SUM(d.amount) AS amount
-        FROM stock_daily d
-        JOIN stock s ON d.stock_code = s.stock_code
-        WHERE s.industry LIKE CONCAT(#{industry}, '%')
-          AND d.trade_date >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
-        GROUP BY d.trade_date
-        ORDER BY d.trade_date ASC
-    </select>
-
-    <!-- 查询最近交易日 -->
-    <select id="selectMaxTradeDate" resultType="java.lang.String">
-        SELECT MAX(trade_date) FROM stock_daily
-    </select>
-
-    <!-- 查询带最新行情数据的股票列表（使用有效涨跌幅兜底） -->
-    <select id="selectStocksWithPrice" resultType="java.util.Map">
-        SELECT
-            eff.stock_code AS stockCode,
-            s.stock_name AS stockName,
-            s.market,
-            s.industry,
-            s.pe AS pe,
-            eff.close_price AS price,
-            eff.eff_cp AS changePct,
-            ROUND(eff.close_price - eff.pre_close_val, 2) AS `change`,
-            eff.volume,
-            eff.high_price AS highPrice,
-            eff.low_price AS lowPrice,
-            eff.turnover_rate AS turnoverRate
-        FROM (
-            SELECT d.stock_code, d.close_price, d.volume, d.high_price, d.low_price, d.turnover_rate, d.pre_close AS pre_close_val,
-                   CASE WHEN d.change_percent IS NOT NULL AND d.change_percent != 0
-                        THEN d.change_percent
-                        ELSE ROUND((d.close_price - COALESCE(y.close_price, d.pre_close, 0))
-                             / GREATEST(COALESCE(y.close_price, d.pre_close, 0.01), 0.01) * 100, 4)
-                   END AS eff_cp
-            FROM stock_daily d
-            LEFT JOIN stock_daily y ON d.stock_code = y.stock_code
-                AND y.trade_date = DATE_SUB(d.trade_date, INTERVAL 1 DAY)
-            WHERE d.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
-        ) eff
-        RIGHT JOIN stock s ON eff.stock_code = s.stock_code
-        <where>
-            <if test="keyword != null and keyword != ''">
-                AND (s.stock_name LIKE CONCAT('%', #{keyword}, '%')
-                     OR s.stock_code LIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="industry != null and industry != ''">
-                AND s.industry LIKE CONCAT(#{industry}, '%')
-            </if>
-            <if test="market != null and market != ''">
-                <!-- 市场筛选：按股票代码前缀 -->
-                <choose>
-                    <when test="market == 'hs'">
-                        AND (s.stock_code LIKE '600%' OR s.stock_code LIKE '601%' OR s.stock_code LIKE '603%' OR s.stock_code LIKE '605%'
-                             OR s.stock_code LIKE '000%' OR s.stock_code LIKE '001%' OR s.stock_code LIKE '002%' OR s.stock_code LIKE '003%')
-                    </when>
-                    <when test="market == 'sh'">
-                        AND (s.stock_code LIKE '600%' OR s.stock_code LIKE '601%' OR s.stock_code LIKE '603%' OR s.stock_code LIKE '605%')
-                    </when>
-                    <when test="market == 'sz'">
-                        AND (s.stock_code LIKE '000%' OR s.stock_code LIKE '001%' OR s.stock_code LIKE '002%' OR s.stock_code LIKE '003%')
-                    </when>
-                    <when test="market == 'sh-kcb'">
-                        AND s.stock_code LIKE '688%'
-                    </when>
-                    <when test="market == 'sz-cyb'">
-                        AND s.stock_code LIKE '300%'
-                    </when>
-                    <when test="market == 'bj'">
-                        AND (s.stock_code LIKE '83%' OR s.stock_code LIKE '43%' OR s.stock_code LIKE '87%')
-                    </when>
-                    <otherwise>
-                        AND s.market = #{market}
-                    </otherwise>
-                </choose>
-            </if>
-        </where>
-        <choose>
-            <when test="sortField == 'price' and sortOrder == 'asc'">
-                ORDER BY eff.close_price ASC
-            </when>
-            <when test="sortField == 'price'">
-                ORDER BY eff.close_price DESC
-            </when>
-            <when test="sortField == 'change_pct' and sortOrder == 'asc'">
-                ORDER BY eff.eff_cp ASC
-            </when>
-            <when test="sortField == 'change_pct'">
-                ORDER BY eff.eff_cp DESC
-            </when>
-            <when test="sortField == 'volume' and sortOrder == 'asc'">
-                ORDER BY eff.volume ASC
-            </when>
-            <when test="sortField == 'volume'">
-                ORDER BY eff.volume DESC
-            </when>
-            <otherwise>
-                ORDER BY eff.eff_cp DESC
-            </otherwise>
-        </choose>
-        LIMIT #{limit} OFFSET #{offset}
     </select>
 
 </mapper>

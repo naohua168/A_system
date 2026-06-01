@@ -1,126 +1,28 @@
 # ============================================================
-# 大数据层 Docker Compose (v2 — 双层架构重构)
+# A股全栈量化平台 — Docker Compose (v4 — 简化版)
 # ============================================================
-# 职责: 存储和处理原始数据（HDFS/MySQL/Redis）
-# 包含: HDFS + YARN + Hive + Spark + Redis + MySQL + 应用服务
-# 网络: bigdata-net（仅大数据层内部通信）
-#
-# 与采集层的数据流转:
-#   Kafka 桥接: collector-kafka:39092 (双网卡，需采集层先启动)
-#   共享卷桥接: collector-data:/data/collector (CSV 文件批量导入)
+# 数据流:
+#   采集器 → CSV → auto_seed.py(纯socket RESP) → Redis → 前端
+#   MySQL 仅存业务数据 (user/watchlist/ai_chat/analysis_result)
 #
 # 用法:
-#   # 先启动采集层（可选）
-#   docker compose -f docker-compose.collector.yml up -d
+#   # 启动采集层
+#   docker compose -f docker-compose.bridge.yml -f docker-compose.collector.yml up -d
 #
-#   # 启动大数据层
-#   docker compose -f docker-compose.yml up -d
+#   # 启动应用层
+#   docker compose up -d
 #
 #   # 生产环境
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # ============================================================
 
-name: stock-bigdata
+name: stock-platform
 
 services:
   # ================================================================
-  # Tier1: 基础设施存储
+  # 存储层
   # ================================================================
 
-  # ====== Hadoop HDFS — 分布式文件系统 ======
-  namenode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode
-    hostname: namenode
-    ports:
-      - "9870:9870"   # HDFS Web UI
-      - "9000:9000"   # HDFS RPC
-    volumes:
-      - namenode-data:/hadoop/dfs/name
-      # [数据桥接] 挂载采集层共享卷，HDFS 可直接 ingest CSV
-      - collector-data:/data/collector_output:ro
-    environment:
-      - CLUSTER_NAME=stock_cluster
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9870/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "storage"
-      description: "HDFS NameNode — 分布式文件系统元数据"
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-        reservations:
-          memory: 512m
-
-  datanode1:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode1
-    hostname: datanode1
-    depends_on:
-      namenode:
-        condition: service_started
-    ports:
-      - "9864:9864"   # DataNode Web UI
-    volumes:
-      - datanode1-data:/hadoop/dfs/data
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9864/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "storage"
-      description: "HDFS DataNode #1"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 1g
-
-  datanode2:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode2
-    hostname: datanode2
-    depends_on:
-      namenode:
-        condition: service_started
-    volumes:
-      - datanode2-data:/hadoop/dfs/data
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9864/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "storage"
-      description: "HDFS DataNode #2"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 1g
-
-  # ====== MySQL 8.0 — 关系型业务数据 ======
   mysql:
     image: mysql:8.0
     container_name: mysql
@@ -145,20 +47,8 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
-      bigdata-net:
-        aliases:
-          - mysql
-    labels:
-      tier: "storage"
-      description: "MySQL 8.0 — 业务数据存储"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 1g
+      - app-net
 
-  # ====== Redis 7 — 缓存加速 ======
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -175,203 +65,12 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
-      - bigdata-net
-    labels:
-      tier: "storage"
-      description: "Redis 7 — 缓存与Session存储"
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-        reservations:
-          memory: 256m
+      - app-net
 
   # ================================================================
-  # Tier2: 大数据计算引擎
+  # 应用服务层
   # ================================================================
 
-  # ====== YARN — 资源调度 ======
-  resourcemanager:
-    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
-    container_name: resourcemanager
-    hostname: resourcemanager
-    depends_on:
-      namenode:
-        condition: service_started
-      datanode1:
-        condition: service_started
-    ports:
-      - "8088:8088"   # YARN Web UI
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "computation"
-      description: "YARN ResourceManager — 资源调度"
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-        reservations:
-          memory: 512m
-
-  nodemanager1:
-    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
-    container_name: nodemanager1
-    hostname: nodemanager1
-    depends_on:
-      namenode:
-        condition: service_started
-      datanode1:
-        condition: service_started
-      resourcemanager:
-        condition: service_started
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8042/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "computation"
-      description: "YARN NodeManager"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 1g
-
-  # ====== Hive — 数据仓库 ======
-  hive-server:
-    image: bde2020/hive:2.3.2-postgresql-metastore
-    container_name: hive-server
-    hostname: hive-server
-    depends_on:
-      namenode:
-        condition: service_started
-    ports:
-      - "10000:10000" # Hive Server2 (Thrift JDBC)
-      - "10002:10002" # Hive Web UI
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
-    volumes:
-      - ./hive/conf/hive-site.xml:/opt/hive/conf/hive-site.xml
-      - ./hive/entrypoint-wrapper.sh:/usr/local/bin/startup.sh
-      - ./hive/lib/mysql-connector-j-8.0.33.jar:/opt/hive/lib/mysql-connector-j-8.0.33.jar
-    healthcheck:
-      test: ["CMD", "bash", "-c", "/opt/hive/bin/beeline -u jdbc:hive2://localhost:10000 -e 'SHOW DATABASES;' >/dev/null 2>&1"]
-      interval: 30s
-      timeout: 15s
-      retries: 5
-      start_period: 40s
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "computation"
-      description: "Hive 2.3.2 — SQL数据仓库"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 1g
-
-  # ====== Spark — 分布式计算引擎 ======
-  spark-master:
-    image: apache/spark:3.5.0
-    container_name: spark-master
-    hostname: spark-master
-    ports:
-      - "8080:8080"   # Spark Web UI
-      - "7077:7077"   # Spark Master RPC
-    environment:
-      - SPARK_MODE=master
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8080
-      # Kafka 桥接地址（采集层 → 大数据层）
-      - KAFKA_BOOTSTRAP_SERVERS=collector-kafka:39092
-    volumes:
-      - spark-logs:/opt/spark/logs
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "computation"
-      description: "Spark 3.5.0 Master — 分布式计算"
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-        reservations:
-          memory: 512m
-
-  spark-worker:
-    image: apache/spark:3.5.0
-    container_name: spark-worker
-    hostname: spark-worker
-    depends_on:
-      spark-master:
-        condition: service_started
-    ports:
-      - "8081:8081"   # Spark Worker Web UI
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=2g
-      - SPARK_WORKER_CORES=2
-      - SPARK_WORKER_WEBUI_PORT=8081
-      # Kafka 桥接地址（采集层 → 大数据层）
-      - KAFKA_BOOTSTRAP_SERVERS=collector-kafka:39092
-    volumes:
-      - spark-worker-logs:/opt/spark/logs
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "computation"
-      description: "Spark 3.5.0 Worker — 2C/2G"
-    deploy:
-      resources:
-        limits:
-          memory: 4g
-        reservations:
-          memory: 2g
-
-  # ================================================================
-  # Tier3: 应用服务层（消费处理后的数据）
-  # ================================================================
-
-  # ====== AI 服务 (FastAPI 多智能体) ======
   ai-service:
     build:
       context: ../ai-service
@@ -406,7 +105,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - LOG_LEVEL=INFO
-      - PROMETHEUS_MULTIPROC_DIR=/tmp
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval: 30s
@@ -415,18 +113,8 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - bigdata-net
-    labels:
-      tier: "application"
-      description: "FastAPI AI — 多智能体对话服务"
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-        reservations:
-          memory: 1g
+      - app-net
 
-  # ====== Spring Boot 后端 ======
   backend:
     build:
       context: ../backend
@@ -443,7 +131,6 @@ services:
       - "8082:8082"
     volumes:
       - backend-logs:/app/logs
-      - ../analysis-algorithms:/analysis-algorithms
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -453,7 +140,6 @@ services:
       - SPRING_REDIS_PORT=6379
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - AI_SERVICE_URL=http://ai-service:8000
-      - ANALYSIS_PYTHON=python3
     healthcheck:
       test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/ | grep -q ."]
       interval: 15s
@@ -462,18 +148,8 @@ services:
       start_period: 60s
     restart: unless-stopped
     networks:
-      - bigdata-net
-    labels:
-      tier: "application"
-      description: "Spring Boot — REST API 后端"
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-        reservations:
-          memory: 512m
+      - app-net
 
-  # ====== Nginx 前端 ======
   frontend:
     build:
       context: ..
@@ -496,164 +172,24 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - bigdata-net
-    labels:
-      tier: "application"
-      description: "Nginx — Vue 3 SPA 前端"
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-        reservations:
-          memory: 128m
-
-  # ====== Prometheus — 监控指标采集 ======
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    container_name: prometheus
-    hostname: prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=30d"
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "monitoring"
-      description: "Prometheus — 指标采集与存储"
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-        reservations:
-          memory: 256m
-
-  # ====== Grafana — 可视化仪表板 ======
-  grafana:
-    image: grafana/grafana:10.4.2
-    container_name: grafana
-    hostname: grafana
-    depends_on:
-      prometheus:
-        condition: service_started
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-    networks:
-      - bigdata-net
-    labels:
-      tier: "monitoring"
-      description: "Grafana — 可视化仪表板"
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-        reservations:
-          memory: 256m
+      - app-net
 
 # ============================================================
 # 命名卷
 # ============================================================
 volumes:
-  # 大数据层持久化卷
-  namenode-data:
-    name: stock-namenode-data
-    driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/../data/hadoop/namenode
-      o: bind
-  datanode1-data:
-    name: stock-datanode1-data
-    driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/../data/hadoop/datanode1
-      o: bind
-  datanode2-data:
-    name: stock-datanode2-data
-    driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/../data/hadoop/datanode2
-      o: bind
   mysql-data:
     name: stock-mysql-data
-    driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/../data/mysql
-      o: bind
   redis-data:
     name: stock-redis-data
-    driver: local
   backend-logs:
     name: stock-backend-logs
-    driver: local
   ai-service-logs:
     name: stock-ai-logs
-    driver: local
-  spark-logs:
-    name: stock-spark-logs
-    driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/../data/spark/logs
-      o: bind
-  spark-worker-logs:
-    name: stock-spark-worker-logs
-    driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/../data/spark/worker-logs
-      o: bind
-
-  # [跨层桥接] 采集层共享卷（由 docker-compose.collector.yml 创建）
-  collector-data:
-    name: stock-collector-data
-    external: true   # 由采集层创建，大数据层只读引用
-
-  # 监控数据卷
-  prometheus-data:
-    name: stock-prometheus-data
-    driver: local
-  grafana-data:
-    name: stock-grafana-data
-    driver: local
 
 # ============================================================
 # 网络
 # ============================================================
 networks:
-  bigdata-net:
-    external: true
-    name: bigdata-net
+  app-net:
+    name: app-net

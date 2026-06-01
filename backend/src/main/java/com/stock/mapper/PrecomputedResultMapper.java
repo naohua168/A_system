@@ -19,7 +19,7 @@ public interface PrecomputedResultMapper extends BaseMapper<PrecomputedResult> {
     @Select("SELECT * FROM precomputed_yearly_return WHERE year = #{year} AND stock_code = #{stockCode} LIMIT 1")
     PrecomputedResult selectByStockAndYear(@Param("stockCode") String stockCode, @Param("year") int year);
 
-    /** 查询某只股票所有年份的年化收益 */
-    @Select("SELECT * FROM precomputed_yearly_return WHERE stock_code = #{stockCode} ORDER BY year DESC")
+    /** 查询某只股票所有年份的年化收益（最多近10年） */
+    @Select("SELECT * FROM precomputed_yearly_return WHERE stock_code = #{stockCode} ORDER BY year DESC LIMIT 10")
     List<PrecomputedResult> selectByStock(@Param("stockCode") String stockCode);
 }

@@ -11,7 +11,7 @@ import java.util.List;
 @Mapper
 public interface InfoReportPdfMapper extends BaseMapper<InfoReportPdf> {
 
-    @Select("SELECT * FROM info_report_pdf WHERE stock_code = #{code} ORDER BY created_at DESC")
+    @Select("SELECT * FROM info_report_pdf WHERE stock_code = #{code} ORDER BY created_at DESC LIMIT 50")
     List<InfoReportPdf> selectByStock(@Param("code") String code);
 
     @Select("SELECT * FROM info_report_pdf WHERE report_id = #{reportId} LIMIT 1")

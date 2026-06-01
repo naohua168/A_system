@@ -43,4 +43,15 @@ public class RedisReader {
             return "[]";
         }
     }
+
+    /** 批量读取多个 key（Redis MGET），返回与 keys 顺序对应的值列表 */
+    public List<String> multiGet(List<String> keys) {
+        if (redisTemplate == null || keys == null || keys.isEmpty()) return Collections.emptyList();
+        try {
+            List<String> result = redisTemplate.opsForValue().multiGet(keys);
+            return result != null ? result : Collections.emptyList();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
 }
