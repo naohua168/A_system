@@ -62,6 +62,12 @@ public class RedisDataController {
         return redisReader.getAsList("market:kline_" + code);
     }
 
+    @GetMapping("/market/analysis/{type}")
+    public List<Map<String, Object>> marketAnalysis(@PathVariable String type) {
+        // Spark 批处理分析结果: top_gainers / top_losers / high_volume
+        return redisReader.getAsList("market:analysis:" + type);
+    }
+
     @GetMapping("/market/search")
     public List<Map<String, Object>> searchStocks(@RequestParam String keyword,
                                                    @RequestParam(defaultValue = "10") int size) {

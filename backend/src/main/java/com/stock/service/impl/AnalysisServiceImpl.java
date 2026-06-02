@@ -322,7 +322,9 @@ public class AnalysisServiceImpl implements AnalysisService {
             String jsonOutput;
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
-                jsonOutput = reader.lines().collect(Collectors.joining("\n"));
+                jsonOutput = reader.lines()
+                    .filter(l -> !l.startsWith("WARNING:")) // 过滤 stderr 合并的日志行
+                    .collect(Collectors.joining("\n"));
             }
 
             // 4. 解析 Python 输出

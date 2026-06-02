@@ -199,8 +199,8 @@ request.interceptors.response.use(
     return response.data
   },
   (error) => {
-    // 401 时清除所有缓存
-    if (error.response?.status === 401) {
+    // 401/403 时清除所有缓存（403 通常为 token 失效/密钥变更）
+    if (error.response?.status === 401 || error.response?.status === 403) {
       localStorage.removeItem('token')
       apiCache.clearAll()
       window.location.href = '/login'

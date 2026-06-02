@@ -259,6 +259,7 @@ export function useTechnicalChart(
     klineChart.off('dataZoom')
 
     klineChart.setOption({
+      notMerge: true,
       animation: false,
       grid: { left: 60, right: 20, top: 20, bottom: 52 },
       xAxis: {

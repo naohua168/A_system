@@ -118,6 +118,7 @@ public class AnalysisController {
     public ApiResponse getChanlun(@PathVariable String stockCode, @RequestParam(defaultValue = "365") int days,
                                   @RequestParam(defaultValue = "stock") String type) {
         try {
+            // 3-arg 方法已在 AnalysisServiceImpl 中存在，直接传递 preferIndex
             boolean preferIndex = "index".equals(type);
             return ApiResponse.ok(analysisService.getChanlunAnalysis(stockCode, days, preferIndex));
         } catch (Exception e) { log.warn("chanlun {}: {}", stockCode, e.getMessage()); return ApiResponse.ok((Object)null); }

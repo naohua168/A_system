@@ -17,18 +17,27 @@
 import argparse
 import json
 import sys
-import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# ============================================================
+# 关键：将 stderr 重定向到 /dev/null
+# 后端 Spring Boot 的 redirectErrorStream(true) 会将 stderr 合并到 stdout，
+# 导致 Jackson 无法解析 WARNING 日志前缀
+# ============================================================
+devnull = os.open(os.devnull, os.O_WRONLY)
+os.dup2(devnull, 2)
+os.close(devnull)
+
+import logging
+logging.getLogger().addHandler(logging.NullHandler())
+logger = logging.getLogger("chanlun_bridge")
 
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
-
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger("chanlun_bridge")
 
 # 指数代码前缀（用于自动检测）
 INDEX_PREFIXES = ('0', '399')
@@ -42,8 +51,7 @@ def _load_kline_from_redis(code: str, days: int = 365, prefer_index: bool = Fals
         rd = redis_mod.Redis(host=os.environ.get('SPRING_REDIS_HOST', 'redis'),
                              port=int(os.environ.get('SPRING_REDIS_PORT', '6379')),
                              db=0, decode_responses=True)
-    except Exception as e:
-        logger.warning(f"Redis 连接失败: {e}")
+    except Exception:
         return None
 
     # 决定读取顺序：仅当 prefer_index=True 时优先指数K线
@@ -313,6 +321,10 @@ def get_chanlun_data(code: str, days: int = 365, kline_file: str = None, prefer_
                 if has_index and not has_stock:
                     if not code.startswith(('0', '399')):
                         df = _load_kline_from_redis(code, days, False)
+                    else:
+                        # 代码本身是指数（0/399开头），文件也已正确(closePoint)，
+                        # 直接从文件加载，避免降级到Redis个股K线
+                        df = _load_kline_from_file(kline_file, days)
         except Exception:
             pass
 

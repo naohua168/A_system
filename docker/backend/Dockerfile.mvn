@@ -1,0 +1,14 @@
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /build
+COPY pom.xml .
+RUN mvn dependency:go-offline -q 2>/dev/null || true
+COPY src ./src
+RUN mvn package -Dmaven.test.skip=true -DskipTests 2>&1
+
+FROM eclipse-temurin:17-jre-alpine
+RUN apk add --no-cache curl
+WORKDIR /app
+COPY --from=build /build/target/stock-analysis-backend-1.0.0.jar app.jar
+EXPOSE 8082
+HEALTHCHECK CMD curl -sf http://localhost:8082/ || exit 1
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -215,6 +215,9 @@
       </div>
     </section>
 
+    <!-- Spark 涨跌排行 -->
+    <AnalysisPanel />
+
     <!-- 板块涨跌云图 -->
     <section class="section map-section">
       <div class="section-header">
@@ -309,6 +312,7 @@ import { formatPrice, formatPercent, formatPoints, getChangeClass } from '@/util
 import { safeNum } from '@/composables/useApiRetry'
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import AnalysisPanel from '@/components/chart/AnalysisPanel.vue'
 import type {
   HotReason, IndustryTopItem, IndexCard, SectorNode, HomeStockCard,
   Northbound, HotReasonResponse, IndustryCompareResponse, DragonTigerDaily,
@@ -537,17 +541,17 @@ async function loadHotStocks() {
 const marketStats = ref({ total: 0, up: 0, down: 0, flat: 0 })
 async function loadMarketStats() {
   try {
-    // 读取全部股票的前 500 条统计涨跌比例
-    const res = await getStockList({ page: 1, size: 500 }).catch(() => null)
+    // 获取全市场涨跌统计（从 stock_basic 全量数据计算）
+    const res = await getStockList({ page: 1, size: 6000 }).catch(() => null)
     const list = res?.records?.length ? res.records : (Array.isArray(res) ? res : [])
     if (list.length > 0) {
       let up = 0, down = 0, flat = 0
-      list.forEach((s: any) => {
+      for (const s of list) {
         const pct = Number(s.changePercent || s.changePct || 0)
         if (pct > 0) up++
         else if (pct < 0) down++
         else flat++
-      })
+      }
       const total = res?.total || list.length
       marketStats.value = { total, up, down, flat }
     }

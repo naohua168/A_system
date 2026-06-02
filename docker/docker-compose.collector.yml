@@ -179,5 +179,7 @@ networks:
       config:
         - subnet: 172.20.0.0/24
   # 应用层网络（外部引用，由 docker-compose.yml 创建）
-  app-net:
+  bigdata-net:
     external: true
+    name: bigdata-net
+

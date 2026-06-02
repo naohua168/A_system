@@ -1,1430 +1,580 @@
-# 基金股票智能分析系统
+# 基金股票智能分析系统 (v4.1)
 
-基于 **Hadoop 生态 + 多智能体决策** 的金融大数据分析平台，覆盖数据采集、大数据处理、算法分析、后端 API、前端展示、AI 智能对话全链路。**30 张数据库表、16 容器全部 healthy、74 后端测试全部通过、整体完成度 ~96%**。
+轻量级金融数据分析平台，覆盖 **数据采集 → Redis 缓存 → 后端 API → 前端展示** 全链路。
+采用 **CSV→Redis 直写管道** 实现零外部依赖，已剔除全部 Hadoop/Hive/Spark/Kafka 等大数据组件。
 
-> **最终状态**（2026-05-29）：
-> - ✅ **L1 数据采集层** — 95%（31 收集器, 30 张表, 775 万条记录）
-> - ✅ **L2 大数据处理层** — 90%（Hive 13 表, Spark 批处理/流处理, MLlib 预测）
-> - ✅ **L3 算法分析层** — 93%（9 指标 + 缠论六步 + 4 策略 + 144 测试）
-> - ✅ **L4 后端 API 层** — 96%（13 Controller, 50+ 端点, JWT + 熔断 + 缓存）
-> - ✅ **L5 AI 智能服务层** — 94%（7 Agent + FusionEngine + 173 测试, 已部署运行）
-> - ✅ **L6 前端展示层** — 96%（33 页面, 30 路由, ETF 板块, 货币基金 7 日年化）
+> **当前版本**: v4.1 (2026-06-03)
+> - ✅ **数据采集层** — 腾讯 API 直取实时行情 + K 线 + 信号数据，RESP 协议直写 Redis
+> - ✅ **后端 API** — 10+ Controller, 40+ 端点, Redis 直读 + MyBatis MySQL
+> - ✅ **前端** — 33 视图页面, ECharts K 线/缠论/技术指标, Element Plus UI
+> - ✅ **AI 服务** — FastAPI + 多智能体对话 (可选)
+> - ✅ **缠论分析** — Python bridge + Redis K 线，个股/指数自动检测
 
 ---
 
 ## 目录
 
-- [1. 系统概述](#1-系统概述)
-- [2. 系统架构](#2-系统架构)
-- [3. 层次交互与协作机制](#3-层次交互与协作机制)
-- [4. 数据流向详解](#4-数据流向详解)
-- [5. 接口调用链路](#5-接口调用链路)
-- [6. 核心模块详解](#6-核心模块详解)
-- [7. 部署架构](#7-部署架构)
-- [8. 部署环境与配置](#8-部署环境与配置)
-- [9. 部署流程](#9-部署流程)
-- [10. 运行验证](#10-运行验证)
-- [11. 开发指南](#11-开发指南)
+- [1. 架构总览](#1-架构总览)
+- [2. 数据流](#2-数据流)
+- [3. 技术栈](#3-技术栈)
+- [4. 项目结构](#4-项目结构)
+- [5. 目录与文件详解](#5-目录与文件详解)
+- [6. API 端点](#6-api-端点)
+- [7. Redis Key 设计](#7-redis-key-设计)
+- [8. 数据库设计](#8-数据库设计)
+- [9. 部署](#9-部署)
+- [10. 开发指南](#10-开发指南)
+- [11. 运行验证](#11-运行验证)
+- [12. 变更日志](#12-变更日志)
 
 ---
 
-## 1. 系统概述
+## 1. 架构总览
 
-### 1.1 项目定位
+```
+┌────────────────────────────────────────────────────────────┐
+│                     用户 (浏览器)                            │
+└────────────────────────┬───────────────────────────────────┘
+                         │ HTTP
+                         ▼
+┌────────────────────────────────────────────────────────────┐
+│  Docker 网络 (bigdata-net)                                   │
+│                                                              │
+│  ┌───────────┐  ┌───────────┐  ┌──────────┐  ┌──────────┐ │
+│  │  Frontend  │  │  Backend   │  │   Redis   │  │  MySQL   │ │
+│  │ (Vite :80) │  │(Java :8082)│  │(:6379)    │  │(:3306)   │ │
+│  └───────────┘  └─────┬─────┘  └──────────┘  └──────────┘ │
+│                        │                                     │
+│               ┌────────┴────────┐                            │
+│               │  data-collector  │                            │
+│               │  (Python 容器)    │                            │
+│               │  CSV → Redis     │                            │
+│               └─────────────────┘                             │
+│                                                               │
+│  AI Service (FastAPI :8000) — 可选，Docker 外运行             │
+└─────────────────────────────────────────────────────────────┘
+```
 
-覆盖 "数据采集 → 大数据处理 → 算法分析 → 后端 API → 前端展示 → AI 智能对话" 全链路的金融智能分析平台。提供实时行情、技术指标计算、缠论分析、量化回测、多智能体 AI 对话等完整功能。
+### 容器清单 (4 个活跃)
 
-### 1.2 核心技术栈
+| 服务 | 容器名 | 镜像 | 端口 | 功能 |
+|:-----|:-------|:-----|:----:|:-----|
+| **Backend** | `backend` | `stock-backend:fixed2` | 8082 | REST API (Redis 直读) |
+| **Redis** | `redis` | `redis:7-alpine` | 6379 | 缓存 (主数据源) |
+| **MySQL** | `mysql` | `mysql:8.0` | 3306 | 业务数据 (用户/自选/资讯) |
+| **Data Collector** | `data-collector` | `stock-data-collector:latest` | — | 数据采集 (auto_seed) |
 
-| 层 | 技术 | 版本 |
-|:---|:-----|:----:|
-| **数据采集** | Python HTTP/TCP 直连 (容器化) | Python 3.11 |
-| **大数据存储** | HDFS / Hive / MySQL 8.0 | Hadoop 3.2.1 / Hive 2.3.2 |
-| **大数据计算** | PySpark 3.x (已废弃 MapReduce) | Spark 3.5.0 |
-| **算法分析** | Python 原生实现 | Python 3.11 |
-| **后端 API** | Java / Spring Boot 2.7 / MyBatis-Plus / Resilience4j | Java 17 |
-| **前端** | Vue 3 / TypeScript / ECharts / Element Plus | Vue 3.4 |
-| **AI 服务** | Python FastAPI / SiliconFlow / DeepSeek / 多智能体架构 | FastAPI |
-| **部署** | Docker Compose (双层隔离架构) | v2.23+ |
-| **缓存** | Redis (TTL=30min) | 7-alpine |
-| **消息队列** | Kafka + Zookeeper (跨层桥接) | Confluent 7.5.0 |
-| **监控** | Prometheus + Grafana | v2.51 / v10.4 |
+### 逻辑分层 (4 层)
+
+| 层 | 模块 | 职责 |
+|:---|:-----|:------|
+| **L1 采集层** | `data-collector/` | 腾讯财经 API → CSV → Redis (RESP 直写) |
+| **L2 服务层** | `backend/` | Spring Boot REST API, Redis 直读缓存, MySQL 存业务 |
+| **L3 展示层** | `frontend/` | Vue 3 SPA, ECharts K 线/缠论/技术指标 |
+| **L4 AI 层** | `ai-service/` | FastAPI 多智能体对话 (可选，本地开发) |
+
+### 已移除服务 (v4.x)
+
+| 服务 | 移除版本 | 说明 |
+|:-----|:---------|:------|
+| Hadoop (NameNode/DataNode) | v4.0 | 大数据组件全部移除 |
+| Hive / Spark | v4.0 | 数据湖不再需要 |
+| Kafka / Zookeeper | v4.0 | 消息队列移除 |
+| Prometheus / Grafana | v4.1 | 监控栈移除，简化部署 |
 
 ---
 
-## 2. 系统架构
+## 2. 数据流
 
-### 2.1 架构总览
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           用户 (浏览器)                                 │
-└────────────────────────────┬────────────────────────────────────────────┘
-                             │ HTTP :80
-                             ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Layer 2: 大数据层 (bigdata-net — 172.19.0.x)                           │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │  Nginx 反向代理 (端口 80)                                            │ │
-│ │  / → Vue 3 SPA  /api/ → Backend :8082  /ai/ → AI Service :8000     │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-│        │                            │                           │      │
-│        ▼                            ▼                           ▼      │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │  应用服务层 (Tier 3)                                                  │ │
-│ │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │ │
-│ │  │  Vue 3 前端      │  │ Spring Boot 后端 │  │ FastAPI AI 服务  │  │ │
-│ │  │  (Nginx, :80)    │  │ (Java 17, :8082) │  │ (Python, :8000)  │  │ │
-│ │  └──────────────────┘  └────────┬─────────┘  └──────────────────┘  │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                    │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │  基础设施存储 (Tier 1)                                                │ │
-│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │ │
-│ │  │  MySQL 8.0    │  │  Redis 7     │  │  HDFS        │              │ │
-│ │  │  (3306)       │  │  (6379)      │  │  NameNode    │              │ │
-│ │  │  16 张业务表   │  │  TTL=30min   │  │  + DataNode×2│              │ │
-│ │  └──────┬───────┘  └──────────────┘  └──────┬───────┘              │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-│                        │                           │                    │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │  大数据计算引擎 (Tier 2)                                              │ │
-│ │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │ │
-│ │  │  YARN (RM)   │  │  Hive 2.3.2 │  │  Spark 3.5.0 (Master    │  │ │
-│ │  │  (8088)      │  │  (10000)    │  │    + Worker, :8080)      │  │ │
-│ │  └──────────────┘  └──────┬───────┘  │  7 Batch + 1 Streaming  │  │ │
-│ │                           │           │  共享 spark_config 模块  │  │ │
-│ │                           │           └──────────────────────────┘  │ │
-│ │                           ▼                                         │ │
-│ │  ┌─ ORC 格式优化表 (比 TEXTFILE 快 5~15x) + 5 UDF (新增) ────┐   │ │
-│ │  │  7 DDL + 8 DML + 5 UDF (extract_code/classify_change...)   │   │ │
-│ │  └─────────────────────────────────────────────────────────────┘   │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────┘
-        ▲                              ▲
-        │ Kafka :39092 (双网卡桥接)     │ 共享卷 :ro (CSV 批量导入)
-        │                              │
-┌───────┴──────────────────────────────┴─────────────────────────────────┐
-│  Layer 1: 数据采集层 (collector-net — 172.20.0.x, 独立网络隔离)        │
-│                                                                        │
-│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
-│  │  Zookeeper    │  │  Kafka 7.5.0    │  │  data-collector          │  │
-│  │  (2181)       │──│  (29092/39092)  │◀─│  (Python 容器化)          │  │
-│  │               │  │  3分区, 7天保留  │  │  6 数据源工厂模式        │  │
-│  └──────────────┘  └──────────────────┘  │  熔断器 + 限流 + 重试    │  │
-│                                           └──────────┬───────────────┘  │
-│                                                      │                  │
-│  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  外部数据源: 腾讯财经 / 同花顺 / 百度股市通 / 通达信TCP / akshare  │   │
-│  │  优先级: mootdx(10) > tencent(9) > ths(8) > baidu(7) > akshare(6)│   │
-│  └──────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-                              ▲
-                              │
-┌─────────────────────────────────────────────────────────────────────────┐
-│                   数据采集层                                             │
-│                                                                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐    │
-│  │ 腾讯财经  │ │ 同花顺   │ │ 百度股市通│ │ 通达信TCP │ │ akshare  │    │
-│  │ (HTTP)   │ │ (HTTP)   │ │ (HTTP)   │ │ (TCP)    │ │ (HTTP)   │    │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘    │
-│                                                                         │
-│  ┌────────────────────────────────────────────┐                        │
-│  │  DataSourceFactory (工厂模式 + 故障转移)     │                        │
-│  │  优先级: mootdx(10) > tencent(9) > ths(8)  │                        │
-│  │  > baidu(7) > akshare(6)                   │                        │
-│  └─────────────────────┬──────────────────────┘                        │
-│                        │                                                │
-│               ┌────────┴────────┐                                       │
-│               ▼                ▼                                        │
-│        CSV (本地)         HDFS 双写                                     │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 2.2 层次划分
-
-系统共分为 **6 个逻辑层** + **2 个 Docker 部署层**：
-
-#### Docker 部署分层
-
-| 部署层 | Docker Compose | 网络 (子网) | 包含逻辑层 |
-|:-------|:---------------|:------------|:-----------|
-| **L1 数据采集层** | `docker-compose.collector.yml` | `collector-net` (172.20.0.x) | L1 数据采集 |
-| **L2 大数据层** | `docker-compose.yml` | `bigdata-net` (172.19.0.x) | L2~L6 (大数据处理 + 算法 + 后端 + AI + 前端) |
-
-#### 逻辑层次
-
-| 层次 | 模块路径 | 职责 |
-|:-----|:---------|:-----|
-| **L1 数据采集** | `data-collector/` | 从 6 个外部数据源采集实时行情、K 线、资金流向等 |
-| **L2 大数据处理** | `bigdata-processing/` | Hive SQL 分析 + Spark 批处理/流计算 + MapReduce (spark_config 共享模块) |
-| **L3 算法分析** | `analysis-algorithms/` | 技术指标、缠论、量化策略、回测引擎 |
-| **L4 后端 API** | `backend/` | Spring Boot REST API + JWT 认证 + Redis 缓存 |
-| **L5 AI 服务** | `ai-service/` | 多智能体 AI 对话 + SiliconFlow/DeepSeek + 模拟降级 |
-| **L6 前端展示** | `frontend/` | Vue 3 SPA + ECharts 可视化 + Element Plus UI |
-
----
-
-## 3. 层次交互与协作机制
-
-### 3.1 各层协作全景
+### 实时数据
 
 ```
-用户操作
-   │
-   ▼
-┌──────────────┐    Nginx 反向代理 (端口 80)
-│  Vue 3 前端   │─────────────────────────────────────────────┐
-│  (L6)         │                                             │
-│               │   /api/ (Axios 请求, 15s 超时)              │
-│  Pinia Store  │─────────────────────────────────────────┐   │
-│  ────────     │  GET /api/stock/list                    │   │
-│  stock store  │  POST /api/user/login                   │   │
-│  user store   │  GET /api/analysis/...                  │   │
-│               │  POST /api/ai/chat                      │   │
-└───────────────┘                                         │   │
-                                                          │   │
-   /ai/ (Axios 请求)                                      │   │
-   ───────────────────────────────────────────────────┐   │   │
-                                                      │   │   │
-                                                      ▼   ▼   ▼
-                                             ┌──────────────────────┐
-                                             │  Spring Boot 后端    │
-                                             │  (L4)                │
-                                             │                      │
-                                             │  7 Controller        │
-                                             │  ├─ MarketController  │
-            ┌─────────────────────────────►  │  ├─ FundController    │
-            │                                │  ├─ AnalysisController│
-            │  后端 Api (httpx, 5s 超时)      │  ├─ AIController     │
-            │                                │  ├─ UserController   │
-            │                                │  ├─ WatchlistCon...  │
-            │                                │  └─ SignalController │
-            │                                │                      │
-            │                                │  14 Service          │
-            │                                │  14 MyBatis Mapper   │
-            │                                │  JWT Security Filter │
-            │                                │  Redis Cache (30min) │
-            │                                └──────┬───────────────┘
-            │                                       │
-            │                                       ▼
-            │                               ┌───────────────┐
-            │                               │    MySQL      │
-            │                               │   16 张表     │
-            │                               └───────────────┘
+腾讯财经 API (HTTP, 每批 100 只, 20 并发)
+    │
+    ▼
+auto_seed.py (Python 原生 socket RESP 协议, 零外部依赖)
+    │
+    ├──→ market:kline_{code}        (个股 K 线, TTL=12h)
+    ├──→ market:index_kline_{code}   (指数 K 线, TTL=24h)
+    ├──→ market:stock_basic          (5542 只实时行情, TTL=1h)
+    ├──→ market:index_list           (5 只指数, K 线修正, TTL=1h)
+    ├──→ market:sector_ranking       (行业涨跌排行, TTL=1h)
+    ├──→ market:stats                (涨跌统计, TTL=1h)
+    ├──→ market:northbound           (北向资金最后 50 条, TTL=1h)
+    ├──→ market:hot_reason           (题材热点, TTL=1h)
+    ├──→ market:dragon_tiger         (龙虎榜, TTL=1h)
+    ├──→ market:industry_treemap     (行业云图 99 个, TTL=1h)
+    └──→ market:industry_compare     (行业对比, TTL=1h)
             │
             ▼
-┌──────────────────────┐
-│  FastAPI AI 服务     │
-│  (L5)                │
-│                      │
-│  DialogueService     │
-│  ────────────────    │
-│  _build_context()    │
-│  并行调用后端 3 个    │
-│  API 获取实时数据：   │
-│  1. /api/stock/{code}│
-│  2. /api/analysis/   │
-│     technical/{code} │
-│  3. /api/signal/     │
-│     overview/{code}  │
-│                      │
-│  → 组装 system context│
-│  → 发送给 AI 模型     │
-│  → 返回分析回复       │
-└──────────────────────┘
+Backend (RedisDataController 直读 Redis, 无 MySQL 中间层)
+            │
+            ▼
+Frontend (Vue 3 + ECharts)
 ```
 
-### 3.2 L1 → L2 → L3 协作（数据处理管道）
+### 关键设计
+
+- **零外部依赖**: `auto_seed.py` 仅用 `urllib` + 原生 `socket` (RESP 协议)，无需 `redis-py` / `pandas` / `akshare`
+- **三级 TTL 策略**: 价格数据 1h / 信号数据 1h / 静态数据 24h+
+- **K 线修正**: 写入指数列表后自动用 K 线收盘价覆盖 CSV 滞后数据
+- **多数据源融合**: 行业云图融合申万行业 + 东方财富板块，去重合并
+- **交易时段感知**: 交易时段 1 分钟刷新，非交易时段 30 分钟
+
+---
+
+## 3. 技术栈
+
+| 组件 | 技术 | 版本 |
+|:-----|:-----|:----:|
+| **后端** | Java / Spring Boot / MyBatis-Plus / Spring Security | JDK 17 / 2.7 |
+| **前端** | Vue 3 / TypeScript / ECharts 5 / Element Plus | 3.4 |
+| **缓存** | Redis (RESP 协议直写) | 7-alpine |
+| **数据库** | MySQL (仅用户/自选/资讯) | 8.0 |
+| **采集器** | Python 原生 socket + urllib | 3.11 |
+| **AI 服务** | Python FastAPI + SiliconFlow API (可选) | FastAPI |
+| **部署** | Docker Compose | v2.23+ |
+| **代码量** | ~450 文件, ~65K 行 | |
+
+---
+
+## 4. 项目结构
 
 ```
-L1: 数据采集层
-┌──────────────────────────────────────────────────────────────┐
-│  market_collect.py / run_collector.py                        │
-│                                                              │
-│  6 数据源 → DataSourceFactory                                 │
-│    ├─ tencent       → 实时行情 CSV (realtime_*.csv)           │
-│    ├─ ths_hot       → 题材归因 CSV (hot_reason_*.csv)         │
-│    ├─ ths_northbound→ 北向资金 CSV (northbound_*.csv)         │
-│    ├─ baidu         → 概念板块 JSON (concept_blocks_*.json)   │
-│    ├─ akshare_ext   → 龙虎榜/行业/研报 JSON                   │
-│    └─ mootdx(TCP)   → 历史 K 线 CSV (kline_*_daily_*.csv)    │
-│                                                              │
-│  输出格式: CSV + JSON → data/raw/                             │
-│                                                              │
-│  双写管道 (run_with_hdfs.py):                                  │
-│    CSV → MySQL (sync_to_mysql.py)                             │
-│    CSV → HDFS (upload_to_hdfs.py)                             │
-└──────────────────────────────────────────────────────────────┘
-        │
-        ▼  CSV 数据落盘
-┌──────────────────────────────────────────────────────────────┐
-│  兜底恢复机制: restore_from_hdfs.py                           │
-│  HDFS → Hive → CSV → MySQL                                   │
-└──────────────────────────────────────────────────────────────┘
-
-L2: 大数据处理层
-┌──────────────────────────────────────────────────────────────┐
-│  run_batch_pipeline.py (批处理管道调度器)                      │
-│                                                              │
-│  步骤 1: Hive MSCK REPAIR TABLE stock_daily                   │
-│                                                              │
-│  步骤 2: Hive DML 分析 (6 个 SQL 顺序执行)                    │
-│    ├─ analysis_daily.sql         → 日均价统计                  │
-│    ├─ analysis_change.sql        → 涨跌幅统计排行              │
-│    ├─ analysis_correlation.sql   → Pearson 相关系数            │
-│    ├─ analysis_year_comparison.sql→ 年同比分析                 │
-│    ├─ analysis_technical.sql     → MA/RSI 技术指标 SQL         │
-│    └─ analysis_signal_fusion.sql → 信号融合分析                │
-│                                                              │
-│  步骤 3: Spark 批处理 (7 个 Job 顺序执行)                     │
-│    ├─ yearly_return.py          → 年收益率排名                 │
-│    ├─ monthly_return.py         → 月收益率排名                 │
-│    ├─ ma_trend.py               → 金叉/死叉信号               │
-│    ├─ correlation.py            → 相关系数矩阵                 │
-│    ├─ sector_ranking.py         → 行业涨跌排行                 │
-│    ├─ filter_stocks.py          → PE/PB/ROE 筛选              │
-│    └─ trend_judge.py            → 趋势判断                     │
-│    └─ stock_predictor.py       → MLlib 股票预测原型 (新增)    │
-│                                                              │
-│  支持 3 种模式: daily / incremental / rebuild                 │
-└──────────────────────────────────────────────────────────────┘
-        │
-        ▼
-L3: 算法分析层 (Python 原生, 不依赖 Hadoop)
-┌──────────────────────────────────────────────────────────────┐
-│  analysis-algorithms/                                        │
-│                                                              │
-│  技术指标 (technical/)                                       │
-│    ma.py          → MA5/10/20/60 + 金叉/死叉                 │
-│    macd.py        → EMA12/26/DIF/DEA/MACD + 背离             │
-│    kdj.py         → RSV/K/D/J + 超买/超卖                    │
-│    rsi.py         → RSI6/12/24 + Wilders 平滑                │
-│    bollinger.py   → 中轨/上轨/下轨/带宽/%B                   │
-│                                                              │
-│  缠论 (chanlun/) — 6 步递归分解                               │
-│    Step 1: K 线包含处理 (merge_klines)                        │
-│    Step 2: 分型识别 (顶分型/底分型)                            │
-│    Step 3: 笔识别 (上升笔/下降笔)                              │
-│    Step 4: 线段识别 (至少3笔)                                  │
-│    Step 5: 中枢识别 (ZG/ZD)                                   │
-│    Step 6: 买卖信号 (三类买/卖点)                              │
-│                                                              │
-│  量化策略 (quantitative/)                                     │
-│    ma_strategy.py           → 均线金叉买入/死叉卖出            │
-│    momentum_strategy.py    → 动量策略                         │
-│    multi_factor_strategy.py→ 多因子策略                       │
-│    backtest.py             → 回测引擎                         │
-│      (总收益率/年化/最大回撤/夏普比率/胜率)                    │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### 3.3 AI 多智能体协作机制
-
-```
-用户消息 "分析 600519 贵州茅台"
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  DialogueService.chat(message, stock_code, history)         │
-│                                                             │
-│  1. _build_context("600519") — 并行调用后端 3 个 API        │
-│     ┌────────────────────────────────────────────┐          │
-│     │ httpx.AsyncClient (5s 超时)                │          │
-│     │                                           │          │
-│     │ GET /api/stock/600519          → 实时行情  │          │
-│     │ GET /api/analysis/technical/600519 → 技术指标│        │
-│     │ GET /api/signal/overview/600519 → 市场信号 │          │
-│     └──────────────────┬─────────────────────────┘          │
-│                        ▼                                    │
-│  2. 组装 System Context:                                    │
-│     "标的: 600519 实时行情: 贵州茅台 股价... PE=...          │
-│      技术指标: MA5=... MA20=... MACD_DIF=...                │
-│      市场信号: 题材热度... 北向资金..."                      │
-│                                                             │
-│  3. 构建消息列表 (System Prompt + Context + History + User) │
-│                                                             │
-│  4. 发送给 AIClient.chat()                                  │
-│     ├─ 有 API Key → SiliconFlow API (OpenAI兼容协议, httpx POST, 60s 超时)    │
-│     │              → 返回真实 AI 分析                       │
-│     └─ 无 API Key → _mock_reply() (模拟回复)                │
-│                      → 根据关键词匹配模板                    │
-│                      → template.format(mock_data)           │
-│                                                             │
-│  5. 返回 {"reply": "分析结果..."}                            │
-└─────────────────────────────────────────────────────────────┘
-        │
-        ▼  同时可选启动多智能体深度分析
-┌─────────────────────────────────────────────────────────────┐
-│  MultiAgentService.analyze_stock("600519")                  │
-│                                                             │
-│  7 个 Agent 顺序执行 (每个 4s 超时):                         │
-│                                                             │
-│  ┌──────────────────────────────────────────────────┐       │
-│  │  1. FundamentalsAnalyst  (基本面分析)             │       │
-│  │     → PE/PB/市值/盈利能力 → 估值判断               │       │
-│  │                                                   │       │
-│  │  2. TechnicalAnalyst      (技术分析)              │       │
-│  │     → 均线/MACD/RSI/KDJ/布林带 → 技术面信号        │       │
-│  │                                                   │       │
-│  │  3. SentimentAnalyst      (情绪分析)              │       │
-│  │     → 题材热度/北向资金/主力资金 → 市场情绪        │       │
-│  │                                                   │       │
-│  │  4. NewsAnalyst           (新闻分析)              │       │
-│  │     → 新闻/公告/研报 → 事件驱动信号                │       │
-│  │                                                   │       │
-│  │  5. ResearcherTeam        (研究员讨论, 3轮辩论)    │       │
-│  │     → 多 Agent 迭代辩论 → 综合研判                 │       │
-│  │                                                   │       │
-│  │  6. TraderAgent           (交易决策)              │       │
-│  │     → 综合以上分析 → 买入/卖出/持有 + 仓位/止损    │       │
-│  │                                                   │       │
-│  │  7. RiskManager           (风险评估)              │       │
-│  │     → 审核交易决策 → 风险评级 + 最终裁定           │       │
-│  └──────────────────────────────────────────────────┘       │
-│                                                             │
-│  → 返回 {"stock_code": "600519", "reports": {...}}          │
-│                                                             │
-│  记忆服务 (MemoryService):                                   │
-│    自动保存历史决策 → 支持 auto_reflect() 反思对比           │
-└─────────────────────────────────────────────────────────────┘
+f:/bs/A_system/
+├── data-collector/          # L1: 数据采集层
+│   ├── auto_seed.py          # 核心管道: CSV→Redis (socket RESP 零依赖)
+│   ├── seed_kline.py         # K 线采集: 腾讯 API → Redis (5542 只)
+│   ├── write_kline_to_redis.py  # CSV→Redis K 线写入
+│   ├── hdfs_upload.py        # HDFS 上传 (可选)
+│   ├── hdfs_to_redis.py      # HDFS→Redis 同步
+│   ├── collectors/           # 采集器模块
+│   │   ├── tencent_collector.py   # 腾讯行情采集
+│   │   └── ...
+│   └── scheduler/
+│       ├── run_collector.py  # 主调度器 (PID 1)
+│       └── sync_to_mysql.py  # CSV→MySQL 同步
+│
+├── backend/                  # L2: 后端 API 服务
+│   ├── src/main/java/com/stock/
+│   │   ├── controller/       # REST Controller
+│   │   │   ├── RedisDataController.java   # 市场/指数/K 线 (Redis 直读)
+│   │   │   ├── AnalysisController.java    # 缠论/量化分析
+│   │   │   ├── SignalDataController.java  # 信号数据
+│   │   │   ├── InfoController.java        # 资讯
+│   │   │   ├── UserController.java        # 用户/登录
+│   │   │   ├── FundController.java        # 基金
+│   │   │   └── ...                        # 10+ 个 Controller
+│   │   ├── service/          # 业务逻辑层
+│   │   ├── mapper/           # MyBatis Mapper
+│   │   └── entity/           # 数据实体
+│   ├── src/main/resources/
+│   │   ├── application.yml   # 主配置 (双 profile: dev/prod)
+│   │   └── mapper/           # MyBatis XML Mapper
+│   └── pom.xml
+│
+├── frontend/                 # L3: 前端 SPA
+│   ├── src/
+│   │   ├── api/              # API 封装 (axios, 20 个模块)
+│   │   │   ├── request.ts    # 请求/响应拦截器 (JWT + 缓存)
+│   │   │   ├── market.ts     # 市场数据 API
+│   │   │   ├── index.ts      # 指数 API
+│   │   │   ├── info.ts       # 资讯 API
+│   │   │   └── ...
+│   │   ├── views/            # 33 个视图页面
+│   │   │   ├── HomeView.vue          # 首页大盘
+│   │   │   ├── StockDetailView.vue   # 个股详情 (K 线+缠论)
+│   │   │   ├── LoginView.vue         # 登录
+│   │   │   ├── NewsView.vue          # 资讯
+│   │   │   └── ...
+│   │   ├── components/       # 可复用组件
+│   │   │   ├── chart/        # 图表组件 (K 线/云图/排行)
+│   │   │   │   ├── KLineChart.vue    # K 线主图
+│   │   │   │   ├── useTechnicalChart.ts  # 缠论+技术指标渲染
+│   │   │   │   └── ...
+│   │   │   └── common/       # 通用组件 (EmptyState/SkeletonLoader)
+│   │   ├── stores/           # Pinia 状态管理
+│   │   ├── composables/      # 组合函数
+│   │   └── utils/            # 工具函数
+│   ├── nginx.prod.conf       # Nginx 生产配置
+│   └── package.json
+│
+├── ai-service/               # L4: AI 服务 (可选)
+│   ├── app/
+│   │   ├── agents/           # 7 个 AI Agent
+│   │   │   ├── base_agent.py
+│   │   │   ├── technical_analyst.py   # 技术分析师
+│   │   │   ├── fundamentals_analyst.py# 基本面分析师
+│   │   │   ├── news_analyst.py        # 新闻分析师
+│   │   │   ├── sentiment_analyst.py   # 情绪分析师
+│   │   │   ├── risk_manager.py        # 风险管理员
+│   │   │   └── researcher_team.py     # 研究团队
+│   │   ├── services/         # 业务服务
+│   │   └── main.py           # FastAPI 入口
+│   └── requirements.txt
+│
+├── docker/                   # Docker 部署
+│   ├── docker-compose.yml          # 主编排 (redis/mysql/backend)
+│   ├── docker-compose.collector.yml# 采集层编排
+│   ├── backend/
+│   │   ├── Dockerfile.dev          # 后端开发 Dockerfile
+│   │   └── Dockerfile.mvn          # Maven 构建 Dockerfile
+│   ├── collector/
+│   │   └── Dockerfile              # 采集器 Dockerfile
+│   └── mysql/
+│       └── init.sql                # 数据库初始化 SQL
+│
+├── docs/                     # 项目文档
+│   ├── design/               # 设计文档
+│   │   ├── ARCHITECTURE.md          # 完整架构 (28 张表/索引/Redis Key)
+│   │   ├── project-structure.md     # 项目结构手册
+│   │   ├── requirements.md          # 需求文档
+│   │   ├── ui-analysis-report.md    # UI 分析报告
+│   │   ├── architecture_report.json # 架构评估 JSON
+│   │   ├── api/                     # API 文档
+│   │   └── security/               # 安全文档
+│   ├── data_gap_report_final.md     # 数据缺口报告 (最终版)
+│   └── 缠论资料/                   # 缠论算法研究资料
+│       └── *.caj                   # 4 篇缠论研究论文
+│
+├── scripts/                  # 运维脚本
+│   ├── deploy.ps1            # 部署脚本
+│   ├── deploy-layers.ps1     # 分层部署
+│   ├── deploy-rollback.ps1   # 回滚脚本
+│   ├── deploy-config.json    # 部署配置
+│   ├── health_check.py       # 健康检查
+│   ├── diagnose_env.ps1      # 环境诊断
+│   ├── git-push-to-remote.sh # Git 推送
+│   └── start-session.ps1    # 开发会话启动
+│
+├── analysis-algorithms/      # 分析算法 (Python)
+│   ├── chanlun_bridge.py       # 缠论分析 Bridge (后端调用)
+│   └── ...
+│
+├── logs/                     # 日志目录
+├── data/                     # 数据 (MySQL/Redis/CSV)
+├── CHANGELOG.md              # 变更日志
+└── README.md                 # 本文件
 ```
 
 ---
 
-## 4. 数据流向详解
+## 5. 目录与文件详解
 
-### 4.1 实时数据流（用户查询 → 前端展示）
+### `data-collector/` — 数据采集层
 
-```
-用户打开股票列表页
-       │
-       ▼
-Vue 3 StockListView.vue onMounted()
-       │
-       ├── useStockStore() → 调用 API
-       │
-       ▼
-api/stock.ts → getStockList({page, size, keyword, industry, sort})
-       │
-       ▼
-Axios GET /api/stock/list
-       │
-       ▼  (通过 Vite proxy 转发到后端)
-       │
-Spring Boot MarketController.list()
-       │
-       ├── @Cacheable(value="stocks", key="#params") → Redis 查询
-       │      ├── 命中 → 直接返回缓存数据 (TTL=30分钟)
-       │      └── 未命中 → 继续执行
-       │
-       ├── StockService.listWithMarketData(params)
-       │      └── StockMapper.selectPage(page, wrapper) → MySQL
-       │
-       └── 返回 PageResponse<StockRecord> + 写入 Redis 缓存
-               │
-               ▼
-       Vue 前端展示 Element Plus Table + ECharts 图表
-```
+| 文件 | 用途 | 技术亮点 |
+|:-----|:-----|:---------|
+| `auto_seed.py` | **核心管道**: 每分钟/每30分钟循环，直取腾讯API行情 → CSV → Redis | 原生 socket RESP 协议写入，零外部依赖 |
+| `seed_kline.py` | K 线全量采集 (5542只, ~26min) | 20 并发 HTTP，分批写入 Redis |
+| `write_kline_to_redis.py` | 将 CSV 格式 K 线写入 Redis | 批量 pipeline 写入 |
+| `hdfs_upload.py` | 可选: 上传 CSV 到 HDFS 数据湖 | |
+| `hdfs_to_redis.py` | 可选: 从 HDFS 分析结果写入 Redis | Spark 分析结果同步 |
+| `scheduler/run_collector.py` | **PID 1 主进程**: 交易时段1分钟/非交易30分钟调度 | 交易时段感知，绕过熔断器 |
+| `collectors/tencent_collector.py` | 腾讯财经 API 采集 (实时行情/指数) | 包装 HTTP 请求 |
 
-### 4.2 批处理数据流（采集 → 分析 → 入库）
+### `backend/` — 后端 API
 
-```
-[交易日晚间 18:00]
-       │
-       ▼
-Layer 1 (collector-net): 数据采集
-  docker compose -f docker-compose.collector.yml up -d
-       │
-       ├── Kafka (实时流) → Spark Streaming (大数据层消费)
-       └── 共享卷 stock-collector-data (CSV 批量)
-              │
-              ▼  ingest_collector_data.sh 或 共享卷 :ro 挂入 NameNode
-              │
-Layer 2 (bigdata-net): 大数据处理
-  python run_batch_pipeline.py --mode daily [--parallel] [--skip-hive]
-       │
-       ├── Phase 0: 环境检查 (HDFS/Hive 可用性)
-       │
-       ├── Phase 1: Hive DML (6 个 SQL, 按依赖顺序执行)
-       │     ├── analysis_daily.sql          → 日均价统计
-       │     ├── analysis_correlation.sql    → Pearson 相关系数
-       │     ├── analysis_change.sql         → 涨跌幅统计排行
-       │     ├── analysis_year_comparison.sql→ 年同比分析
-       │     ├── analysis_technical.sql      → MA/RSI 技术指标
-       │     └── analysis_signal_fusion.sql  → 信号融合分析
-       │
-       ├── Phase 2: Spark 批处理 (7 个 Job, 可并行执行)
-       │     ├── ma_trend.py      (共享 spark_config 模块)
-       │     ├── trend_judge.py   ↓ 消除 7 处重复代码
-       │     ├── filter_stocks.py → 统一配置管理
-       │     ├── correlation.py   → 统一 HDFS 输出路径
-       │     ├── sector_ranking.py→ AQE 自适应优化
-       │     ├── monthly_return.py→ Parquet Snappy 压缩
-       │     └── yearly_return.py
-       │
-       ├── Phase 3: 数据质量检查 (QC 门禁)
-       │     ├── 行数验证 (对比源表)
-       │     ├── 空值率检查
-       │     └── HDFS 输出目录验证
-       │
-       ├── ORC 格式 Hive 表 (比 TEXTFILE 快 5~15x)
-       │     └── migrate_hive_to_orc.py 一键迁移脚本
-       │
-       └── HDFS 备份管道 (v2)
-             ├── 全量备份 / 增量备份
-             ├── 并行导出 + 自动清理 (30 天保留)
-             └── 备份清单 JSON + 校验对比
-                    │
-                    ▼
-L4: 后端查询预计算结果
-  AnalysisController → AnalysisService → AnalysisResultMapper
-       │
-       └── 返回给前端 ECharts 渲染
-```
+| Controller | 职责 | 端点前缀 |
+|:-----------|:------|:---------|
+| `RedisDataController` | 市场数据直读 Redis (分页列表/详情/K线/搜索) | `/api/v2/market/*` |
+| `IndexController` | 指数列表/详情/K线 | `/api/v2/index/*` |
+| `SignalDataController` | 信号数据 (北向/龙虎榜/题材/资金流) | `/api/v2/signal/*` |
+| `AnalysisController` | 缠论分析/Python Bridge | `/api/analysis/*` |
+| `UserController` | 用户登录/注册/信息 | `/api/user/*` |
+| `InfoController` | 资讯/研报/公告/预期 | `/api/v2/info/*` |
+| `FundController` | 基金列表/净值 | `/api/v2/fund/*` |
+| `SecurityController` | 安全配置/权限 | `/api/security/*` |
+| `WatchlistController` | 自选股管理 | `/api/v2/watchlist/*` |
+| `MarketController` | 部分历史端点 | 迁移中 |
 
-### 4.3 故障降级流
+### `frontend/` — 前端
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│ 场景 1: 数据采集故障                                              │
-│  DataSourceFactory.collect_with_fallback()                       │
-│    mootdx(10) → tencent(9) → ths(8) → baidu(7) → akshare(6)    │
-│    前一个失败自动切换到下一个                                     │
-│                                                                  │
-│ 场景 2: AI API Key 未配置                                        │
-│  AIClient.chat() → mock_mode=True                                │
-│    ├─ 关键字匹配: "涨"/"跌"/"缠论"/"基金"/"大盘"                 │
-│    ├─ 选择对应模板: trend_bullish / trend_bearish / chanlun_buy  │
-│    └─ template.format(mock_data) → 返回模拟分析                  │
-│                                                                  │
-│ 场景 3: AI API 调用超时/失败                                      │
-│  AIClient._real_chat() → Exception                              │
-│    └─ 自动 fallback 到 _mock_reply()                             │
-│                                                                  │
-│ 场景 4: 后端 API 不可用 (AI 服务调用后端行情)                     │
-│  DialogueService._build_context() → httpx 超时 5s               │
-│    └─ 跳过该数据源，仅使用已有上下文                               │
-│                                                                  │
-│ 场景 5: HDFS/Hive 不可用                                         │
-│  BatchPipeline.run_step() → FileNotFoundError                   │
-│    └─ 标记为 skipped，不中断管道                                  │
-│                                                                  │
-│ 场景 6: Redis 不可用                                             │
-│  @Cacheable → 缓存穿透 → 直接查询 MySQL                          │
-│    └─ 不影响业务功能，仅性能下降                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
+| 子目录 | 说明 |
+|:-------|:------|
+| `api/` | 20 个 API 模块，axios 封装 + 请求缓存 |
+| `views/` | 33 个页面 (大盘/个股/登录/资讯/基金/标志/解禁/预期等) |
+| `components/chart/` | 核心图表组件: K 线 (`KLineChart.vue`)、行业云图、缠论渲染 |
+| `components/common/` | EmptyState、SkeletonLoader 等通用组件 |
+| `composables/` | `useTechnicalChart.ts` — K 线缩放+缠论+技术指标组合 |
+| `stores/` | Pinia stores (user/auth) |
+| `router/` | Vue Router 路由配置 |
+| `utils/` | format.ts (价格/百分比格式化) 等 |
+
+### `ai-service/` — AI 服务 (可选)
+
+| Agent | 职责 |
+|:------|:------|
+| `technical_analyst` | 技术指标分析 (MA/MACD/RSI/KDJ/Bollinger) |
+| `fundamentals_analyst` | 基本面分析 (PE/PB/ROE/营收/利润) |
+| `news_analyst` | 新闻事件分析 |
+| `sentiment_analyst` | 市场情绪分析 |
+| `risk_manager` | 风险评估 (波动率/最大回撤/系统风险) |
+| `researcher_team` | 综合研究团队 (多 Agent 协同) |
 
 ---
 
-## 5. 接口调用链路
-
-### 5.1 前端 → 后端 API
-
-所有前端 API 请求统一经 Axios 实例处理（baseURL=`/api`, 15s 超时, 自动注入 JWT Token）：
-
-#### 行情/股票模块 (`MarketController` — `/api/market`)
-
-| 前端函数 | HTTP | 后端端点 | 说明 | 数据源 |
-|:---------|:----:|:---------|:-----|:-------|
-| `getStockList()` | GET | `/api/market/list` | 股票分页+搜索+行业+排序 | `stock_daily` (270万行) |
-| `getStockByCode(code)` | GET | `/api/market/{code}` | 股票详情+最新行情 | `stock` + `stock_daily` |
-| `getKlineData(code, days)` | GET | `/api/market/kline/{code}` | 日K线 | `stock_daily` |
-| `getKlineRange(code, start, end)` | GET | `/api/market/kline/range` | K线范围查询 | `stock_daily` |
-| `searchStocks(keyword)` | GET | `/api/market/search` | 全局搜索(股票+基金+ETF) | `stock` + `fund` + `fund_etf_market` |
-| `getIndustries()` | GET | `/api/market/industries` | 行业列表 | `stock` |
-| `getSectorRanking()` | GET | `/api/market/sector-ranking` | 行业涨跌排行 | `stock_daily` |
-| `getSectorKline(industry, days)` | GET | `/api/market/sector-kline` | 行业K线 | `stock_daily` |
-| `getIndustryTreemap()` | GET | `/api/market/industry-treemap` | 行业云图 | `stock_daily` |
-| **`getEtfList()`** | **GET** | **`/api/market/etf`** | **ETF行情列表(新增)** | **`fund_etf_market` (1,486只)** |
-
-#### 基金模块 (`FundController` — `/api/fund`)
-
-| 前端函数 | HTTP | 后端端点 | 说明 | 数据源 |
-|:---------|:----:|:---------|:-----|:-------|
-| `getFundList()` | GET | `/api/fund/list` | 基金分页(含yearReturn/货币基金标记) | `fund` (27,004只) |
-| `getFundInfo(code)` | GET | `/api/fund/{code}` | 基金详情(含isMoneyMarket/sevenDayYield) | `fund` + `fund_money_market` |
-| `getFundNav(code, days)` | GET | `/api/fund/{code}/nav` | 基金净值历史(单位净值+累计净值) | `fund_nav` (423万条) |
-| `getFundHoldings(code)` | GET | `/api/fund/{code}/holdings` | 基金前十大持仓 | `fund_holding` |
-
-#### 分析模块 (`AnalysisController` — `/api/analysis`)
-
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `getYearlyReturn(code)` | GET | `/api/analysis/{code}/yearly-return` | 年收益率 |
-| `getMonthlyReturn(code)` | GET | `/api/analysis/{code}/monthly-return` | 月收益率 |
-| `getTrend(code)` | GET | `/api/analysis/{code}/trend` | 趋势分析 |
-| `filterStocks(conditions)` | POST | `/api/analysis/filter` | 多条件筛选 |
-| `getChanlunAnalysis(code)` | GET | `/api/analysis/{code}/chanlun` | 缠论分析 |
-| `getTechnicalIndicators(code)` | GET | `/api/analysis/technical/{code}` | 技术指标(MACD/KDJ/RSI/MA/BOLL) |
-
-#### 信号模块 (`SignalDataController` — `/api/signal`)
-
-| 前端函数 | HTTP | 后端端点 | 说明 | 数据源 |
-|:---------|:----:|:---------|:-----|:-------|
-| `getHotReason()` | GET | `/api/signal/hot-reason` | 题材热点归因 | `signal_hot_reason` (27,518条) |
-| `getDragonTigerDaily()` | GET | `/api/signal/dragon-tiger/daily` | 龙虎榜 | `signal_dragon_tiger` (25,019条) |
-| `getNorthboundLatest()` | GET | `/api/signal/northbound/latest` | 北向资金 | `signal_northbound` |
-| `getFundFlow(code)` | GET | `/api/signal/fund-flow/{code}` | 资金流向 | `signal_fund_flow` |
-| `getLockupDetail(code)` | GET | `/api/signal/lockup-detail/{code}` | 限售解禁 | `signal_lockup_detail` |
-| `getIndustryCompare()` | GET | `/api/signal/industry-compare` | 行业对比 | `signal_daily_industry` |
-
-#### 资讯模块 (`InfoController` — `/api/info`)
-
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `getResearchReports(code)` | GET | `/api/info/research/{code}` | 个股研报 |
-| `getClsNews()` | GET | `/api/info/cls-news` | 财联社快讯 (24,560条) |
-| `getGlobalNews()` | GET | `/api/info/global-news` | 全球资讯 (278,200条) |
-| `getFilings(code)` | GET | `/api/info/filings/{code}` | 公司公告 |
-| `getConsensusEps(code)` | GET | `/api/info/consensus-eps/{code}` | 一致预期 |
-
-#### 用户/自选模块
-
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `login()` | POST | `/api/user/login` | 登录→JWT Token |
-| `register()` | POST | `/api/user/register` | 注册 |
-| `getWatchlist()` | GET | `/api/watchlist/{userId}` | 自选列表 |
-| `addWatchlist()` | POST | `/api/watchlist/add` | 添加自选 |
-| `removeWatchlist()` | DELETE | `/api/watchlist/remove` | 移除自选 |
-
-#### AI 对话 + 系统架构
-
-| 前端函数 | HTTP | 后端端点 | 说明 |
-|:---------|:----:|:---------|:-----|
-| `chatAI(data)` | POST | `/api/ai/chat` | AI 对话(→ai-service 7Agent) |
-| `getLayerFlows()` | GET | `/api/layer/flows` | L1-L6 架构数据流 |
-| `getLayerHealth()` | GET | `/api/layer/health` | 各层运行状态 |
-
-### 5.2 AI 服务 → 后端 API (服务间调用)
-
-```
-AI Service (FastAPI)
-       │
-       ├── DialogueService._build_context(stock_code)
-       │     └── httpx GET {backend_api_url}/api/stock/{code}         (行情)
-       │         httpx GET {backend_api_url}/api/analysis/technical/{code} (技术指标)
-       │         httpx GET {backend_api_url}/api/signal/overview/{code}    (市场信号)
-       │
-       └── BaseAgent._fetch_backend_data(endpoint)
-             └── httpx GET {backend_api_url}/{endpoint}  (各 Agent 按需调用)
-```
-
-### 5.3 认证机制
-
-```
-用户登录
-  │
-  POST /api/user/login {username, password}
-  │
-  ▼
-UserController.login()
-  ├── UserService.authenticate(username, password) → BCryptPasswordEncoder.matches()
-  ├── JwtUtil.generateToken(userId, username) → eyJhbGci...
-  └── 返回 {token: "eyJ...", user: {...}}
-         │
-         ▼
-  前端 localStorage.setItem("token", token)
-         │
-         ▼
-  后续所有请求:
-    Axios 拦截器: headers.Authorization = "Bearer eyJ..."
-
-  Nginx → Backend JwtFilter (OncePerRequestFilter)
-     ├── 白名单路径 (/user/login, /user/register, /swagger-ui/**, /v3/api-docs/**)
-     │     └── 直接放行
-     │
-     └── 其他路径:
-           ├── 解析 Authorization Header
-           ├── JwtUtil.validateToken(token)
-           ├── 设置 SecurityContextHolder
-           └── 放行到 Controller
-
-  Token 过期 (24h):
-     ├── JwtFilter → 返回 401
-     ├── Axios 响应拦截器捕获 401
-     └── localStorage.removeItem("token") → 跳转 /login
-```
-
----
-
-## 6. 核心模块详解
-
-### 6.1 前端模块 (Vue 3 SPA)
-
-**技术栈**: Vue 3 + TypeScript + Pinia + Vue Router + ECharts + Element Plus
-
-**页面路由** (33 个视图):
-
-| 路由路径 | 视图组件 | 功能 |
-|:---------|:---------|:-----|
-| `/home` | `HomeView.vue` | 首页大盘 (指数轮播、板块云图、信号卡片) |
-| `/stocks` | `StockListView.vue` | 股票列表 (含 **ETF 分类 tab**) |
-| `/stock/:code` | `StockDetailView.vue` | 个股详情 (K线、技术指标、缠论) |
-| `/index/:code` | `IndexDetailView.vue` | 指数详情 |
-| `/sector/:name` | `SectorDetailView.vue` | 板块详情 (成分股) |
-| `/funds` | `FundListView.vue` | 基金列表 (货币基金 **7日年化** 显示) |
-| `/fund/:code` | `FundDetailView.vue` | 基金详情 (阶段收益/净值走势/**货币基金7日年化**) |
-| `/portfolio` | `PortfolioView.vue` | 持仓管理 (localStorage 伪数据) |
-| `/watchlist` | `WatchlistView.vue` | 自选列表 |
-| `/chat` | `ChatView.vue` | AI 智能对话 |
-| `/hot-reason` | `HotReasonView.vue` | 题材热点 |
-| `/northbound` | `NorthboundView.vue` | 北向资金 |
-| `/dragon-tiger` | `DragonTigerView.vue` | 龙虎榜 |
-| `/industry-compare` | `IndustryCompareView.vue` | 行业对比 |
-| `/fund-flow` | `FundFlowView.vue` | 资金流向 |
-| `/lockup` | `LockupView.vue` | 限售解禁 |
-| `/consensus-eps` | `ConsensusEpsView.vue` | 一致预期 |
-| `/news` | `NewsView.vue` | 资讯(财联社+全球+日期导航) |
-| `/layers` | `LayerDetailView.vue` | 系统架构 L1-L6 |
-| `/login` | `LoginView.vue` | 登录/注册 |
-
-### 6.2 后端模块 (Spring Boot)
-
-**13 个 REST Controller**:
-
-| Controller | 路径前缀 | 端点数 | 核心方法 |
-|:-----------|:---------|:------:|:---------|
-| `MarketController` | `/api/market` | 12 | list, detail, kline, search, industries, sector-ranking, industry-treemap, sector-kline, **etf** |
-| `FundController` | `/api/fund` | 4 | list(含 **isMoneyMarket/sevenDayYield**), detail, nav, holdings |
-| `AnalysisController` | `/api/analysis` | 9 | yearly/monthly return, trend, filter, technical, chanlun |
-| `SignalDataController` | `/api/signal` | 14 | hot-reason, dragon-tiger, northbound, fund-flow, lockup, industry-compare |
-| `InfoController` | `/api/info` | 8 | research, consensus-eps, news, cls-news, global-news, filings |
-| `IndexController` | `/api/index` | 4 | list, detail, kline |
-| `UserController` | `/api/user` | 5 | login, register, info, logout |
-| `WatchlistController` | `/api/watchlist` | 3 | list, add, remove |
-| `AiDialogueController` | `/api/ai` | 2 | chat, status |
-| `LayerController` | `/api/layer` | 3 | flows, health, l2 |
-| `SecurityController` | `/api/security` | 2 | config, info |
-
-**安全配置** (`security/SecurityConfig.java`):
-- Spring Security + JWT 无状态认证
-- CSRF 禁用 (前后端分离)
-- CORS 全放行 (开发阶段)
-- 白名单路径: `/api/user/login`, `/api/user/register`, `/api/public/**`, Swagger UI
-
-**Redis 缓存** (`config/RedisConfig.java`):
-- `CacheManager`: TTL=30 分钟, Jackson JSON 序列化
-- `@Cacheable`: 应用于股票列表、K 线数据等高频查询
-
-**数据持久化** (MyBatis-Plus):
-- `@TableName` 自动映射 16 张实体表
-- `PaginationInnerInterceptor` 分页支持
-- `MyMetaObjectHandler` 自动填充 `created_at` / `updated_at`
-- `@Version` 乐观锁 (部分表)
-
-### 6.3 AI 服务模块 (FastAPI)
-
-**7 个 AI Agent**:
-
-| Agent | 职责 | 依赖数据 |
-|:------|:-----|:---------|
-| `FundamentalsAnalyst` | 基本面分析 | 后端 API: PE/PB/市值/盈利 |
-| `TechnicalAnalyst` | 技术分析 | 后端 API: K 线/MA/MACD/RSI/KDJ/布林带 |
-| `SentimentAnalyst` | 情绪分析 | 后端 API: 题材热度/北向/主力资金 |
-| `NewsAnalyst` | 新闻分析 | 后端 API: 公告/研报/新闻 |
-| `ResearcherTeam` | 研究员小组 (3 轮辩论) | 综合以上数据 |
-| `TraderAgent` | 交易决策 | 综合报告 → 买卖/仓位/止损 |
-| `RiskManager` | 风控审核 | 交易决策 → 风险评级 → 批准/驳回 |
-
-**3 种工作模式**:
-
-| 模式 | 触发条件 | 行为 |
-|:-----|:---------|:-----|
-| **实时模式** | 配置了 `SILICONFLOW_API_KEY` 或 `DEEPSEEK_API_KEY` | 优先调用 SiliconFlow, 回退 DeepSeek |
-| **模拟模式** | 未配置 `DEEPSEEK_API_KEY` | 关键字匹配模板, 填充模拟数据 |
-| **降级模式** | API 调用超时/异常 | 自动回退到硅基流动 → DeepSeek → 模拟模式 |
-
-### 6.4 数据采集模块 (Python)
-
-**6 个数据源**:
-
-| 采集器 | 协议 | 数据类型 | 优先级 | 稳定性 |
-|:-------|:----:|:---------|:------:|:------:|
-| `mootdx` | TCP :7709 | K 线/五档盘口/逐笔/F10 | 10 | ⭐⭐⭐⭐⭐ |
-| `tencent` | HTTP | 实时行情/PE/PB/市值 | 9 | ⭐⭐⭐⭐ |
-| `ths_hot` | HTTP | 强势股题材归因 | 8 | ⭐⭐⭐⭐ |
-| `ths_northbound` | HTTP | 北向资金分钟流向 | 8 | ⭐⭐⭐⭐ |
-| `baidu` | HTTP (PAE) | 概念板块/资金流向 | 7 | ⭐⭐⭐ |
-| `akshare_ext` | HTTP | 龙虎榜/解禁/行业/研报 | 6 | ⭐⭐ (东财反爬) |
-
----
-
-## 7. 部署架构
-
-### 7.1 容器部署拓扑
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          Docker Host                                     │
-│                                                                          │
-│  ┌─ Layer 1: 数据采集层 (collector-net, 172.20.0.x) ──────────────────┐ │
-│  │                                                                      │ │
-│  │  ┌──────────────┐   ┌────────────────┐   ┌────────────────────────┐ │ │
-│  │  │ collector-   │   │ collector-     │   │ data-collector         │ │ │
-│  │  │ zookeeper    │──▶│ kafka          │◀──│ (Python 多源采集器)     │ │ │
-│  │  │ (2181)       │   │ :9092(宿主机)   │   │ 6 数据源工厂模式       │ │ │
-│  │  │              │   │ 29092(采集层内)  │   │ 熔断器+限流+重试       │ │ │
-│  │  └──────────────┘   │ 39092(大数据层)  │   └──────────┬─────────────┘ │ │
-│  │                     └────────────────┘              │ 共享卷          │ │
-│  │                       │ 双网卡桥接                    ▼                │ │
-│  └───────────────────────┼────────────────────────────────────────────┘  │
-│                          │ collector-data (stock-collector-data 卷)      │
-│                          ▼                                               │
-│  ┌─ Layer 2: 大数据层 (bigdata-net, 172.19.0.x) ──────────────────────┐ │
-│  │                                                                      │ │
-│  │  ┌─ Tier 3: 应用服务 ────────────────────────────────────────────┐  │ │
-│  │  │  ┌────────────┐ ┌──────────────┐ ┌────────────┐              │  │ │
-│  │  │  │ Frontend    │ │   Backend    │ │ AI Service │              │  │ │
-│  │  │  │ (Nginx :80) │ │ (Spring     │ │ (FastAPI   │              │  │ │
-│  │  │  │             │ │  :8082)     │ │  :8000)    │              │  │ │
-│  │  │  └────────────┘ └──────┬───────┘ └────────────┘              │  │ │
-│  │  └────────────────────────┼─────────────────────────────────────┘  │ │
-│  │                           │                                         │ │
-│  │  ┌─ Tier 1: 基础设施存储 ─┼──────────────────────────────────────┐  │ │
-│  │  │  ┌────────────┐ ┌──────┴───────┐ ┌──────────────────────┐    │  │ │
-│  │  │  │ MySQL 8.0   │ │   Redis 7    │ │ HDFS:                │    │  │ │
-│  │  │  │ (3306)      │ │   (6379)     │ │  NameNode(9870)      │    │  │ │
-│  │  │  ｜ 23 张业务表(含资讯层7张) │ │   TTL=30min  │ │  DataNode1(9864)    │    │  │ │
-│  │  │  └────────────┘ └──────────────┘ │  DataNode2           │    │  │ │
-│  │  │                                   └──────────────────────┘    │  │ │
-│  │  └──────────────────────────────────────────────────────────────┘  │ │
-│  │                                                                     │ │
-│  │  ┌─ Tier 2: 大数据计算引擎 ──────────────────────────────────────┐  │ │
-│  │  │  ┌────────────┐ ┌──────────────┐ ┌────────────────────────┐  │  │ │
-│  │  │  │ YARN       │ │ Hive Server2 │ │ Spark Master(:8080)   │  │  │ │
-│  │  │  │ RM(:8088)  │ │ (10000/10002)│ │ Spark Worker(:8081)   │  │  │ │
-│  │  │  │ NM         │ │ ORC格式优化表 │ │ 共享 spark_config 模块 │  │  │ │
-│  │  │  └────────────┘ └──────────────┘ └────────────────────────┘  │  │ │
-│  │  └──────────────────────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  宿主机端口映射:                                                          │
-│    80    ← Frontend (Nginx)                                               │
-│    9870  ← HDFS NameNode WebUI                                            │
-│    8088  ← YARN RM WebUI                                                  │
-│    8080  ← Spark Master WebUI                                             │
-│    8081  ← Spark Worker WebUI                                             │
-│    10002 ← Hive WebUI                                                     │
-│    3306  ← MySQL                                                          │
-│    6379  ← Redis                                                          │
-│    9092  ← Kafka (采集层, 仅调试用)                                       │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-#### 监控服务
-
-| 服务 | 容器名 | 镜像 | 端口 | 用途 |
-|:-----|:-------|:-----|:----:|:-----|
-| **Prometheus** | `prometheus` | `prom/prometheus:v2.51.0` | 9090 | 指标采集 (15s间隔, 30天保留) |
-| **Grafana** | `grafana` | `grafana/grafana:10.4.2` | 3000 | 可视化仪表板 (admin/admin) |
-
-| AI 记忆持久化 | Redis(已支持, 含熔断降级) | Docker 内 Redis 服务 | 故障时自动回退文件系统 |
-
-### 7.2 容器清单 (16 个容器, 全部 healthy)
-
-> 当前运行模式：前端 Vite 开发模式 (5173)，非 Nginx 生产部署
-
-#### Layer 1: 数据采集层 (独立 `collector-net`)
-
-| 服务 | 容器名 | 镜像 | 实际内存 | 端口 | 网络 |
-|:-----|:-------|:-----|:--------:|:----:|:----:|
-| **Zookeeper** | `collector-zookeeper` | `cp-zookeeper:7.5.0` | 118MB | 2181 | collector-net |
-| **Kafka** | `collector-kafka` | `cp-kafka:7.5.0` | 430MB | 9092 | collector-net + bigdata-net |
-| **Data Collector** | `data-collector` | 自构建 (Python 3.11) | 103MB | — | collector-net |
-
-#### Layer 2: 大数据层 (共享 `bigdata-net`)
-
-| 服务 | 容器名 | 镜像 | 实际内存 | 端口 | 层级 |
-|:-----|:-------|:-----|:--------:|:----:|:----:|
-| Backend   | `backend`    | 自构建 (Java 17) | 342MB | 8082 | 应用 |
-| AI Service | `ai-service` | 自构建 (Python 3.11) | — | 8000 | 应用 |
-| MySQL     | `mysql`      | `mysql:8.0` | 614MB | 3307→3306 | 存储 |
-| Redis     | `redis`      | `redis:7-alpine` | 8.5MB | 6379 | 缓存 |
-| NameNode  | `namenode`   | `hadoop-namenode:2.0.0` | 492MB | 9000/9870 | 存储 |
-| DataNode1 | `datanode1`  | `hadoop-datanode:2.0.0` | 358MB | 9864 | 存储 |
-| DataNode2 | `datanode2`  | `hadoop-datanode:2.0.0` | 356MB | — | 存储 |
-| RM        | `resourcemanager` | `hadoop-resourcemanager:2.0.0` | 571MB | 8088 | 计算 |
-| NM        | `nodemanager1` | `hadoop-nodemanager:2.0.0` | 557MB | — | 计算 |
-| Hive      | `hive-server` | `hive:2.3.2` | 890MB | 10000/10002 | 计算 |
-| SparkMaster| `spark-master` | `apache/spark:3.5.0` | 365MB | 8080/7077 | 计算 |
-| SparkWorker| `spark-worker` | `apache/spark:3.5.0` | 281MB | 8081 | 计算 |
-| Grafana    | `grafana`    | `grafana/grafana:10.4.2` | 75MB | 3001→3000 | 监控 |
-
----
-
-## 8. 部署环境与配置
-
-### 8.1 硬件/系统要求
-
-| 项目 | 最低配置 | 推荐配置 |
-|:-----|:---------|:---------|
-| CPU | 4 核 | 8 核+ |
-| 内存 | 16 GB | 32 GB+ |
-| 磁盘 | 100 GB SSD | 256 GB+ SSD |
-| Docker | 20.10+ | 24.0+ |
-| Docker Compose | v2+ | v2.23+ |
-| 操作系统 | Linux (Ubuntu 20.04+) / Windows 10+ | Linux (Ubuntu 22.04+) |
-
-### 8.2 基础设施服务
-
-| 基础设施 | 作用 | 关键配置 |
-|:---------|:-----|:---------|
-| **Docker Engine** | 容器运行时 | ≥ 20.10 |
-| **Docker Compose** | 容器编排 | ≥ v2 |
-| **Nginx** | 反向代理 + 静态资源托管 | 见 `docker/frontend/nginx.conf` |
-| **MySQL 8.0** | 业务数据库 | 数据库: `stock_analysis`, 用户: `root`, 密码: `hadoop123` |
-| **Redis 7** | 缓存 (30 分钟 TTL) | 默认端口 6379, 无认证 |
-| **HDFS** | 分布式文件系统 | 3 副本, 256MB 块, NameNode 端口 9000 |
-| **YARN** | 资源调度 | RM 端口 8088, NM 内存 2G |
-| **Hive** | 数据仓库 | MySQL Metastore, Server2 端口 10000 |
-| **Spark** | 分布式计算 | Master 端口 7077, Worker 内存 2G, 2 核 |
-
-### 8.3 环境变量配置
-
-#### AI 服务 (`ai-service/.env`)
-
-```bash
-# 服务监听
-AI_SERVICE_HOST=0.0.0.0
-AI_SERVICE_PORT=8000
-
-# 硅基流动 SiliconFlow API (推荐，OpenAI 兼容协议)
-SILICONFLOW_API_KEY=sk-your-key-here
-SILICONFLOW_MODEL=Qwen/Qwen2.5-72B-Instruct
-
-# DeepSeek API (备用，可选)
-DEEPSEEK_API_KEY=
-
-# 后端服务地址 (Docker 内网)
-BACKEND_API_URL=http://backend:8082/api
-```
-
-#### 后端 (`application.yml`)
-
-```yaml
-server:
-  port: 8082
-
-spring:
-  datasource:
-    url: jdbc:mysql://mysql:3306/stock_analysis?serverTimezone=Asia/Shanghai
-    username: root
-    password: hadoop123
-  redis:
-    host: redis
-    port: 6379
-
-ai:
-  service:
-    url: http://ai-service:8000
-```
-
-### 8.4 持久化数据卷
-
-#### Layer 1: 采集层命名卷
-
-| 卷名 | 用途 |
+## 6. API 端点
+
+### 市场数据 (`/api/v2/market`)
+
+| 端点 | 说明 | Redis Key |
+|:-----|:-----|:----------|
+| `GET /list` | 股票分页列表 (5542 只) | `market:stock_basic` |
+| `GET /detail/{code}` | 个股详情 | `market:stock_basic` (filter) |
+| `GET /kline/{code}` | 日 K 线 (120 条) | `market:kline_{code}` |
+| `GET /kline/range` | K 线范围查询 | `market:kline_{code}` |
+| `GET /search` | 全局搜索 | `market:stock_basic` |
+| `GET /sector-ranking` | 行业涨跌排行 (5542 条) | `market:sector_ranking` |
+| `GET /industry-treemap` | 行业云图 (99 个行业) | `market:industry_treemap` |
+| `GET /max-date` | 最新交易日 | `market:max_date` |
+
+### 指数 (`/api/v2/index`)
+
+| 端点 | 说明 | Redis Key |
+|:-----|:-----|:----------|
+| `GET /list` | 指数列表 (含实时价, K 线修正) | `market:index_list` |
+| `GET /{code}` | 指数详情 | `market:index_list` |
+| `GET /{code}/kline` | 指数 K 线 | `market:index_kline_{code}` |
+
+### 信号 (`/api/v2/signal`)
+
+| 端点 | 说明 | Redis Key |
+|:-----|:-----|:----------|
+| `GET /hot-reason` | 题材热点 (96 只) | `market:hot_reason` |
+| `GET /dragon-tiger/daily` | 龙虎榜 (75 条) | `market:dragon_tiger` |
+| `GET /northbound/latest` | 北向资金 (最后 50 条) | `market:northbound` |
+| `GET /fund-flow/{code}` | 资金流向 | `market:fund_flow` |
+| `GET /lockup-detail/{code}` | 限售解禁 | `market:lockup_detail` |
+| `GET /industry-compare` | 行业对比 | `market:industry_compare` |
+
+### 分析 (`/api/analysis`)
+
+| 端点 | 说明 | 数据源 |
+|:-----|:-----|:-------|
+| `GET /{code}/chanlun` | 缠论分析 | Redis K 线 + Python Bridge |
+| `GET /{code}/technical` | 技术指标 | Redis K 线计算 |
+| `GET /{code}/trend` | 趋势分析 | Redis |
+| `GET /{code}/yearly-return` | 年收益率 | Redis |
+| `POST /filter` | 多条件筛选 | MySQL |
+
+### 资讯 (`/api/v2/info`)
+
+| 端点 | 说明 | 数据源 |
+|:-----|:-----|:-------|
+| `GET /cls-news` | 财联社快讯 | MySQL |
+| `GET /global-news` | 全球资讯 | MySQL |
+| `GET /research/{code}` | 个股研报 | MySQL |
+| `GET /filings/{code}` | 公司公告 | MySQL |
+| `GET /consensus-eps/{code}` | 一致预期 | MySQL |
+
+### 用户/基金
+
+| 端点 | 说明 |
 |:-----|:-----|
-| `stock-collector-kafka-data` | Kafka 消息持久化 |
-| `stock-collector-data` | 采集 CSV 原始数据 (跨层桥接到 NameNode :ro) |
-| `stock-collector-logs` | 采集器日志 |
-
-#### Layer 2: 大数据层命名卷
-
-| 宿主机路径 | 容器路径 | 用途 |
-|:-----------|:---------|:-----|
-| `../data/hadoop/namenode` | `/hadoop/dfs/name` | HDFS 元数据 |
-| `../data/hadoop/datanode1` | `/hadoop/dfs/data` | HDFS 数据块 (节点1) |
-| `../data/hadoop/datanode2` | `/hadoop/dfs/data` | HDFS 数据块 (节点2) |
-| `../data/mysql` | `/var/lib/mysql` | MySQL 业务数据 |
-| `../data/spark/logs` | `/opt/spark/logs` | Spark 日志 |
-| `../data/spark/worker-logs` | `/opt/spark/logs` | Spark Worker 日志 |
-
-#### 跨层桥接卷
-
-| 卷名 | 源 | 目标 | 访问模式 | 用途 |
-|:-----|:--:|:----:|:--------:|:-----|
-| `stock-collector-data` | 采集层 (collector-net) | NameNode (bigdata-net) | `ro` | CSV 批量导入 HDFS |
-
-### 8.5 端口分配
-
-| 宿主机端口 | 容器端口 | 服务 | 用途 |
-|:----------:|:--------:|:-----|:-----|
-| 5173 | — | 前端(Vite dev) | 开发模式 |
-| 8082 | 8082 | Backend API | REST API |
-| 3307 | 3306 | MySQL | 业务数据库 |
-| 6379 | 6379 | Redis | 缓存 |
-| 9870 | 9870 | NameNode | HDFS Web UI |
-| 9864 | 9864 | DataNode1 | DataNode Web UI |
-| 8088 | 8088 | ResourceManager | YARN Web UI |
-| 10000 | 10000 | Hive | HiveServer2 JDBC |
-| 10002 | 10002 | Hive | Hive Web UI |
-| 8080 | 8080 | Spark | Spark Master Web UI |
-| 8081 | 8081 | Spark | Spark Worker Web UI |
-| 7077 | 7077 | Spark | Spark Master RPC |
-| 9092 | 9092 | Kafka | 消息队列 |
-| 3001 | 3000 | Grafana | 监控仪表板 |
+| `POST /api/user/login` | 登录 → JWT Token |
+| `POST /api/user/register` | 注册 |
+| `GET /api/user/info` | 用户信息 (需 Bearer Token) |
+| `GET/POST/DELETE /api/v2/watchlist/*` | 自选管理 |
+| `GET /api/v2/fund/list` | 基金列表 |
+| `GET /api/v2/fund/nav/{code}` | 基金净值 |
 
 ---
 
-## 9. 部署流程
+## 7. Redis Key 设计
 
-### 9.1 前置条件
+| Key | 类型 | TTL | 写入方 | 说明 |
+|:----|:-----|:---:|:-------|:-----|
+| `market:kline_{code}` | String(JSON) | 12h | `seed_kline.py` | 个股日 K 线 (120 条) |
+| `market:index_kline_{code}` | String(JSON) | 24h | `seed_kline.py` | 指数日 K 线 (120 条) |
+| `market:stock_basic` | String(JSON) | 1h | `auto_seed.py` | 5,542 只实时行情 |
+| `market:index_list` | String(JSON) | 1h | `auto_seed.py` | 5 只指数 (K 线修正) |
+| `market:sector_ranking` | String(JSON) | 1h | `auto_seed.py` | 个股涨跌排行 (5542) |
+| `market:stats` | String(JSON) | 1h | `auto_seed.py` | 涨跌统计 |
+| `market:hot_reason` | String(JSON) | 1h | `auto_seed.py` | 题材热点归因 |
+| `market:northbound` | String(JSON) | 1h | `auto_seed.py` | 北向资金 (最后 50 条) |
+| `market:dragon_tiger` | String(JSON) | 1h | `auto_seed.py` | 龙虎榜 |
+| `market:industry_treemap` | String(JSON) | 1h | `auto_seed.py` | 行业云图 (99 行业) |
+| `market:industry_compare` | String(JSON) | 1h | `auto_seed.py` | 行业对比 |
+| `market:fund_flow` | String(JSON) | 24h | `auto_seed.py` | 资金流向 |
+| `market:lockup_detail` | String(JSON) | 24h | `auto_seed.py` | 限售解禁 |
+| `market:max_date` | String(JSON) | 1h | `auto_seed.py` | 最新交易日 |
+| `market:stock_industry` | String(JSON) | 7d | `auto_seed.py` | 行业映射 |
 
-```bash
-# 1. 安装 Docker Engine (≥ 20.10)
-# Windows: 安装 Docker Desktop
-# Linux:
-curl -fsSL https://get.docker.com | sh
+---
 
-# 2. 安装 Docker Compose v2
-# Docker Desktop 自带
-# Linux: sudo apt install docker-compose-plugin
-```
+## 8. 数据库设计
 
-### 9.2 构建与启动 (双层架构)
+MySQL 仅承载**业务数据**（用户/自选/资讯/信号），约 **20 张表、~400 万条记录**。
 
-```powershell
-# 进入 docker 目录
-cd f:\bs\A_system\docker
+### 业务表
 
-# ====== 推荐: 使用分层部署脚本 ======
-# 仅启动大数据层 (常用)
-..\scripts\deploy-layers.ps1 -Mode up -Layer bigdata
-
-# 启动全部 (先采集层, 后大数据层)
-..\scripts\deploy-layers.ps1 -Mode up -Layer all
-
-# ====== 或使用 start-all.sh (Linux/Mac) ======
-# 大数据层
-bash ../scripts/start-all.sh --bigdata-only
-
-# 全量 (含采集层)
-bash ../scripts/start-all.sh --full
-```
-
-### 9.3 手动分层部署
-
-如果需要手动分步部署：
-
-```powershell
-cd f:\bs\A_system\docker
-
-# ====== Step 1: 启动数据采集层 (可选) ======
-docker compose -f docker-compose.collector.yml up -d
-# 启动顺序: Zookeeper → Kafka → DataCollector
-# 验证: docker compose -f docker-compose.collector.yml ps
-
-# ====== Step 2: 启动大数据层 (+ 应用 + 生产配置) ======
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-# 启动顺序 (自动按依赖): namenode → datanode* → resourcemanager
-#   → nodemanager → mysql → redis → hive-server → spark* → ai-service → backend → frontend
-
-# 分层状态查看
-docker compose -f docker-compose.collector.yml ps
-docker compose -f docker-compose.yml ps
-
-# 集成状态 (所有容器)
-..\scripts\deploy-layers.ps1 -Mode status -Layer all
-
-# 查看日志
-..\scripts\deploy-layers.ps1 -Mode logs -Layer collector
-..\scripts\deploy-layers.ps1 -Mode logs -Layer bigdata
-```
-
-### 9.4 MySQL 初始化
-
-MySQL 数据量为 **30 张表、775 万条记录**。核心表一览：
-
-| 表 | 行数 | 品类 |
+| 表 | 行数 | 说明 |
 |:---|:----:|:-----|
-| `fund` | 27,004 | 基金基础信息(已去重) |
-| `fund_nav` | 4,236,022 | 基金净值历史(2,797只) |
-| `fund_money_market` | 542 | 货币基金7日年化 |
-| `fund_etf_market` | 1,486 | ETF 实时行情 |
-| `fund_holding` | 493 | 基金持仓 |
-| `stock` | 5,544 | 股票基础信息 |
-| `stock_daily` | 2,706,469 | K线数据(5,539只) |
-| `signal_hot_reason` | 27,518 | 题材热点 |
-| `signal_dragon_tiger` | 25,019 | 龙虎榜 |
-| `signal_dragon_tiger_detail` | 29,715 | 龙虎榜明细 |
-| `signal_fund_flow` | 5,251 | 资金流向 |
-| `signal_concept_block` | 7,926 | 概念板块 |
-| `signal_lockup_detail` | 27,014 | 限售解禁 |
-| `info_cls_news` | 24,560 | 财联社快讯 |
-| `info_global_news` | 278,200 | 全球资讯 |
-| `info_research_report` | 5,929 | 研究报告 |
-| `info_filing` | 4,832 | 公司公告 |
-| `info_consensus_eps` | 883 | 一致预期 |
-| `info_stock_news` | 4,228 | 个股新闻 |
-| `user` | 2 | 用户 |
-| `watchlist` | 7 | 自选 |
-| `ai_chat` | 0 | AI对话记录 |
-| `analysis_result` | 201 | 分析结果 |
-| `index_daily` | 14,440 | 指数日数据 |
-| `market_index` | 15 | 市场指数 |
+| `user` | ~10 | 用户 |
+| `watchlist` | ~10 | 自选股 |
+| `ai_chat` | 0 | AI 对话记录 |
+| `analysis_result` | ~200 | 分析结果 |
 
-### 9.5 Nginx 反向代理配置
+### 资讯表
 
-```nginx
-# docker/frontend/nginx.conf
-server {
-    listen 80;
-    server_name localhost;
+| 表 | 行数 | 说明 |
+|:---|:----:|:-----|
+| `info_cls_news` | ~25K | 财联社快讯 |
+| `info_global_news` | ~280K | 全球资讯 |
+| `info_research_report` | ~6K | 研究报告 |
+| `info_filing` | ~5K | 公司公告 |
+| `info_consensus_eps` | ~900 | 一致预期 |
+| `info_stock_news` | ~4K | 个股新闻 |
 
-    location / {
-        root /usr/share/nginx/html;
-        index index.html;
-        try_files $uri $uri/ /index.html;      # SPA 路由支持
-    }
+### 信号表
 
-    location /api/ {
-        proxy_pass http://backend:8082/api/;   # 后端 API 代理
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
+| 表 | 行数 | 说明 |
+|:---|:----:|:-----|
+| `signal_hot_reason` | ~28K | 题材热点 |
+| `signal_dragon_tiger` | ~25K | 龙虎榜 |
+| `signal_dragon_tiger_detail` | ~30K | 龙虎榜明细 |
+| `signal_fund_flow` | ~5K | 资金流向 |
+| `signal_lockup_detail` | ~27K | 限售解禁 |
 
-    location /ai/ {
-        proxy_pass http://ai-service:8000/;    # AI 服务代理
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
+> 完整数据库设计（含字段定义、索引策略）详见 `docs/design/ARCHITECTURE.md`
 
-### 9.6 数据采集
+---
 
-Docker 部署后数据采集自动运行（容器化）：
+## 9. 部署
+
+### 前置条件
+
+- Docker Engine ≥ 20.10
+- Docker Compose v2+
+
+### 启动所有服务
 
 ```powershell
-# ====== 方式一: Docker 容器采集 (推荐) ======
-docker compose -f docker-compose.collector.yml up -d
-# data-collector 容器自动启动, 内部运行 market_collect.py
-
-# 查看采集日志
-docker logs -f data-collector
-
-# 采集数据导入 HDFS (从共享卷)
-docker exec namenode bash -c "
-  hdfs dfs -put -f /data/collector_output/*.csv /user/hadoop/stock_data/daily/
-"
-
-# ====== 方式二: 宿主机直接采集 (开发调试) ======
-cd f:\bs\A_system\data-collector\scheduler
-pip install pandas requests akshare mootdx
-python market_collect.py --all --sync
-```
-
-### 9.7 大数据批处理 (v2 优化版)
-
-```powershell
-cd f:\bs\A_system\bigdata-processing\batch
-
-# ====== 基本用法 ======
-# 全量跑批 (Hive DML + Spark batch + 数据质量检查)
-python run_batch_pipeline.py --mode daily
-
-# 指定日期增量
-python run_batch_pipeline.py --mode incremental --date 2026-05-13
-
-# ====== 高级选项 ======
-# 并行执行 Spark Job (最多3个同时跑)
-python run_batch_pipeline.py --mode daily --parallel
-
-# 仅 Spark (跳过 Hive)
-python run_batch_pipeline.py --mode daily --skip-hive
-
-# 预览执行计划 (不实际运行)
-python run_batch_pipeline.py --mode daily --dry-run
-
-# ====== Hive ORC 格式迁移 ======
-# 查询性能提升 5~15 倍
-cd ..\scripts
-python migrate_hive_to_orc.py --dry-run    # 预览迁移计划
-python migrate_hive_to_orc.py              # 执行全量迁移
-python migrate_hive_to_orc.py --switch     # 迁移后切换表名
-
-# ====== HDFS 备份 ======
-cd ..\backup
-python hdfs_backup.py --mode full           # 全量备份 (并行导出)
-python hdfs_backup.py --mode incremental --days 7  # 增量备份
-python hdfs_backup.py --mode cleanup --retention-days 30  # 清理过期
-```
-
-### 9.8 停止与清理
-
-```powershell
-# ====== 推荐: 使用分层脚本 ======
-..\scripts\deploy-layers.ps1 -Mode down -Layer all
-
-# ====== 手动停止 (分层) ======
 cd f:\bs\A_system\docker
 
-# 停止大数据层 (先停, 释放依赖)
+# 启动存储层 (Redis + MySQL)
+docker compose up -d redis mysql
+
+# 启动后端
+docker compose up -d backend
+
+# 启动采集层
+docker compose -f docker-compose.collector.yml up -d
+```
+
+### 数据初始化
+
+```powershell
+# K 线首次采集 (全量 5542 只, ~26 分钟)
+docker exec data-collector python3 /app/seed_kline.py
+
+# Redis 全量数据刷新
+docker exec data-collector python3 /app/auto_seed.py
+```
+
+### 停止
+
+```powershell
+cd f:\bs\A_system\docker
 docker compose down
-
-# 停止采集层 (后停)
 docker compose -f docker-compose.collector.yml down
-
-# 停止并删除数据卷 (数据丢失!)
-docker compose down -v
-docker compose -f docker-compose.collector.yml down -v
-
-# 停止单个服务
-docker compose stop backend
-docker compose rm backend
 ```
 
 ---
 
-## 10. 运行验证
+## 10. 开发指南
 
-### 10.1 一键验证
-
-```bash
-python scripts/e2e_verify.py
-```
-
-端到端验证脚本自动检查 11 项内容:
-1. ✅ 项目结构完整性 (7 个必需目录)
-2. ✅ Python 核心依赖 (pandas, numpy)
-3. ✅ 数据源工厂 (6 个数据源)
-4. ✅ 分析算法模块 (缠论分型 + 技术指标)
-5. ✅ 后端 API 可达性 (localhost:8080)
-6. ✅ TypeScript 编译 (vue-tsc --noEmit)
-7. ✅ HDFS 连接 (可选)
-8. ✅ Hive 表验证 (可选)
-9. ✅ AI 服务模块文件完整性
-10. ✅ 后端 AI 控制器
-11. ✅ 前端 AI 对话页面
-
-### 10.2 手动验证
+### 本地开发
 
 ```powershell
-# 1. 访问前端
-curl http://localhost
-
-# 2. 测试后端 API 健康检查
-curl http://localhost:8082/api/market/list?page=1&size=5
-
-# 3. 测试 AI 服务
-curl http://localhost:8000/health
-
-# 4. 测试 AI 对话
-curl -X POST http://localhost:8000/api/ai/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"分析 600519","stock_code":"600519"}'
-
-# 5. 验证 HDFS
-docker exec namenode hdfs dfs -ls /
-
-# 6. 验证 MySQL
-docker exec mysql mysql -uroot -phadoop123 \
-  -e "USE stock_analysis; SELECT COUNT(*) as stocks FROM stock;"
-
-# 7. 验证 Hive
-docker exec hive-server /opt/hive/bin/beeline \
-  -u jdbc:hive2://localhost:10000 -e "SHOW DATABASES;"
-
-# 8. 验证 Spark
-docker exec spark-master /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
-  --class org.apache.spark.examples.SparkPi \
-  /opt/spark/examples/jars/spark-examples_2.12-3.5.0.jar 10
-```
-
-### 10.3 Web UI 访问
-
-| 服务 | 访问地址 | 所属层 |
-|:-----|:---------|:------:|
-| 前端应用 | http://localhost | 大数据层 (app) |
-| Prometheus   | http://localhost:9090 | 大数据层 (monitoring) |
-| Grafana      | http://localhost:3000 | 大数据层 (monitoring) |
-| HDFS WebUI | http://localhost:9870 | 大数据层 (storage) |
-| YARN WebUI | http://localhost:8088 | 大数据层 (computation) |
-| Hive WebUI | http://localhost:10002 | 大数据层 (computation) |
-| Spark Master | http://localhost:8080 | 大数据层 (computation) |
-| Spark Worker | http://localhost:8081 | 大数据层 (computation) |
-| Swagger API | http://localhost:8082/swagger-ui/index.html | 大数据层 (app) |
-| Prometheus   | http://localhost:9090 | 大数据层 (monitoring) |
-| Grafana      | http://localhost:3000 | 大数据层 (monitoring) |
-
-### 10.4 验证大数据层批处理
-
-```powershell
-# 验证 Hive ORC 表
-python bigdata-processing\scripts\migrate_hive_to_orc.py --dry-run
-
-# 执行批处理 (dry-run 模式预览)
-python bigdata-processing\batch\run_batch_pipeline.py --mode daily --dry-run
-
-# 验证数据质量模块
-python -c "from bigdata_quality import DataQualityChecker; print('QC模块就绪')"
-
-# 验证 Spark 共享配置
-python -c "from spark_config import create_spark_session; print('Spark共享模块就绪')"
-
-# 验证 HDFS 备份管道
-python bigdata-processing\backup\hdfs_backup.py --mode list
-```
-
-### 10.5 账户凭据
-
-> ⚠️ **安全更新 (2026-05-18)**: 凭据文件已从 `backend/src/main/resources/security/` 迁移至 `docs/security/`，**不再打包进 JAR**。生产环境请通过环境变量注入凭据。
-
-所有账户及基础设施凭据统一参考 `docs/security/` 目录。
-
-#### 应用用户
-
-| 用户名 | 密码 | 角色 | 层级 |
-|:-------|:-----|:-----|:----:|
-| `superadmin` | `Super@Admin2026!` | 超级管理员 | L4 |
-| `admin` | `Admin@Stock2026!` | 管理员 | L3 |
-| `data_operator` | `DataOp@2026Sys` | 管理员 | L3 |
-| `premium_trader` | `Trader@2026Pro!` | 高级用户 | L2 |
-| `li_si` | `LiSiTrader@2026` | 高级用户 | L2 |
-| `test` | `Test1234` | 普通用户 | L1 |
-| `zhang_san` | `ZhangSan2026!` | 普通用户 | L1 |
-
-#### Docker 基础设施凭据
-
-| 服务 | 用户名 | 密码 | 端口 |
-|:-----|:-------|:-----|:----:|
-| MySQL (Docker) | `root` | `hadoop123` | 3306 |
-| MySQL (本地开发) | `root` | `123456` | 3306 |
-| Redis | 无认证 | - | 6379 |
-| JWT Secret | - | `DefaultSecretKeyForAStockSystem2026DevEnvironment` | - |
-
----
-
-## 11. 开发指南
-
-### 11.1 本地开发环境
-
-```powershell
-# ====== 后端 (需先启动 MySQL 和 Redis) ======
+# 后端 (需 MySQL + Redis 运行)
 cd backend
 mvn spring-boot:run
-# 访问 http://localhost:8082/swagger-ui/index.html
+# → http://localhost:8082/swagger-ui/index.html
 
-# ====== 前端 ======
+# 前端 (需后端运行)
 cd frontend
 npm install
 npm run dev
-# 访问 http://localhost:3000
+# → http://localhost:5173
 
-# ====== AI 服务 ======
+# AI 服务
 cd ai-service
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-# 访问 http://localhost:8000/docs (FastAPI Swagger)
 ```
 
-### 11.2 本地开发配置差异
+### Vite 代理
 
-本地开发时，`frontend/vite.config.ts` 使用 Vite 代理替代 Nginx：
+本地开发时，`frontend/vite.config.ts` 自动代理 `/api` → `http://localhost:8082`。
 
-```typescript
-// frontend/vite.config.ts
-server: {
-    port: 3000,
-    proxy: {
-        '/api': {
-            target: 'http://localhost:8082',  // → 本地后端
-            changeOrigin: true,
-        },
-    },
-},
-```
+### AI 对话
 
-本地 MySQL 连接使用 `localhost:3306` (而非 Docker 内网的 `mysql:3306`)，对应 `application.yml` 中的 `spring.profiles.active: dev` 配置（默认 dev profile 使用 localhost）。
-
-### 11.3 SiliconFlow AI 配置
-
-AI 服务默认使用硅基流动 API。本地开发需在 `ai-service/.env` 配置：
+`ai-service/.env` 配置 SiliconFlow API Key：
 
 ```bash
 SILICONFLOW_API_KEY=sk-your-key-here
 SILICONFLOW_MODEL=Qwen/Qwen2.5-72B-Instruct
 ```
 
-无 API Key 时系统自动降级至模拟回复模式。
+无 API Key 时自动降级为模拟回复。
 
-### 11.4 后端熔断器配置
+---
 
-后端已集成 Resilience4j 熔断器，默认配置：
-- **通用**: 滑动窗口 10 次, 失败率 50%, 熔断 10s
-- **AI 服务**: 滑动窗口 20 次, 失败率 60%, 超时 30s, 熔断 30s
+## 11. 运行验证
 
-在 `application.yml` 中可自定义：
+```powershell
+# 验证后端
+curl http://localhost:8082/api/v2/market/list?page=1&size=5
 
-```yaml
-resilience4j:
-  circuitbreaker:
-    configs:
-      default:
-        sliding-window-size: 10
-        failure-rate-threshold: 50
-  timelimiter:
-    configs:
-      default:
-        timeout-duration: 60s
+# 验证 K 线
+curl http://localhost:8082/api/v2/market/kline/000001?days=3
+
+# 验证指数
+curl http://localhost:8082/api/v2/index/list
+
+# 验证涨跌统计
+docker exec redis redis-cli GET market:stats
+
+# 验证 Redis 数据量
+docker exec redis redis-cli DBSIZE
+
+# 打开前端
+# http://localhost:5173
 ```
 
-## 12. CI/CD 与监控
+---
 
-### 12.1 GitHub Actions 流水线
+## 12. 变更日志
 
-项目已配置 GitHub Actions CI 流水线 (`.github/workflows/ci.yml`)，自动执行以下任务：
+### v4.1 (2026-06-03)
 
-| 阶段 | 触发条件 | 执行内容 |
-|:-----|:---------|:---------|
-| **Backend Build & Test** | push/PR | JDK 17 + Maven 编译 + 单元测试 |
-| **Frontend Build & Lint** | push/PR | Node 20 + npm ci + vue-tsc 类型检查 + vite 构建 + vitest 测试 |
-| **AI Service Lint & Test** | push/PR | Python 3.11 + ruff lint + pytest |
-| **Docker Image Build** | 以上全部通过 | 构建 AI/Backend/Frontend 三个 Docker 镜像（cache: gha） |
+| 变更 | 详细 |
+|:-----|:------|
+| **重构后端** | 重建后端容器，修复 JDK 版本兼容、数据库连接、JWT 密钥问题 |
+| **移除** | 14 个废弃 Docker 容器 + 22 个无用镜像 + 35 个无用卷 |
+| **移除** | `bigdata-processing/`、`a-stock-data-temp/`、`target/` 目录 |
+| **移除** | 80+ 个废弃 Python/Shell 脚本 (Hadoop/Hive/Spark 依赖) |
+| **优化** | 涨跌排行改为 sector-ranking 全量数据前端排序，移除不存在的 analysis 端点 |
+| **优化** | 北向资金修复字段兼容性 (`time`/`trade_date`)，取最后 50 条 |
+| **优化** | 前端 403 响应处理 (token 过期自动跳登录) |
+| **修复** | **Vite 代理 502** — 残留的 `/api/analysis → 8899` 规则指向已删除的缠论独立服务，改为统一 `/api → 8082` |
+| **修复** | **缠论 ECharts notMerge** — `useTechnicalChart.ts` 添加 `notMerge: true`，确保 markArea/markPoint 正确渲染 |
+| **修复** | **指数缠论数据混合** — Java 控制器传 `preferIndex`、bridge 自动检测以 `0/399` 开头的指数代码并加载指数 K 线 |
+| **修复** | **桥梁脚本 stderr** — `os.dup2(/dev/null)` 禁用 Python 日志输出，清除 Spring @Cacheable 缓存 |
+| **文档** | 更新 README，创建 `docs/design/` 目录，归档设计文档 |
 
-```yaml
-# 流水线状态:
-# [![CI](https://github.com/your-org/A_system/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/A_system/actions/workflows/ci.yml)
-```
+### v4.0 (2026-06-01)
 
-### 12.2 监控系统
-
-Prometheus + Grafana 集成在 Docker Compose 中（`docker-compose.yml`），启动后自动可用：
-
-```
-Prometheus → 采集 6 个目标（自身 / Backend / AI / Redis / MySQL / Spark）
-                 │
-                 ▼
-Grafana    ← 预配置 Prometheus 数据源，自动加载仪表板
-                 │
-                 ▼
-Web UI:    http://localhost:9090 (Prometheus)
-           http://localhost:3000 (Grafana, admin/admin)
-```
-
-### 11.3 项目代码量统计
-
-| 模块 | 语言 | 文件数 | 代码行数 | 测试用例 | 备注 |
-|:-----|:-----|:------:|:--------:|:--------:|:-----|
-| data-collector | Python | 127 | ~12K | 27 | 31收集器, 30表同步 |
-| bigdata-processing | SQL/Python | 78 | ~5K | — | Hive DDL 8 + DML 8, Spark |
-| analysis-algorithms | Python | 137 | ~15K | **144** | 9指标+缠论+量化+回测 |
-| backend | Java | 351 | ~25K | **74** | 13Controller+JWT+熔断+缓存 |
-| frontend | Vue/TS | 33(.vue) | ~8K | 16 | 33页面+30路由+30API |
-| ai-service | Python | 33 | ~8K | **173** | 7Agent+FusionEngine |
-| docker | 多语言 | 34 | ~2K | — | 16容器(全部healthy) |
-| scripts | Python/Shell | 78 | ~5K | — | 部署+验证 |
-| **总计** | | **~870** | **~80K** | **434** | 全栈自动化覆盖 ✅ |
+- Hadoop/Hive/Spark/Kafka/Zookeeper/Prometheus/Grafana 全部移除
+- 新增 `seed_kline.py`、`auto_seed.py` 零依赖管道
+- 新增缠论分析、行业云图、题材热点等前端页面
+- Redis 替代 Hive 成为主数据源
+- 清理 103 个废弃文件
 
 ---
 
 > **注意**: 本项目代码仅供学习参考，不构成任何投资建议。投资有风险，入市需谨慎。
 >
-> **License**: MIT License - Copyright (c) 2026 A_system
+> **License**: MIT License — Copyright (c) 2026 A_system

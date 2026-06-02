@@ -47,7 +47,7 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
-      - app-net
+      - bigdata-net
 
   redis:
     image: redis:7-alpine
@@ -65,7 +65,7 @@ services:
       retries: 3
     restart: unless-stopped
     networks:
-      - app-net
+      - bigdata-net
 
   # ================================================================
   # 应用服务层
@@ -113,7 +113,7 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - app-net
+      - bigdata-net
 
   backend:
     build:
@@ -148,7 +148,7 @@ services:
       start_period: 60s
     restart: unless-stopped
     networks:
-      - app-net
+      - bigdata-net
 
   frontend:
     build:
@@ -172,7 +172,7 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - app-net
+      - bigdata-net
 
 # ============================================================
 # 命名卷
@@ -191,5 +191,6 @@ volumes:
 # 网络
 # ============================================================
 networks:
-  app-net:
-    name: app-net
+  bigdata-net:
+    name: bigdata-net
+    external: true

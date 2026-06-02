@@ -417,10 +417,10 @@ class DataCollectorRunner:
         try:
             import subprocess
             cmd = [
-                "docker", "exec", "spark-master", "spark-submit",
+                "docker", "exec", "spark-master", "/opt/spark/bin/spark-submit",
                 "--master", "spark://spark-master:7077",
                 "--driver-memory", "1g", "--executor-memory", "1g",
-                "/app/bigdata/spark_sector_mysql.py"
+                "/tmp/bigdata/spark_sector_mysql.py"
             ]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if r.returncode == 0:
@@ -461,20 +461,15 @@ class DataCollectorRunner:
         self.collect_cls_news()
         self.collect_global_news()
 
-        # 全量采集后自动上传到 HDFS（数据湖）
-        print(f"\n📤 上传原始数据到 HDFS...")
+        # Redis 刷新: 从 CSV 写入 Redis（替代已移除的 HDFS 管道）
+        print(f"\n📊 刷新 Redis 缓存...")
         try:
-            from scheduler.upload_to_hdfs import HDFSUploader
-            uploader = HDFSUploader()
-            uploaded = uploader.upload_all()
-            print(f"   ✅ HDFS 上传: {uploaded} 个文件")
-            if uploaded > 0:
-                uploader.run_hive_msck()
+            import subprocess
+            base = Path(__file__).parent.parent
+            subprocess.run([sys.executable, str(base / "auto_seed.py")], timeout=120, capture_output=True)
+            print(f"   ✅ Redis 已刷新")
         except Exception as e:
-            print(f"   ⚠️ HDFS 上传失败(不影响MySQL): {e}")
-
-        # Spark 分布式批处理（行业排行等）
-        self.collect_spark_batch()
+            print(f"   ⚠️ Redis 刷新跳过: {e}")
 
         # 刷新 Redis 市场数据 — K线从CSV写入 + 实时行情从auto_seed写入
         print(f"\n📊 刷新Redis全量市场数据...")
@@ -745,41 +740,43 @@ def main():
                 today_str = now.strftime("%Y-%m-%d")
 
                 if is_trading_day and (am_session or pm_session):
-                    # 交易时段: 每1分钟实时行情
+                    # 交易时段: 每1分钟 auto_seed 刷新 Redis（直取 API，跳过熔断采集器）
+                    try:
+                        import subprocess as _sp
+                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=30)
+                    except:
+                        pass
                     if am_session and h == 9 and now.minute < 30:
                         interval = 30  # 9:00-9:30 集合竞价 30s
                     else:
                         interval = 1  # 盘中 1min
-                    runner.collect_realtime()
-                    if now.minute % 5 == 0:
-                        runner.collect_northbound()
-                        runner.collect_etf_market()
-                    runner.collect_cls_news()
-                    if args.sync:
-                        runner._run_sync()
                     print(f"\n⏳ 交易时段: 等待 {interval} 分钟...\n")
                     time.sleep(interval * 60)
 
                 elif is_trading_day and after_market and last_batch_date != today_str:
-                    # 收盘后: 一次性批处理
+                    # 收盘后: 先刷新 Redis（auto_seed 自带直取），再后台尝试其他采集
                     print(f"📊 收盘批处理 [{now:%H:%M}]")
-                    runner.collect_kline()
-                    runner.collect_hot_reason()
-                    runner.collect_northbound()
-                    runner.collect_industry_compare()
-                    runner.collect_money_market()
-                    runner.collect_etf_market()
-                    runner.collect_cls_news()
-                    runner.collect_global_news()
-                    # HDFS + Spark
                     try:
-                        from scheduler.upload_to_hdfs import HDFSUploader
-                        u = HDFSUploader()
-                        u.upload_all()
-                        u.run_hive_msck()
-                    except Exception as e:
-                        print(f"   ⚠️ HDFS 跳过: {e}")
-                    runner.collect_spark_batch()
+                        import subprocess as _sp
+                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=120)
+                    except:
+                        pass
+                    try:
+                        runner.collect_kline()
+                    except:
+                        pass
+                    try:
+                        runner.collect_hot_reason()
+                    except:
+                        pass
+                    try:
+                        runner.collect_northbound()
+                    except:
+                        pass
+                    try:
+                        runner.collect_global_news()
+                    except:
+                        pass
                     if args.sync:
                         runner._run_sync()
                     last_batch_date = today_str
@@ -787,17 +784,19 @@ def main():
                     time.sleep(1800)  # 30min
 
                 else:
-                    # 非交易时段: 每30分钟增量采集
-                    runner.collect_cls_news()
-                    runner.collect_global_news()
-                    if args.sync:
-                        runner._run_sync()
-                    # Redis 数据自愈：从 CSV 刷新全量数据到 Redis
+                    # 非交易时段: 每30分钟刷新 Redis（auto_seed 自带直取，跳过熔断的采集器）
                     try:
                         import subprocess as _sp
-                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=60)
+                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=90)
                     except:
                         pass
+                    # 后台尝试采集新闻（非阻塞，失败不影响主流程）
+                    try:
+                        runner.collect_global_news()
+                    except:
+                        pass
+                    if args.sync:
+                        runner._run_sync()
                     interval = 30
                     print(f"\n⏳ 非交易时段: 等待 {interval} 分钟...\n")
                     time.sleep(interval * 60)
