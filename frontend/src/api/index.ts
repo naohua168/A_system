@@ -9,9 +9,9 @@ export function getIndexList(): Promise<MarketIndexItem[]> {
 export function getIndexInfo(code: string): Promise<MarketIndex> {
   return request.get('/v2/index/' + code)
 }
-/** 获取指数K线数据 */
-export function getIndexKline(code: string, days = 120): Promise<IndexDaily[]> {
-  return request.get('/v2/index/' + code + '/kline', { params: { days } })
+/** 获取指数K线数据（支持多周期：day/week/month/5min/15min/30min/60min） */
+export function getIndexKline(code: string, days = 120, period = 'day'): Promise<IndexDaily[]> {
+  return request.get('/v2/index/' + code + '/kline', { params: { days, period } })
 }
 /** 获取最近交易日 */
 export function getMaxTradeDate(): Promise<{ tradeDate: string }> {

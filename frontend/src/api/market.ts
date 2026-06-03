@@ -18,8 +18,9 @@ export function getStockByCode(code: string, signal?: AbortSignal): Promise<Stoc
   return request.get(`/v2/market/detail/${code}`, { signal })
 }
 
-export function getKlineData(code: string, days?: number, signal?: AbortSignal): Promise<StockDaily[]> {
-  return request.get(`/v2/market/kline/${code}`, { params: { days }, signal })
+/** 获取K线数据（降序，支持多周期：day/week/month/5min/15min/30min/60min） */
+export function getKlineData(code: string, days?: number, period = 'day', signal?: AbortSignal): Promise<StockDaily[]> {
+  return request.get(`/v2/market/kline/${code}`, { params: { days, period }, signal })
 }
 
 export function getKlineRange(code: string, startDate?: string, endDate?: string): Promise<StockDaily[]> {

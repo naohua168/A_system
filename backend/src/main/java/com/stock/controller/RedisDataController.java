@@ -50,16 +50,17 @@ public class RedisDataController {
 
     @GetMapping("/market/kline/{code}")
     public List<Map<String, Object>> marketKline(@PathVariable String code,
-                                                  @RequestParam(defaultValue = "60") int days) {
-        return redisReader.getAsList("market:kline_" + code);
+                                                  @RequestParam(defaultValue = "60") int days,
+                                                  @RequestParam(defaultValue = "day") String period) {
+        return getPeriodKline("market:kline", code, days, period);
     }
 
     @GetMapping("/market/kline/range")
     public List<Map<String, Object>> marketKlineRange(@RequestParam String code,
                                                        @RequestParam String startDate,
-                                                       @RequestParam String endDate) {
-        // 暂不支持按日期范围过滤，返回全部 K 线
-        return redisReader.getAsList("market:kline_" + code);
+                                                       @RequestParam String endDate,
+                                                       @RequestParam(defaultValue = "day") String period) {
+        return getPeriodKline("market:kline", code, 365, period);
     }
 
     @GetMapping("/market/analysis/{type}")
@@ -159,8 +160,90 @@ public class RedisDataController {
 
     @GetMapping("/index/{code}/kline")
     public List<Map<String, Object>> indexKline(@PathVariable String code,
-                                                 @RequestParam(defaultValue = "60") int days) {
-        return redisReader.getAsList("market:index_kline_" + code);
+                                                 @RequestParam(defaultValue = "60") int days,
+                                                 @RequestParam(defaultValue = "day") String period) {
+        return getPeriodKline("market:index_kline", code, days, period);
+    }
+
+    /** 多周期 K 线：先查带周期的 key，不存在则从日K聚合 */
+    private List<Map<String, Object>> getPeriodKline(String prefix, String code, int days, String period) {
+        // 对 day 周期使用原有的 key 保持向后兼容
+        if ("day".equals(period)) {
+            return redisReader.getAsList(prefix + "_" + code);
+        }
+        // 先查 Redis 中是否有该周期的专用数据
+        String periodKey = prefix + "_" + period + "_" + code;
+        List<Map<String, Object>> cached = redisReader.getAsList(periodKey);
+        if (cached != null && !cached.isEmpty()) {
+            return cached;
+        }
+        // 无专用数据，从日K聚合
+        List<Map<String, Object>> dayData = redisReader.getAsList(prefix + "_" + code);
+        if (dayData == null || dayData.isEmpty()) return dayData;
+        return aggregatePeriod(dayData, period, days);
+    }
+
+    /** 从日K数据聚合为周K/月K */
+    private List<Map<String, Object>> aggregatePeriod(List<Map<String, Object>> dayData, String period, int maxDays) {
+        // 数据是降序（最新在前），取 maxDays 天
+        List<Map<String, Object>> limited = new ArrayList<>(dayData);
+        if (limited.size() > maxDays) limited = limited.subList(0, maxDays);
+        // 翻转成升序以便分组
+        java.util.Collections.reverse(limited);
+
+        List<List<Map<String, Object>>> groups = new ArrayList<>();
+        if ("week".equals(period)) {
+            java.util.Map<Integer, List<Map<String, Object>>> byWeek = new java.util.TreeMap<>();
+            for (Map<String, Object> r : limited) {
+                String td = r.getOrDefault("tradeDate", "").toString();
+                int w = 0;
+                try {
+                    java.time.LocalDate d = java.time.LocalDate.parse(td, java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+                    // 按 周一的日期 分组（每年第一天为第1周）
+                    w = (int) d.format(java.time.format.DateTimeFormatter.ISO_WEEK_DATE).chars().filter(c -> c == '-').count() > 1
+                        ? Integer.parseInt(d.format(java.time.format.DateTimeFormatter.ISO_WEEK_DATE).substring(0, 10).replace("-", "").substring(0, 6))
+                        : d.getYear() * 100 + 1;
+                } catch (Exception ignored) { continue; }
+                byWeek.computeIfAbsent(w, k -> new ArrayList<>()).add(r);
+            }
+            groups.addAll(byWeek.values());
+        } else if ("month".equals(period)) {
+            java.util.Map<Integer, List<Map<String, Object>>> byMonth = new java.util.TreeMap<>();
+            for (Map<String, Object> r : limited) {
+                String td = r.getOrDefault("tradeDate", "").toString();
+                int ym = 0;
+                try { ym = Integer.parseInt(td.substring(0, 6)); } catch (Exception ignored) { continue; }
+                byMonth.computeIfAbsent(ym, k -> new ArrayList<>()).add(r);
+            }
+            groups.addAll(byMonth.values());
+        } else {
+            return dayData;
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (List<Map<String, Object>> g : groups) {
+            if (g.isEmpty()) continue;
+            Map<String, Object> first = g.get(0);
+            Map<String, Object> last = g.get(g.size() - 1);
+            Map<String, Object> agg = new HashMap<>(first);
+            agg.put("openPoint", first.get("openPoint"));
+            agg.put("closePoint", last.get("closePoint") != null ? last.get("closePoint")
+                : (last.get("closePrice") != null ? last.get("closePrice") : last.get("closePoint")));
+            double high = 0, low = Double.MAX_VALUE;
+            long vol = 0;
+            for (Map<String, Object> r : g) {
+                high = Math.max(high, ((Number) r.getOrDefault("highPoint", r.getOrDefault("highPrice", 0))).doubleValue());
+                low = Math.min(low, ((Number) r.getOrDefault("lowPoint", r.getOrDefault("lowPrice", Double.MAX_VALUE))).doubleValue());
+                vol += ((Number) r.getOrDefault("volume", 0)).longValue();
+            }
+            agg.put("highPoint", high);
+            agg.put("lowPoint", low < Double.MAX_VALUE ? low : first.get("lowPoint"));
+            agg.put("volume", vol);
+            agg.put("amount", last.get("amount"));
+            result.add(agg);
+        }
+        java.util.Collections.reverse(result); // 恢复降序
+        return result;
     }
 
     @GetMapping("/index/max-date")

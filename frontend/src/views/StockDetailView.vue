@@ -486,8 +486,8 @@ async function loadData() {
       stock.floatMarketCap = info.floatMarketCap || 0
     }
 
-    // 2. 加载 K 线数据
-    const klineRaw = await getKlineData(stockCode, 120)
+    // 2. 加载 K 线数据（支持多周期）
+    const klineRaw = await getKlineData(stockCode, 120, activePeriod.value)
     if (klineRaw && klineRaw.length > 10) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
@@ -627,7 +627,25 @@ watch(showChanlun, (val) => {
   if (val) { fetchChanlunData() }
   else { setChanlunData(null, false); renderChart() }
 })
-watch(activePeriod, () => { nextTick(() => renderChart()) })
+/** 周期切换时重新加载K线数据 */
+async function reloadKlineData() {
+  try {
+    const klineRaw = await getKlineData(stockCode, 120, activePeriod.value)
+    if (klineRaw && klineRaw.length > 10) {
+      cachedKlineData = klineRaw.map((d) => [
+        parseTradeDate(d.tradeDate),
+        safeVal(d.openPrice),
+        safeVal(d.closePrice),
+        safeVal(d.lowPrice),
+        safeVal(d.highPrice),
+        safeVal(d.volume),
+      ]).sort((a, b) => a[0] - b[0])
+    }
+  } catch (_e) { console.warn('[Stock] 周期K线加载失败:', _e) }
+  renderChart()
+}
+
+watch(activePeriod, () => { reloadKlineData() })
 
 // WebSocket 实时推送 → 更新盘口数据
 watch(lastKlineUpdate, (update: KlineUpdateData | null) => {

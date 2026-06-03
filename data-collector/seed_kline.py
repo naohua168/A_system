@@ -20,7 +20,18 @@ TTL_STOCK = 43200     # 个股K线 12h (比实时行情长，比指数短)
 # ── 采集参数 ──
 MAX_WORKERS = 20
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-TENCENT_API = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}{code},day,,,120,qfq'
+TENCENT_API = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}{code},{period},,,{count},qfq'
+
+# 支持的多周期（腾讯API：day/week/month/m5/m15/m30/m60）
+PERIODS = {
+    'day':   {'param': 'day',   'count': 120,  'ttl': TTL_STOCK},
+    'week':  {'param': 'week',  'count': 120,  'ttl': 86400 * 2},
+    'month': {'param': 'month', 'count': 60,   'ttl': 86400 * 7},
+    '5min':  {'param': 'm5',    'count': 30,   'ttl': 3600},
+    '15min': {'param': 'm15',   'count': 30,   'ttl': 3600},
+    '30min': {'param': 'm30',   'count': 30,   'ttl': 3600},
+    '60min': {'param': 'm60',   'count': 30,   'ttl': 3600},
+}
 
 INDICES = ['000001', '399001', '399006', '000688', '000300']
 CSV_DIR = '/data/raw'
@@ -87,10 +98,11 @@ def get_prefix(code, is_index=False):
     return 'sz'
 
 
-def fetch_kline(code, is_index=False):
-    """获取单只股票/指数的日K线"""
+def fetch_kline(code, is_index=False, period='day'):
+    """获取单只股票/指数的K线（支持多周期：day/week/month/5min/15min/30min/60min）"""
+    p = PERIODS.get(period, PERIODS['day'])
     prefix = get_prefix(code, is_index)
-    url = TENCENT_API.format(prefix=prefix, code=code)
+    url = TENCENT_API.format(prefix=prefix, code=code, period=p['param'], count=p['count'])
     try:
         req = Request(url, headers={'User-Agent': UA})
         with urlopen(req, timeout=15) as resp:
@@ -100,9 +112,17 @@ def fetch_kline(code, is_index=False):
 
     data = d.get('data', {})
     record = data.get(code) or data.get(prefix + code) or {}
-    klines = record.get('qfqday') or record.get('day') or []
-    if not klines:
-        klines = data.get('qt', {}).get(code, {}).get('day') or data.get('qt', {}).get(code, {}).get('qfqday') or []
+    # 日K/周K/月K用 qfqday，分钟K线用 m5/m15/m30/m60
+    period_key = p['param']
+    minute_keys = {'m5', 'm15', 'm30', 'm60'}
+    if period_key in minute_keys:
+        # 分钟K线数据在 record[period_key] 内，或 qt 内
+        klines = record.get(period_key) or data.get('qt', {}).get(code, {}).get(period_key) or []
+    elif period_key == 'day':
+        klines = record.get('qfqday') or record.get('day') or data.get('qt', {}).get(code, {}).get('day') or data.get('qt', {}).get(code, {}).get('qfqday') or []
+    else:
+        # week/month 可能在 record 顶层
+        klines = record.get(period_key) or []
     if not klines:
         return None
 
@@ -181,15 +201,17 @@ def read_stock_codes():
     return codes
 
 
-def collect_indices():
-    """采集指数K线"""
-    print(f'[{datetime.now():%H:%M:%S}] 采集指数K线...')
+def collect_indices(period='day'):
+    """采集指数K线（支持多周期）"""
+    p = PERIODS.get(period, PERIODS['day'])
+    label = f'指数K线({period})' if period != 'day' else '指数K线'
+    print(f'[{datetime.now():%H:%M:%S}] 采集{label}...')
     total = 0
     for code in INDICES:
-        klines = fetch_kline(code, is_index=True)
+        klines = fetch_kline(code, is_index=True, period=period)
         if klines:
-            key = f'market:index_kline_{code}'
-            ok = redis_setex(key, klines, TTL_INDEX)
+            key = f'market:index_kline_{period}_{code}' if period != 'day' else f'market:index_kline_{code}'
+            ok = redis_setex(key, klines, p['ttl'])
             n = len(klines)
             print(f'  指数 {code}: {n}条 {"✅" if ok else "❌"}')
             total += n
@@ -199,26 +221,28 @@ def collect_indices():
     return total
 
 
-def collect_one_stock(code):
-    """采集单只个股K线"""
-    klines = fetch_kline(code, is_index=False)
+def collect_one_stock(code, period='day'):
+    """采集单只个股K线（支持多周期）"""
+    p = PERIODS.get(period, PERIODS['day'])
+    klines = fetch_kline(code, is_index=False, period=period)
     if not klines:
         return code, 0
-    key = f'market:kline_{code}'
-    ok = redis_setex(key, klines, TTL_STOCK)
+    key = f'market:kline_{period}_{code}' if period != 'day' else f'market:kline_{code}'
+    ok = redis_setex(key, klines, p['ttl'])
     return code, len(klines) if ok else 0
 
 
-def collect_stocks(codes):
-    """并发采集所有个股K线"""
-    print(f'[{datetime.now():%H:%M:%S}] 采集个股K线...')
+def collect_stocks(codes, period='day'):
+    """并发采集所有个股K线（支持多周期）"""
+    label = f'个股K线({period})' if period != 'day' else '个股K线'
+    print(f'[{datetime.now():%H:%M:%S}] 采集{label}...')
     total = 0
     success = 0
     done = 0
     n_codes = len(codes)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(collect_one_stock, code): code for code in codes}
+        futures = {executor.submit(collect_one_stock, code, period): code for code in codes}
         for future in as_completed(futures):
             code, n = future.result()
             done += 1
@@ -236,16 +260,18 @@ def collect_stocks(codes):
 # 4. 主入口
 # ════════════════════════════════════════════
 
-def seed_kline():
-    """全量 K 线 seed 入口"""
+def seed_kline(period='day'):
+    """全量 K 线 seed 入口（支持多周期）"""
     global t0
     t0 = time.time()
+    period_label = {'day':'日K', 'week':'周K', 'month':'月K', '5min':'5分钟', '15min':'15分钟', '30min':'30分钟', '60min':'60分钟'}
+    label = period_label.get(period, period)
     print(f'=== K线数据 Seed 启动 [{datetime.now():%H:%M:%S}] ===')
-    print(f'模式: 纯 socket (无 redis-py/requests 依赖)')
+    print(f'周期: {label}')
 
     # 1. 指数K线
-    idx_count = collect_indices()
-    print(f'✅ 指数K线: {idx_count}条')
+    idx_count = collect_indices(period)
+    print(f'✅ 指数K线({period}): {idx_count}条')
 
     # 2. 个股K线
     codes = read_stock_codes()
@@ -254,15 +280,19 @@ def seed_kline():
         return
 
     print(f'  共 {len(codes)} 只股票')
-
-    stock_total, stock_ok = collect_stocks(codes)
+    stock_total, stock_ok = collect_stocks(codes, period)
     elapsed = time.time() - t0
 
     print(f'\n{"="*50}')
-    print(f'✅ 个股K线: {stock_total}条, 成功{stock_ok}/{len(codes)}只')
+    print(f'✅ 个股K线({period}): {stock_total}条, 成功{stock_ok}/{len(codes)}只')
     print(f'⏱ 总耗时: {elapsed:.0f}s')
     print(f'{"="*50}')
 
 
 if __name__ == '__main__':
-    seed_kline()
+    import argparse
+    parser = argparse.ArgumentParser(description='K线数据采集')
+    parser.add_argument('--period', default='day', choices=list(PERIODS.keys()),
+                        help='K线周期: day/week/month/5min/15min/30min/60min')
+    args = parser.parse_args()
+    seed_kline(args.period)

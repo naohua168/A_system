@@ -787,6 +787,17 @@ def fill_static():
                             entry['open_point'] = latest.get('openPoint', entry.get('open_point', 0))
                             entry['high_point'] = latest.get('highPoint', entry.get('high_point', 0))
                             entry['low_point'] = latest.get('lowPoint', entry.get('low_point', 0))
+                            # 补全昨收盘(prev day close) — 指数 data 源常缺 preClose
+                            prev_close = None
+                            if len(kline_raw) >= 2:
+                                prev_close = kline_raw[1].get('closePoint')
+                            if prev_close:
+                                entry['pre_close'] = prev_close
+                            # 成交额 + 成交量
+                            if latest.get('amount'):
+                                entry['amount'] = latest['amount']
+                            if latest.get('volume'):
+                                entry['volume'] = latest['volume']
                             corrected += 1
                             break
         if corrected > 0:
@@ -964,7 +975,12 @@ def _refresh_kline():
     subprocess.Popen(
         [sys.executable, '/app/seed_kline.py'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f'  ✅ K线刷新已在后台启动')
+    # 分钟K线后台刷新（更短 TTL 需频繁刷新）
+    for min_period in ['5min', '15min', '30min', '60min']:
+        subprocess.Popen(
+            [sys.executable, '/app/seed_kline.py', '--period', min_period],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f'  ✅ K线刷新已在后台启动（含分钟K线）')
 
 
 def seed_all():

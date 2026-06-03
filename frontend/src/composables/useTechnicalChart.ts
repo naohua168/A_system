@@ -39,6 +39,7 @@ export function useTechnicalChart(
   let isSyncing = false
   let isRendering = false
   let pendingRender = false
+  let isInitialRender = true
 
   /** 缠论数据（内部状态，不依赖 Vue ref 传递） */
   let internalChanlunData: ChanlunAnalysis | null = null
@@ -258,8 +259,8 @@ export function useTechnicalChart(
     // 先移除旧 dataZoom 事件，再 setOption（避免旧 handler 在渲染期间干扰）
     klineChart.off('dataZoom')
 
-    klineChart.setOption({
-      notMerge: true,
+    // 触论/指标开关不需要重置 zoom
+    const opt: any = {
       animation: false,
       grid: { left: 60, right: 20, top: 20, bottom: 52 },
       xAxis: {
@@ -275,7 +276,8 @@ export function useTechnicalChart(
         axisLabel: { fontSize: 10, color: '#888' },
       },
       tooltip: {
-        trigger: 'axis', axisPointer: { type: 'cross', crossStyle: { color: '#ccc' }, label: { backgroundColor: '#666', color: '#fff' } },
+        trigger: 'axis', confine: true,
+        axisPointer: { type: 'cross', crossStyle: { color: '#ccc' }, label: { backgroundColor: '#666', color: '#fff' } },
         backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#ddd', borderWidth: 1,
         textStyle: { color: '#333', fontSize: 12 },
       },
@@ -284,7 +286,15 @@ export function useTechnicalChart(
         { type: 'slider', startValue, endValue, ...sliderStyle },
       ],
       series,
-    })
+    }
+
+    // 首次渲染用完整 setOption，后续仅更新 series 避免重置 zoom
+    if (isInitialRender) {
+      klineChart.setOption(opt)
+      isInitialRender = false
+    } else {
+      klineChart.setOption({ series: opt.series }, { replaceMerge: ['series'] })
+    }
 
     // ── dataZoom 事件：dispatchAction 强制右端固定，echarts.connect 自动同步 ──
     klineChart.off('dataZoom')
