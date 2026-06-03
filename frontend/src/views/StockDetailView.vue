@@ -603,10 +603,10 @@ async function loadData() {
     if (info) {
       Object.assign(stock, {
         price: info.price ?? 0,
-        open: info.open ?? 0,
-        high: info.high ?? 0,
-        low: info.low ?? 0,
-        preClose: info.preClose ?? 0,
+        open: info.open ?? stock.open,
+        high: info.high ?? stock.high,
+        low: info.low ?? stock.low,
+        preClose: info.lastClose ?? info.preClose ?? 0,
         changePercent: info.changePct ?? info.changePercent ?? 0,
         pe: info.pe ?? 0,
         pb: info.pb ?? 0,
@@ -617,7 +617,7 @@ async function loadData() {
     }
     // 从 K 线补充 volume/amount/turnoverRate 以及 info 未提供的字段
     if (klineSource && klineSource.length > 0) {
-      const last = klineForFill[0] // API 返回降序，第一条最新
+      const last = klineSource[0] // API 返回降序，第一条最新
       stock.volume = safeVal(last.volume)
       stock.amount = safeVal(last.amount)
       if (!stock.turnoverRate) stock.turnoverRate = safeVal(last.turnoverRate)

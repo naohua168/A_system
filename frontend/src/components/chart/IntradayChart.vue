@@ -33,11 +33,17 @@ function render() {
   const volumes: number[] = []
   let minPrice = Infinity, maxPrice = -Infinity
 
+  const today = new Date()
+  today.setHours(0,0,0,0)
   props.data.forEach((d) => {
     const ts = d[0]
     const close = d[2]
     const vol = d[5] || 0
     const dt = new Date(ts)
+    // 只显示今天数据（过滤掉历史日期）
+    if (dt.getFullYear() !== today.getFullYear() || dt.getMonth() !== today.getMonth() || dt.getDate() !== today.getDate()) {
+      return
+    }
     times.push(`${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`)
     prices.push(close)
     chgPcts.push(preClose > 0 ? (close - preClose) / preClose * 100 : 0)
