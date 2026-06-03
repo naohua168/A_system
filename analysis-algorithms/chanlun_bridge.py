@@ -88,17 +88,12 @@ def _load_kline_from_redis(code: str, days: int = 365, prefer_index: bool = Fals
         "openPoint": "open", "closePoint": "close", "highPoint": "high", "lowPoint": "low",
     }
     rows = []
-    cutoff = dt.datetime.now() - dt.timedelta(days=days)
-    for r in records:
+    # 按条数切片取最后 days 条，确保 X 索引与前端 K 线图一致
+    use_records = records[-days:] if len(records) > days else records
+    for r in use_records:
         td_raw = str(r.get("tradeDate", ""))
         td_clean = td_raw.replace("-", "").replace("/", "")
-        try:
-            td_dt = dt.datetime.strptime(td_clean[:8], "%Y%m%d")
-        except ValueError:
-            continue
-        if td_dt < cutoff:
-            continue
-        row = {"trade_date": td_dt.strftime("%Y-%m-%d")}
+        row = {"trade_date": td_clean[:4] + "-" + td_clean[4:6] + "-" + td_clean[6:8]}
         for src_col, dst_col in field_map.items():
             val = r.get(src_col)
             if val is None:
@@ -118,7 +113,6 @@ def _load_kline_from_redis(code: str, days: int = 365, prefer_index: bool = Fals
 
 def _load_kline_from_file(kline_path: str, days: int = 365) -> pd.DataFrame:
     """从 JSON 文件加载 K 线数据（兼容保留）"""
-    import datetime as dt
     try:
         with open(kline_path, "r", encoding="utf-8") as f:
             records = json.load(f)
@@ -132,17 +126,12 @@ def _load_kline_from_file(kline_path: str, days: int = 365) -> pd.DataFrame:
         "openPoint": "open", "closePoint": "close", "highPoint": "high", "lowPoint": "low",
     }
     rows = []
-    cutoff = dt.datetime.now() - dt.timedelta(days=days)
-    for r in records:
+    # 按条数切片取最后 days 条，确保 X 索引与前端 K 线图一致
+    use_records = records[-days:] if len(records) > days else records
+    for r in use_records:
         td_raw = str(r.get("tradeDate", ""))
         td_clean = td_raw.replace("-", "").replace("/", "")
-        try:
-            td_dt = dt.datetime.strptime(td_clean[:8], "%Y%m%d")
-        except ValueError:
-            continue
-        if td_dt < cutoff:
-            continue
-        row = {"trade_date": td_dt.strftime("%Y-%m-%d")}
+        row = {"trade_date": td_clean[:4] + "-" + td_clean[4:6] + "-" + td_clean[6:8]}
         for src_col, dst_col in field_map.items():
             val = r.get(src_col)
             if val is None:
