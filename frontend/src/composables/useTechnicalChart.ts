@@ -168,7 +168,7 @@ export function useTechnicalChart(
     if (internalChanlunVisible && internalChanlunData) {
       const cld = internalChanlunData
       try {
-        // 1. 中枢 — markArea（极简风格：极细半透明线，几乎无填充）
+        // 1. 中枢 — markArea（亮灰蓝虚线框，适度可见）
         if (cld.zhongshu?.length) {
           klineSeries.markArea = {
             silent: true, animation: false, z: 5,
@@ -176,7 +176,7 @@ export function useTechnicalChart(
               { xAxis: z.startX, yAxis: z.high, label: { show: false } },
               { xAxis: z.endX, yAxis: z.low },
             ]),
-            itemStyle: { color: 'rgba(100,100,100,0.02)', borderColor: 'rgba(100,100,100,0.25)', borderWidth: 0.5, borderType: 'dotted' },
+            itemStyle: { color: 'rgba(107,142,178,0.08)', borderColor: '#6b8eb2', borderWidth: 1, borderType: 'dashed' },
           }
         }
 
