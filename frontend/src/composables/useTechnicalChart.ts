@@ -181,7 +181,7 @@ export function useTechnicalChart(
           }
         }
 
-        // 2. 分型 — markPoint
+        // 2. 分型 — markPoint（只显示彩色三角，不显示文字标签避免密集重叠）
         if (cld.fengxing?.length) {
           const mpData: any[] = []
           cld.fengxing.forEach((f: any, idx: number) => {
@@ -189,17 +189,9 @@ export function useTechnicalChart(
             mpData.push({
               name: isDing ? `顶${idx + 1}` : `底${idx + 1}`,
               coord: [f.x, f.price],
-              symbol: 'triangle', symbolSize: 18, symbolRotate: isDing ? 180 : 0,
+              symbol: 'triangle', symbolSize: 14, symbolRotate: isDing ? 180 : 0,
               itemStyle: { color: isDing ? '#ef5350' : '#26a69a' },
-              label: {
-                show: true,
-                formatter: `{a|${isDing ? '顶' : '底'}${idx + 1}}\n{b|${Number(f.price).toFixed(2)}}`,
-                rich: {
-                  a: { color: isDing ? '#ef5350' : '#26a69a', fontSize: 10, fontWeight: 'bold', align: 'center' },
-                  b: { color: isDing ? '#ef5350' : '#26a69a', fontSize: 9, align: 'center' },
-                },
-                position: isDing ? 'top' : 'bottom', distance: 6,
-              },
+              label: { show: false },
             })
           })
           klineSeries.markPoint = { silent: true, animation: false, z: 15, data: mpData }
