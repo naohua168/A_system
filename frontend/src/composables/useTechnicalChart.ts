@@ -144,8 +144,11 @@ export function useTechnicalChart(
       const len = klineData.length
       ensureZoomState(len)
 
-      // 全量 Y 轴范围（12% 留白，缩放不改变 Y 轴，避免越界）
-      const [yMin, yMax] = calcGlobalYRange(klineData)
+      // Y 轴范围：取可见区域（startValue~endValue）的 min/max，缩放时动态跟随
+      const visibleKline = klineData.slice(startValue, dataLen)
+      const [yMin, yMax] = visibleKline.length > 0
+        ? calcGlobalYRange(visibleKline)
+        : calcGlobalYRange(klineData)
 
     const maData: Record<string, (number | null)[]> = {}
     paramsVal.ma.periods.forEach((p) => { maData[`ma${p}`] = calcMA(klineData, p) })
