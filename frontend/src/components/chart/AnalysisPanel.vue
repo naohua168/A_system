@@ -63,32 +63,43 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMarketAnalysis } from '@/api/market'
+
+const POLL_INTERVAL = 30000  // 30秒轮询
 
 const router = useRouter()
 const activeTab = ref<'top_gainers' | 'top_losers' | 'high_volume'>('top_gainers')
 const list = ref<any[]>([])
 const loading = ref(true)
 const error = ref('')
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
-async function loadData() {
-  loading.value = true
+async function loadData(showLoading = true) {
+  if (showLoading) loading.value = true
   error.value = ''
   try {
     const data = await getMarketAnalysis(activeTab.value)
     list.value = Array.isArray(data) ? data : []
   } catch (e: any) {
-    error.value = e?.message || '加载失败'
-    list.value = []
+    if (showLoading) error.value = e?.message || '加载失败'
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
   }
 }
 
-watch(activeTab, () => { list.value = []; loadData() })
-onMounted(loadData)
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(() => loadData(false), POLL_INTERVAL)
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+watch(activeTab, () => { list.value = []; loadData(); startPolling() })
+onMounted(() => { loadData(); startPolling() })
+onUnmounted(stopPolling)
 
 function rankBadge(idx: number): string {
   if (activeTab.value === 'top_losers') {

@@ -96,6 +96,7 @@ const CACHE_RULES: [string, number][] = [
   ['/api/v2/fund', 60000],        // 基金数据 60s
   ['/api/v2/index', 60000],       // 指数数据 60s
   ['/api/v2/info', 30000],       // 资讯数据 30s
+  ['/api/v2/market/analysis', 15000], // 涨跌排行 15s
 ]
 
 function getCacheTtl(url: string): number {

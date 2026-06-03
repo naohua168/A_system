@@ -77,7 +77,7 @@ def main():
                       ('market:analysis:high_volume', high_volume)]:
         dump = json.dumps(data, ensure_ascii=False)
         r = _redis_cmd('SET', key, dump)
-        _redis_cmd('EXPIRE', key, 900)
+        _redis_cmd('EXPIRE', key, 300)  # 5min TTL，配合5分钟轮询
         print(f'SET {key}: {len(data)} → {r}')
 
     print(f'Done in {time.time()-t0:.1f}s')

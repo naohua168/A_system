@@ -1015,9 +1015,25 @@ def seed_all():
     print(f'[{datetime.now():%H:%M:%S}] 完成! {total} 条, 耗时{elapsed:.0f}s, Redis共{key_count}key')
     return total
 
+def _analysis_refresh_loop():
+    """涨跌排行单独刷新 — 每5分钟更新一次（不阻塞主管道）"""
+    import subprocess
+    while True:
+        try:
+            time.sleep(300)  # 5分钟
+            subprocess.run(
+                [sys.executable, '/app/seed_analysis.py'],
+                capture_output=True, timeout=120)
+        except Exception:
+            pass
+
 if __name__ == '__main__':
     print('=== 数据管道 (redis-cli 自愈) ===')
     seed_all()
+    # 启动涨跌排行独立刷新线程（每5分钟）
+    import threading
+    analysis_thread = threading.Thread(target=_analysis_refresh_loop, daemon=True)
+    analysis_thread.start()
     while True:
         try:
             time.sleep(1200)
