@@ -1,12 +1,12 @@
 /**
  * 技术指标K线图渲染组合函数
- * 东方财富风格：dataZoom 索引模式，右侧永远固定为最新数据
+ * 东方财富风格：dataZoom 索引模式，最小显示30根K线防止过度拉伸
  *
  * 关键设计：
- * - dataZoom 使用 startValue/endValue（数据索引），endValue 始终 = dataLen - 1
+ * - dataZoom 使用 startValue/endValue（数据索引），默认显示最新70%
  * - K线主图：inside（滚轮缩放）+ slider（底部滑块）
  * - 滑块始终显示在 K线图底部（不依赖 VOL 模式）
- * - 缩放只改变 startValue，右侧永远锁死
+ * - minValueSpan=30 限制最小可见K线数量，避免过度放大成直线
  * - 缠论数据通过 setChanlunData() 独立设置，不依赖 Vue ref 传递
  */
 import { type Ref } from 'vue'
@@ -263,7 +263,7 @@ export function useTechnicalChart(
     // ── 东方财富风格：底部滑块 + 滚轮缩放 ──
     const sliderStyle = {
       height: 24, bottom: 8, left: 56, right: 16,
-      minValueSpan: 15,
+      minValueSpan: 30,
       borderColor: '#e0e0e0', backgroundColor: '#fafafa',
       fillerColor: 'rgba(41,151,255,0.25)',
       handleSize: '100%',
@@ -300,7 +300,7 @@ export function useTechnicalChart(
         textStyle: { color: '#333', fontSize: 12 },
       },
       dataZoom: [
-        { type: 'inside', startValue, endValue, minValueSpan: 15 },
+        { type: 'inside', startValue, endValue, minValueSpan: 30 },
         { type: 'slider', startValue, endValue, ...sliderStyle },
       ],
       series,
