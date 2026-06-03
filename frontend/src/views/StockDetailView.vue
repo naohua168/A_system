@@ -250,7 +250,6 @@
           <span v-for="s in chanlunStats.signals" :key="s.text" :class="['cl-signal', s.type]">{{ s.text.replace('_', ' ') }}</span>
         </div>
       </div>
-    </div>
 
     <!-- 参数设置弹窗（指标参数配置） -->
     <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="420px" :modal="false" class="params-dialog" destroy-on-close>

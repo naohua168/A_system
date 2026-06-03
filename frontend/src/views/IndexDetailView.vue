@@ -216,10 +216,9 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- 参数设置弹窗 -->
-  <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="420px" :modal="false" class="params-dialog" destroy-on-close>
+    <!-- 参数设置弹窗 -->
+    <el-dialog v-model="paramsDialogVisible" :title="`${paramsDialogTitle} 参数设置`" width="420px" :modal="false" class="params-dialog" destroy-on-close>
     <div v-if="paramsTarget === 'macd'" class="params-form">
       <div class="param-item"><div class="param-row"><label>快线周期 (EMA短)</label><el-input-number v-model="params.macd.fast" :min="5" :max="30" size="small" controls-position="right" /></div><p class="param-hint">短周期 EMA 计算参数，值越小对价格越敏感。默认值 12。</p></div>
       <div class="param-item"><div class="param-row"><label>慢线周期 (EMA长)</label><el-input-number v-model="params.macd.slow" :min="10" :max="60" size="small" controls-position="right" /></div><p class="param-hint">长周期 EMA 计算参数，值越大趋势越平滑。默认值 26。</p></div>
@@ -248,6 +247,7 @@
       <el-button type="primary" @click="applyParams">确认</el-button>
     </template>
   </el-dialog>
+</div>
 </template>
 
 <script setup lang="ts">
