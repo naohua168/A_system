@@ -488,7 +488,7 @@ async function loadData() {
     }
 
     // 2. 加载 K 线数据（支持多周期）
-    const klineRaw = await getKlineData(stockCode, 120, activePeriod.value)
+    const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
     if (klineRaw && klineRaw.length > 10) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
@@ -629,9 +629,14 @@ watch(showChanlun, (val) => {
   else { setChanlunData(null, false); renderChart() }
 })
 /** 周期切换时重新加载K线数据 */
+function getDaysForPeriod(p: string): number {
+  if (p === 'month') return 720
+  if (p === 'week') return 365
+  return 120
+}
 async function reloadKlineData() {
   try {
-    const klineRaw = await getKlineData(stockCode, 120, activePeriod.value)
+    const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
     if (klineRaw && klineRaw.length > 10) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),

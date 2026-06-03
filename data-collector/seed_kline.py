@@ -24,7 +24,7 @@ TENCENT_API = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}
 
 # 支持的多周期（腾讯API：day/week/month/m5/m15/m30/m60）
 PERIODS = {
-    'day':   {'param': 'day',   'count': 120,  'ttl': TTL_STOCK},
+    'day':   {'param': 'day',   'count': 365,  'ttl': TTL_STOCK},
     'week':  {'param': 'week',  'count': 120,  'ttl': 86400 * 2},
     'month': {'param': 'month', 'count': 60,   'ttl': 86400 * 7},
     '5min':  {'param': 'm5',    'count': 30,   'ttl': 3600},

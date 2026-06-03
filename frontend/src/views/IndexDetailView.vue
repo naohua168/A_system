@@ -333,7 +333,7 @@ async function loadData() {
     }
 
     // 2. K线数据 — 仅用于图表渲染和量化指标计算（支持多周期）
-    const kline: any[] = await getIndexKline(code, 120, activePeriod.value) as any[]
+    const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]
     if (Array.isArray(kline) && kline.length > 10) {
       // API 返回降序 [newest...oldest]，第一条是最新
       cachedKlineData = kline.map((d) => [
@@ -461,11 +461,15 @@ watch(showChanlun, (val) => {
   else { setChanlunData(null, false); renderChart() }
 })
 /** 周期切换时重新加载K线数据并重绘图表 */
-let periodDispose: (() => void) | null = null
+function getDaysForPeriod(p: string): number {
+  if (p === 'month') return 720   // 月K需要2年数据
+  if (p === 'week') return 365    // 周K需要1年数据
+  return 120                       // 日K/分钟K用120
+}
 async function reloadKlineData() {
   loading.value = true
   try {
-    const kline: any[] = await getIndexKline(code, 120, activePeriod.value) as any[]
+    const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]
     if (Array.isArray(kline) && kline.length > 10) {
       cachedKlineData = kline.map((d: any) => [
         parseTradeDate(d.tradeDate),
