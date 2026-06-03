@@ -298,13 +298,9 @@ export function useTechnicalChart(
       series,
     }
 
-    // 首次渲染用完整 setOption，后续仅更新 series 避免重置 zoom
-    if (isInitialRender) {
-      klineChart.setOption(opt)
-      isInitialRender = false
-    } else {
-      klineChart.setOption({ series: opt.series }, { replaceMerge: ['series'] })
-    }
+    // 始终用 notMerge 全量替换（replaceMerge 与 candlestick 数据变更不兼容）
+    klineChart.setOption(opt, { notMerge: true })
+    isInitialRender = false
 
     // ── dataZoom 事件：dispatchAction 强制右端固定，echarts.connect 自动同步 ──
     klineChart.off('dataZoom')
