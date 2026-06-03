@@ -169,32 +169,29 @@ export function useTechnicalChart(
     if (internalChanlunVisible && internalChanlunData) {
       const cld = internalChanlunData
       try {
-        // 1. 中枢 — markArea（比 custom series 更稳定）
+        // 1. 中枢 — markArea（仅虚线框，不显示编号文字保持简约）
         if (cld.zhongshu?.length) {
           klineSeries.markArea = {
             silent: true, animation: false, z: 10,
-            data: cld.zhongshu.map((z: any, idx: number) => [
-              { xAxis: z.startX, yAxis: z.high, label: { show: true, position: 'insideTopLeft', fontSize: 10, fontWeight: 'bold', color: '#3498db', formatter: `中枢${idx + 1}` } },
+            data: cld.zhongshu.map((z: any) => [
+              { xAxis: z.startX, yAxis: z.high, label: { show: false } },
               { xAxis: z.endX, yAxis: z.low },
             ]),
-            itemStyle: { color: 'rgba(52,152,219,0.08)', borderColor: '#3498db', borderWidth: 1.5, borderType: 'dashed' },
+            itemStyle: { color: 'rgba(52,152,219,0.05)', borderColor: '#3498db', borderWidth: 1, borderType: 'dashed' },
           }
         }
 
-        // 2. 分型 — markPoint（只显示彩色三角，不显示文字标签避免密集重叠）
+        // 2. 分型 — markPoint（极小圆点，不显示任何文字）
         if (cld.fengxing?.length) {
-          const mpData: any[] = []
-          cld.fengxing.forEach((f: any, idx: number) => {
-            const isDing = f.type === 'ding'
-            mpData.push({
-              name: isDing ? `顶${idx + 1}` : `底${idx + 1}`,
+          klineSeries.markPoint = {
+            silent: true, animation: false, z: 15,
+            symbol: 'circle', symbolSize: 4,
+            itemStyle: { color: '#666' },
+            data: cld.fengxing.map((f: any) => ({
               coord: [f.x, f.price],
-              symbol: 'triangle', symbolSize: 14, symbolRotate: isDing ? 180 : 0,
-              itemStyle: { color: isDing ? '#ef5350' : '#26a69a' },
               label: { show: false },
-            })
-          })
-          klineSeries.markPoint = { silent: true, animation: false, z: 15, data: mpData }
+            })),
+          }
         }
 
         // 3. 笔线
@@ -210,28 +207,28 @@ export function useTechnicalChart(
           })
         }
 
-        // 4. 买卖信号
+        // 4. 买卖信号（简约风格：小圆点 + 单字母标签）
         if (cld.buy_sell_points?.length) {
           const bps = cld.buy_sell_points.filter((p: any) => (p.x ?? -1) >= 0)
           const buys = bps.filter((p: any) => p.type?.startsWith('buy_'))
           const sells = bps.filter((p: any) => p.type?.startsWith('sell_'))
           if (buys.length) {
             series.push({
-              type: 'scatter', z: 16, symbol: 'pin', symbolSize: 24,
+              type: 'scatter', z: 16, symbol: 'circle', symbolSize: 8,
               itemStyle: { color: '#ef5350' },
               data: buys.map((p: any) => ({
                 value: [p.x, p.price],
-                label: { show: true, formatter: `${p.type.replace('buy_','B').toUpperCase()}\n${p.price.toFixed(2)}`, position: 'top', distance: 4, fontSize: 9, color: '#ef5350' },
+                label: { show: true, formatter: 'B', position: 'top', distance: 2, fontSize: 10, fontWeight: 'bold', color: '#ef5350' },
               })),
             })
           }
           if (sells.length) {
             series.push({
-              type: 'scatter', z: 16, symbol: 'pin', symbolSize: 24,
+              type: 'scatter', z: 16, symbol: 'circle', symbolSize: 8,
               itemStyle: { color: '#26a69a' },
               data: sells.map((p: any) => ({
                 value: [p.x, p.price],
-                label: { show: true, formatter: `${p.type.replace('sell_','S').toUpperCase()}\n${p.price.toFixed(2)}`, position: 'bottom', distance: 4, fontSize: 9, color: '#26a69a' },
+                label: { show: true, formatter: 'S', position: 'bottom', distance: 2, fontSize: 10, fontWeight: 'bold', color: '#26a69a' },
               })),
             })
           }
