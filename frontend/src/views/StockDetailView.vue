@@ -397,12 +397,14 @@ interface ChanlunRawData {
   stats: ChanlunStats
 }
 
-/** 从后端加载缠论分析数据 — 数据天数与K线图一致确保X索引对齐 */
-const chanlunDays = computed(() => getDaysForPeriod(activePeriod.value))
+/** 从后端加载缠论分析数据 — 使用K线图实际数据条数确保X索引对齐 */
+function getChanlunCount(): number {
+  return cachedKlineData ? cachedKlineData.length : 365
+}
 async function fetchChanlunData() {
   if (!showChanlun.value) return
   try {
-    const data = await getChanlunAnalysis(stockCode, chanlunDays.value)
+    const data = await getChanlunAnalysis(stockCode, getChanlunCount())
     // 后端返回 error 字段时静默处理（Python 分析失败）
     if (data && (data as any).error) {
       console.warn(`[Chanlun] API 返回错误: ${(data as any).error}`)
