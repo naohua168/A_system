@@ -199,6 +199,10 @@ public class RedisDataController {
         java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
         java.time.temporal.WeekFields wf = java.time.temporal.WeekFields.ISO;
 
+        // 分钟K线无专用数据时直接返回日K数据（无法从日K聚合出分钟级）
+        if ("5min".equals(period) || "15min".equals(period) || "30min".equals(period) || "60min".equals(period)) {
+            return dayData;
+        }
         for (Map<String, Object> r : limited) {
             String td = r.getOrDefault("tradeDate", "").toString();
             if (td.length() < 8) continue;
@@ -206,12 +210,10 @@ public class RedisDataController {
             try {
                 java.time.LocalDate d = java.time.LocalDate.parse(td, fmt);
                 if ("week".equals(period)) {
-                    // 按（年份，周数）分组，例如 202622
                     int y = d.get(wf.weekBasedYear());
                     int w = d.get(wf.weekOfWeekBasedYear());
                     key = String.format("%04d%02d", y, w);
                 } else {
-                    // 按月分组：202606
                     key = td.substring(0, 6);
                 }
             } catch (Exception ignored) { continue; }
