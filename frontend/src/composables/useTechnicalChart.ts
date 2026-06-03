@@ -31,9 +31,9 @@ export function useTechnicalChart(
   let bottomChart: echarts.ECharts | null = null
   let disposed = false
 
-  /** dataZoom 索引模式 — endValue 永远 = dataLen - 1 */
+  /** dataZoom 索引模式 */
   let startValue = 0
-  let endValue = 0    // = dataLen - 1
+  let endValue = 0
   let dataLen = 0
 
   let isSyncing = false
@@ -144,11 +144,8 @@ export function useTechnicalChart(
       const len = klineData.length
       ensureZoomState(len)
 
-      // Y 轴范围：取可见区域（startValue~endValue）的 min/max，缩放时动态跟随
-      const visibleKline = klineData.slice(startValue, dataLen)
-      const [yMin, yMax] = visibleKline.length > 0
-        ? calcGlobalYRange(visibleKline)
-        : calcGlobalYRange(klineData)
+      // Y 轴范围：全量数据（固定范围，缩放只改变X轴可视区域）
+      const [yMin, yMax] = calcGlobalYRange(klineData)
 
     const maData: Record<string, (number | null)[]> = {}
     paramsVal.ma.periods.forEach((p) => { maData[`ma${p}`] = calcMA(klineData, p) })
@@ -310,8 +307,7 @@ export function useTechnicalChart(
     klineChart.setOption(opt, { notMerge: true })
     isInitialRender = false
 
-    // ── dataZoom 事件：dispatchAction 强制右端固定，双向手动同步 ──
-    // 不使用 echarts.connect（页面切换残留实例导致 getBoundingClientRect 报错）
+    // ── dataZoom 事件：双向手动同步，不锁定右端让缩放自然 ──
     klineChart.off('dataZoom')
     klineChart.on('dataZoom', (params: any) => {
       try {
@@ -319,14 +315,13 @@ export function useTechnicalChart(
         if (isSyncing) return
         const zoom = params.batch?.[0] ?? params
         const newSV = Number(zoom.startValue ?? startValue)
-        if (newSV === startValue && (zoom.endValue ?? dataLen - 1) === dataLen - 1) return
+        const newEV = Number(zoom.endValue ?? endValue)
+        if (newSV === startValue && newEV === endValue) return
         startValue = newSV
-        endValue = dataLen - 1
+        endValue = newEV
         isSyncing = true
         try {
-          const dz = { type: 'dataZoom' as const, startValue, endValue: dataLen - 1 }
-          klineChart.dispatchAction(dz)
-          // 同步到底部图
+          const dz = { type: 'dataZoom' as const, startValue, endValue }
           if (bottomChart && !bottomChart.isDisposed()) bottomChart.dispatchAction(dz)
         } finally { isSyncing = false }
       } catch { /* ignore zoom error */ }
@@ -345,7 +340,7 @@ export function useTechnicalChart(
     if (!bottomChart && bottomChartRef.value?.isConnected) bottomChart = echarts.init(bottomChartRef.value)
     if (!bottomChart) return
 
-    // 底部图 dataZoom 事件：同步到底部，dispatchAction 确保 slider 同步
+    // 底部图 dataZoom → K线图（同样不锁定右端）
     bottomChart.off('dataZoom')
     bottomChart.on('dataZoom', (params: any) => {
       try {
@@ -353,20 +348,15 @@ export function useTechnicalChart(
         if (isSyncing) return
         const zoom = params.batch?.[0] ?? params
         const newSV = Number(zoom.startValue ?? startValue)
-        if (newSV === startValue && (zoom.endValue ?? dataLen - 1) === dataLen - 1) return
+        const newEV = Number(zoom.endValue ?? endValue)
+        if (newSV === startValue && newEV === endValue) return
         startValue = newSV
-        endValue = dataLen - 1
+        endValue = newEV
         isSyncing = true
         try {
           if (!klineChart || klineChart.isDisposed()) return
-          klineChart.dispatchAction({
-            type: 'dataZoom',
-            startValue: startValue,
-            endValue: dataLen - 1,
-          })
-        } finally {
-          isSyncing = false
-        }
+          klineChart.dispatchAction({ type: 'dataZoom' as const, startValue, endValue })
+        } finally { isSyncing = false }
       } catch { /* ignore zoom error */ }
     })
 
