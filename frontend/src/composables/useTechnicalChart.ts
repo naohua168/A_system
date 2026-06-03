@@ -168,15 +168,15 @@ export function useTechnicalChart(
     if (internalChanlunVisible && internalChanlunData) {
       const cld = internalChanlunData
       try {
-        // 1. 中枢 — markArea（暖橙色虚线框，避免与蓝色BOLL线混淆）
+        // 1. 中枢 — markArea（极简风格：极细半透明线，几乎无填充）
         if (cld.zhongshu?.length) {
           klineSeries.markArea = {
-            silent: true, animation: false, z: 10,
+            silent: true, animation: false, z: 5,
             data: cld.zhongshu.map((z: any) => [
               { xAxis: z.startX, yAxis: z.high, label: { show: false } },
               { xAxis: z.endX, yAxis: z.low },
             ]),
-            itemStyle: { color: 'rgba(255,107,53,0.06)', borderColor: '#ff6b35', borderWidth: 1.5, borderType: 'dashed' },
+            itemStyle: { color: 'rgba(100,100,100,0.02)', borderColor: 'rgba(100,100,100,0.25)', borderWidth: 0.5, borderType: 'dotted' },
           }
         }
 
