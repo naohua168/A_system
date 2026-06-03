@@ -996,10 +996,18 @@ def seed_all():
         upload_latest()
     except Exception:
         pass
-    # HDFS 分析结果 → Redis（Spark 批处理产出）
+    # HDFS 分析结果 → Redis（Spark 批处理产出，无则用 seed_analysis 兜底）
     try:
         from hdfs_to_redis import sync_analysis_to_redis
         sync_analysis_to_redis()
+    except Exception:
+        pass
+    # 涨跌排行兜底 seed_analysis（HDFS 不可用时用 stock_basic 生成）
+    try:
+        import subprocess
+        subprocess.Popen(
+            [sys.executable, '/app/seed_analysis.py'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
     elapsed = time.time() - t0

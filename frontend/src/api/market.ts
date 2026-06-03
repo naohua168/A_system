@@ -74,18 +74,22 @@ export function getSectorKline(industry: string, days = 60): Promise<StockDaily[
   return request.get('/v2/market/sector-kline', { params: { industry, days } })
 }
 
-/** 涨跌排行：从 sector-ranking 全量数据中按条件排序取前30 */
+/** 涨跌排行：调用个股排行 API（market:analysis:{type} 缓存），取前30 */
 export async function getMarketAnalysis(type: 'top_gainers' | 'top_losers' | 'high_volume'): Promise<any[]> {
-  const res = await request.get('/v2/market/sector-ranking')
-  // 后端返回 {code, message, data, timestamp} 或直接的数组
-  const list: any[] = Array.isArray(res) ? res : (res?.data || [])
-  const sorted = [...list].sort((a, b) => {
-    if (type === 'high_volume') {
-      return (b.turnoverPct || 0) - (a.turnoverPct || 0)
-    }
-    return type === 'top_losers'
-      ? (a.changePct || 0) - (b.changePct || 0)
-      : (b.changePct || 0) - (a.changePct || 0)
-  })
-  return sorted.slice(0, 30)
+  try {
+    const raw = await request.get(`/v2/market/analysis/${type}`)
+    const list: any[] = Array.isArray(raw) ? raw : (raw?.data || [])
+    return list.slice(0, 30)
+  } catch {
+    // fallback: 从 stock_basic 排序
+    const all = await request.get('/v2/market/list', { params: { page: 1, size: 5000 } })
+    const stocks: any[] = Array.isArray(all) ? all : (all?.data?.records || all?.data || [])
+    const sorted = [...stocks].sort((a, b) => {
+      if (type === 'high_volume') return (b.turnoverPct || 0) - (a.turnoverPct || 0)
+      return type === 'top_losers'
+        ? (a.changePct || 0) - (b.changePct || 0)
+        : (b.changePct || 0) - (a.changePct || 0)
+    })
+    return sorted.slice(0, 30)
+  }
 }
