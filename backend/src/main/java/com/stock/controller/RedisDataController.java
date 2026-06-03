@@ -187,41 +187,39 @@ public class RedisDataController {
     private List<Map<String, Object>> aggregatePeriod(List<Map<String, Object>> dayData, String period, int maxDays) {
         // 数据是降序（最新在前），取 maxDays 天
         List<Map<String, Object>> limited = new ArrayList<>(dayData);
-        if (limited.size() > maxDays) limited = limited.subList(0, maxDays);
+        // 周K/月K需要更多数据量才有意义
+        int dataDays = maxDays;
+        if ("week".equals(period) && dataDays < 120) dataDays = 120;
+        if ("month".equals(period) && dataDays < 365) dataDays = 365;
+        if (limited.size() > dataDays) limited = limited.subList(0, dataDays);
         // 翻转成升序以便分组
         java.util.Collections.reverse(limited);
 
-        List<List<Map<String, Object>>> groups = new ArrayList<>();
-        if ("week".equals(period)) {
-            java.util.Map<Integer, List<Map<String, Object>>> byWeek = new java.util.TreeMap<>();
-            for (Map<String, Object> r : limited) {
-                String td = r.getOrDefault("tradeDate", "").toString();
-                int w = 0;
-                try {
-                    java.time.LocalDate d = java.time.LocalDate.parse(td, java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
-                    // 按 周一的日期 分组（每年第一天为第1周）
-                    w = (int) d.format(java.time.format.DateTimeFormatter.ISO_WEEK_DATE).chars().filter(c -> c == '-').count() > 1
-                        ? Integer.parseInt(d.format(java.time.format.DateTimeFormatter.ISO_WEEK_DATE).substring(0, 10).replace("-", "").substring(0, 6))
-                        : d.getYear() * 100 + 1;
-                } catch (Exception ignored) { continue; }
-                byWeek.computeIfAbsent(w, k -> new ArrayList<>()).add(r);
-            }
-            groups.addAll(byWeek.values());
-        } else if ("month".equals(period)) {
-            java.util.Map<Integer, List<Map<String, Object>>> byMonth = new java.util.TreeMap<>();
-            for (Map<String, Object> r : limited) {
-                String td = r.getOrDefault("tradeDate", "").toString();
-                int ym = 0;
-                try { ym = Integer.parseInt(td.substring(0, 6)); } catch (Exception ignored) { continue; }
-                byMonth.computeIfAbsent(ym, k -> new ArrayList<>()).add(r);
-            }
-            groups.addAll(byMonth.values());
-        } else {
-            return dayData;
+        java.util.Map<String, List<Map<String, Object>>> groups = new java.util.TreeMap<>();
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
+        java.time.temporal.WeekFields wf = java.time.temporal.WeekFields.ISO;
+
+        for (Map<String, Object> r : limited) {
+            String td = r.getOrDefault("tradeDate", "").toString();
+            if (td.length() < 8) continue;
+            String key;
+            try {
+                java.time.LocalDate d = java.time.LocalDate.parse(td, fmt);
+                if ("week".equals(period)) {
+                    // 按（年份，周数）分组，例如 202622
+                    int y = d.get(wf.weekBasedYear());
+                    int w = d.get(wf.weekOfWeekBasedYear());
+                    key = String.format("%04d%02d", y, w);
+                } else {
+                    // 按月分组：202606
+                    key = td.substring(0, 6);
+                }
+            } catch (Exception ignored) { continue; }
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
-        for (List<Map<String, Object>> g : groups) {
+        for (List<Map<String, Object>> g : groups.values()) {
             if (g.isEmpty()) continue;
             Map<String, Object> first = g.get(0);
             Map<String, Object> last = g.get(g.size() - 1);
@@ -232,9 +230,9 @@ public class RedisDataController {
             double high = 0, low = Double.MAX_VALUE;
             long vol = 0;
             for (Map<String, Object> r : g) {
-                high = Math.max(high, ((Number) r.getOrDefault("highPoint", r.getOrDefault("highPrice", 0))).doubleValue());
-                low = Math.min(low, ((Number) r.getOrDefault("lowPoint", r.getOrDefault("lowPrice", Double.MAX_VALUE))).doubleValue());
-                vol += ((Number) r.getOrDefault("volume", 0)).longValue();
+                high = Math.max(high, safeDouble(r.getOrDefault("highPoint", r.getOrDefault("highPrice", 0))));
+                low = Math.min(low, safeDouble(r.getOrDefault("lowPoint", r.getOrDefault("lowPrice", Double.MAX_VALUE))));
+                vol += safeLong(r.getOrDefault("volume", 0));
             }
             agg.put("highPoint", high);
             agg.put("lowPoint", low < Double.MAX_VALUE ? low : first.get("lowPoint"));
@@ -244,6 +242,13 @@ public class RedisDataController {
         }
         java.util.Collections.reverse(result); // 恢复降序
         return result;
+    }
+
+    private double safeDouble(Object v) {
+        try { return ((Number) v).doubleValue(); } catch (Exception e) { return 0; }
+    }
+    private long safeLong(Object v) {
+        try { return ((Number) v).longValue(); } catch (Exception e) { return 0; }
     }
 
     @GetMapping("/index/max-date")
