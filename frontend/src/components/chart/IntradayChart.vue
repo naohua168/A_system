@@ -33,7 +33,7 @@ function render() {
   const volumes: number[] = []
   let minPrice = Infinity, maxPrice = -Infinity
 
-  props.data.slice().reverse().forEach((d) => {
+  props.data.forEach((d) => {
     const ts = d[0]
     const close = d[2]
     const vol = d[5] || 0
@@ -52,7 +52,14 @@ function render() {
     xAxis: [{
       type: 'category', data: times, axisLine: { onZero: false },
       axisTick: { show: false }, splitLine: { show: false },
-      axisLabel: { fontSize: 10, color: '#888', interval: 5 },
+      axisLabel: {
+        fontSize: 10, color: '#888',
+        formatter: (v: string) => {
+          // 只显示关键时间点：09:30、10:30、11:30、13:00、14:00、15:00
+          const keyTimes = ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00']
+          return keyTimes.includes(v) ? v : ''
+        },
+      },
     }, {
       type: 'category', data: times, gridIndex: 1,
       axisLine: { show: false }, axisTick: { show: false },
@@ -74,6 +81,11 @@ function render() {
         silent: true, data: [{ yAxis: preClose }],
         lineStyle: { color: '#999', width: 0.5, type: 'dashed' },
         label: { show: true, formatter: `昨收 ${preClose.toFixed(2)}`, fontSize: 9, color: '#999', position: 'insideEndTop' },
+      },
+      // 午盘分割线（11:30）
+      markArea: {
+        silent: true, data: [[{ xAxis: '11:30' }, { xAxis: '13:00' }]],
+        itemStyle: { color: 'rgba(200,200,210,0.04)' },
       },
     }, {
       type: 'bar', data: volumes, xAxisIndex: 1, yAxisIndex: 1,

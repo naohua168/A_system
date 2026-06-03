@@ -27,10 +27,10 @@ PERIODS = {
     'day':   {'param': 'day',   'count': 365,  'ttl': TTL_STOCK},
     'week':  {'param': 'week',  'count': 120,  'ttl': 86400 * 2},
     'month': {'param': 'month', 'count': 60,   'ttl': 86400 * 7},
-    '5min':  {'param': 'm5',    'count': 30,   'ttl': 3600},
-    '15min': {'param': 'm15',   'count': 30,   'ttl': 3600},
-    '30min': {'param': 'm30',   'count': 30,   'ttl': 3600},
-    '60min': {'param': 'm60',   'count': 30,   'ttl': 3600},
+    '5min':  {'param': 'm5',    'count': 60,   'ttl': 3600},
+    '15min': {'param': 'm15',   'count': 40,   'ttl': 3600},
+    '30min': {'param': 'm30',   'count': 40,   'ttl': 3600},
+    '60min': {'param': 'm60',   'count': 40,   'ttl': 3600},
 }
 
 INDICES = ['000001', '399001', '399006', '000688', '000300']
