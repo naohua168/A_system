@@ -391,10 +391,12 @@ async function loadData() {
 }
 
 /** 从后端加载缠论 K 线 overlay 数据（同步更新面板统计） */
+/** 缠论分析使用的数据天数 = 当前K线显示的条数 */
+const chanlunDays = computed(() => getDaysForPeriod(activePeriod.value))
 async function fetchChanlunData() {
   if (!showChanlun.value) return
   try {
-    const data = await getChanlunAnalysis(code, 365, 'index')
+    const data = await getChanlunAnalysis(code, chanlunDays.value, 'index')
     if (data && (data as any).error) {
       console.warn('[Index] 缠论API错误:', (data as any).error)
       setChanlunData(null, true)
@@ -488,7 +490,11 @@ async function reloadKlineData() {
   }
 }
 
-watch(activePeriod, () => { reloadKlineData() })
+watch(activePeriod, () => {
+  reloadKlineData()
+  // 缠论开启时也用新周期天数重新计算，确保X索引对齐
+  if (showChanlun.value) fetchChanlunData()
+})
 </script>
 
 <style scoped lang="scss">
