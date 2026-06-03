@@ -39,8 +39,8 @@
         </div>
       </div>
       <div class="toolbar-right">
-        <!-- 缠论开关 -->
-        <label class="switch-item" :class="{ active: showChanlun }">
+        <!-- 缠论开关（分时模式下隐藏） -->
+        <label class="switch-item" :class="{ active: showChanlun }" v-if="activePeriod !== 'intraday'">
           <el-switch v-model="showChanlun" size="small" />
           <span>缠论</span>
         </label>
@@ -694,6 +694,11 @@ async function reloadKlineData() {
 }
 
 watch(activePeriod, () => {
+  // 分时模式下关闭缠论（数据量不足 + 无法渲染）
+  if (activePeriod.value === 'intraday') {
+    showChanlun.value = false
+    setChanlunData(null, true)
+  }
   reloadKlineData()
   if (showChanlun.value) fetchChanlunData()
 })
