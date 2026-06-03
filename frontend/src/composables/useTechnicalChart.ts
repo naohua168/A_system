@@ -144,8 +144,7 @@ export function useTechnicalChart(
       const len = klineData.length
       ensureZoomState(len)
 
-      // Y 轴范围：全量数据（固定范围，缩放只改变X轴可视区域）
-      const [yMin, yMax] = calcGlobalYRange(klineData)
+      // Y 轴由 scale:true 自动根据可见数据调整，无需手动计算
 
     const maData: Record<string, (number | null)[]> = {}
     paramsVal.ma.periods.forEach((p) => { maData[`ma${p}`] = calcMA(klineData, p) })
@@ -286,7 +285,7 @@ export function useTechnicalChart(
         splitLine: { show: false },
       },
       yAxis: {
-        min: yMin, max: yMax,
+        scale: true,  // Y轴自动跟随可见数据范围（同花顺风格）
         splitLine: { lineStyle: { color: 'rgba(200,200,210,0.35)', type: 'dashed' } },
         axisLabel: { fontSize: 10, color: '#888' },
       },
