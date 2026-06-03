@@ -342,6 +342,7 @@ const { renderChart, handleResize, dispose: disposeChart, setChanlunData } = use
     showMA: computed(() => overlayIndicators.value.find(i => i.key === 'ma')?.active ?? true),
     showBOLL: computed(() => overlayIndicators.value.find(i => i.key === 'boll')?.active ?? false),
     bottomActive: bottomActive as any,
+    period: activePeriod,
   }
 )
 

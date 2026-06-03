@@ -24,6 +24,7 @@ export function useTechnicalChart(
     showMA: Ref<boolean>
     showBOLL: Ref<boolean>
     bottomActive: Ref<string | null>
+    period?: Ref<string>           // 当前周期：day/week/month/5min/15min/30min/60min
   }
 ) {
   let klineChart: echarts.ECharts | null = null
@@ -104,8 +105,24 @@ export function useTechnicalChart(
         : options.params as IndicatorParams
       const { showMA, showBOLL, bottomActive } = options
 
+      const periodVal = options.period?.value || 'day'
+      const isMinute = ['5min', '15min', '30min', '60min'].includes(periodVal)
+      const isMonth = periodVal === 'month'
+
       const dates = klineData.map((d) => {
-        try { return new Date(d[0]).toLocaleDateString('zh-CN') }
+        try {
+          const dt = new Date(d[0])
+          if (isMinute) {
+            // 分钟K线 → HH:MM
+            return `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`
+          }
+          if (isMonth) {
+            // 月K线 → YYYY/MM
+            return `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}`
+          }
+          // 日/周K线 → M/D
+          return `${dt.getMonth()+1}/${dt.getDate()}`
+        }
         catch { return d[0] ? String(d[0]) : '-' }
       })
       const volumes = klineData.map((d) => d[5])
