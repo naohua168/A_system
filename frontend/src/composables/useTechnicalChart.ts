@@ -168,7 +168,7 @@ export function useTechnicalChart(
     if (internalChanlunVisible && internalChanlunData) {
       const cld = internalChanlunData
       try {
-        // 1. 中枢 — markArea（仅虚线框，不显示编号文字保持简约）
+        // 1. 中枢 — markArea（暖橙色虚线框，避免与蓝色BOLL线混淆）
         if (cld.zhongshu?.length) {
           klineSeries.markArea = {
             silent: true, animation: false, z: 10,
@@ -176,7 +176,7 @@ export function useTechnicalChart(
               { xAxis: z.startX, yAxis: z.high, label: { show: false } },
               { xAxis: z.endX, yAxis: z.low },
             ]),
-            itemStyle: { color: 'rgba(52,152,219,0.05)', borderColor: '#3498db', borderWidth: 1, borderType: 'dashed' },
+            itemStyle: { color: 'rgba(255,107,53,0.06)', borderColor: '#ff6b35', borderWidth: 1.5, borderType: 'dashed' },
           }
         }
 
@@ -250,9 +250,9 @@ export function useTechnicalChart(
 
     if (showBOLL.value) {
       series.push(
-        { name: 'BOLL-UP', type: 'line', data: bollData.up, connectNulls: true, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db', type: 'dashed' } },
-        { name: 'BOLL-MID', type: 'line', data: bollData.mid, connectNulls: true, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db' } },
-        { name: 'BOLL-DN', type: 'line', data: bollData.down, connectNulls: true, smooth: true, symbol: 'none', lineStyle: { width: 0.8, color: '#3498db', type: 'dashed' }, areaStyle: { color: 'rgba(52,152,219,0.06)' } },
+        { name: 'BOLL-UP', type: 'line', data: bollData.up, connectNulls: true, smooth: true, symbol: 'none', lineStyle: { width: 0.7, color: '#78909c', type: 'dashed' } },
+        { name: 'BOLL-MID', type: 'line', data: bollData.mid, connectNulls: true, smooth: true, symbol: 'none', lineStyle: { width: 0.7, color: '#78909c' } },
+        { name: 'BOLL-DN', type: 'line', data: bollData.down, connectNulls: true, smooth: true, symbol: 'none', lineStyle: { width: 0.7, color: '#78909c', type: 'dashed' }, areaStyle: { color: 'rgba(120,144,156,0.04)' } },
       )
     }
 
