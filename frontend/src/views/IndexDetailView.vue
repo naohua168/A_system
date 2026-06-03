@@ -37,21 +37,24 @@
           <el-switch v-model="showChanlun" size="small" />
           <span>缠论</span>
         </label>
-        <div class="indicator-group overlay-group">
-          <label v-for="ind in overlayIndicators" :key="ind.key"
-            :class="['indicator-chip', { active: ind.active }]"
-            @click="toggleOverlay(ind)"
-          >{{ ind.label }}</label>
-        </div>
-        <div class="indicator-group bottom-group">
-          <label :class="['indicator-chip', 'vol-chip', { active: bottomActive === null }]"
-            @click="bottomActive = null; renderChart()">VOL</label>
-          <label v-for="ind in bottomIndicators" :key="ind.key"
-            :class="['indicator-chip', { active: bottomActive === ind.key }]"
-            @click="selectBottomIndicator(ind)"
-          >{{ ind.label }}<span class="ind-settings" v-if="bottomActive === ind.key" @click.stop="openParams(ind)">
-              <el-icon><Setting /></el-icon></span></label>
-        </div>
+        <!-- 技术指标按钮组（分时模式隐藏） -->
+        <template v-if="activePeriod !== 'intraday'">
+          <div class="indicator-group overlay-group">
+            <label v-for="ind in overlayIndicators" :key="ind.key"
+              :class="['indicator-chip', { active: ind.active }]"
+              @click="toggleOverlay(ind)"
+            >{{ ind.label }}</label>
+          </div>
+          <div class="indicator-group bottom-group">
+            <label :class="['indicator-chip', 'vol-chip', { active: bottomActive === null }]"
+              @click="bottomActive = null; renderChart()">VOL</label>
+            <label v-for="ind in bottomIndicators" :key="ind.key"
+              :class="['indicator-chip', { active: bottomActive === ind.key }]"
+              @click="selectBottomIndicator(ind)"
+            >{{ ind.label }}<span class="ind-settings" v-if="bottomActive === ind.key" @click.stop="openParams(ind)">
+                <el-icon><Setting /></el-icon></span></label>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -352,6 +355,15 @@ async function loadData() {
           safeVal(d.volume),
         ]).sort((a: any, b: any) => a[0] - b[0])
         intradayPreClose.value = Number(intraKline[0]?.preClose) || safeVal(intraKline[0]?.preClose) || 0
+        // 分时模式下也从K线补充头部信息
+        const last = intraKline[0]
+        if (!info.price) info.price = Number(last.closePoint) || 0
+        if (!info.open) info.open = Number(last.openPoint) || 0
+        if (!info.high) info.high = Number(last.highPoint) || 0
+        if (!info.low) info.low = Number(last.lowPoint) || 0
+        if (!info.volume) info.volume = Number(last.volume) || 0
+        if (!info.amount) info.amount = Number(last.amount) || 0
+        if (!info.preClose) info.preClose = Number(last.preClose) || Number(last.closePoint) * 0.99
       }
     } else {
       // 2b. K线数据 — 仅用于图表渲染和量化指标计算（支持多周期）

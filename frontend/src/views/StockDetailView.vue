@@ -44,34 +44,34 @@
           <el-switch v-model="showChanlun" size="small" />
           <span>缠论</span>
         </label>
-        <!-- K线叠加指标 (MA/BOLL) -->
-        <div class="indicator-group overlay-group">
-          <label v-for="ind in overlayIndicators" :key="ind.key"
-            :class="['indicator-chip', { active: ind.active }]"
-            @click="toggleOverlay(ind)"
-          >
-            {{ ind.label }}
-          </label>
-        </div>
-        <!-- 底部指标 (互斥,替换成交量) -->
-        <div class="indicator-group bottom-group">
-          <label
-            :class="['indicator-chip', 'vol-chip', { active: bottomActive === null }]"
-            @click="bottomActive = null; renderChart()"
-          >
-            VOL
-          </label>
-          <label v-for="ind in bottomIndicators" :key="ind.key"
-            :class="['indicator-chip', { active: bottomActive === ind.key }]"
-            @click="selectBottomIndicator(ind)"
-          >
-            {{ ind.label }}
-            <!-- 参数设置按钮 -->
-            <span class="ind-settings" v-if="bottomActive === ind.key" @click.stop="openParams(ind)">
-              <el-icon><Setting /></el-icon>
-            </span>
-          </label>
-        </div>
+        <!-- 技术指标按钮组（分时模式隐藏） -->
+        <template v-if="activePeriod !== 'intraday'">
+          <div class="indicator-group overlay-group">
+            <label v-for="ind in overlayIndicators" :key="ind.key"
+              :class="['indicator-chip', { active: ind.active }]"
+              @click="toggleOverlay(ind)"
+            >
+              {{ ind.label }}
+            </label>
+          </div>
+          <div class="indicator-group bottom-group">
+            <label
+              :class="['indicator-chip', 'vol-chip', { active: bottomActive === null }]"
+              @click="bottomActive = null; renderChart()"
+            >
+              VOL
+            </label>
+            <label v-for="ind in bottomIndicators" :key="ind.key"
+              :class="['indicator-chip', { active: bottomActive === ind.key }]"
+              @click="selectBottomIndicator(ind)"
+            >
+              {{ ind.label }}
+              <span class="ind-settings" v-if="bottomActive === ind.key" @click.stop="openParams(ind)">
+                <el-icon><Setting /></el-icon>
+              </span>
+            </label>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -500,8 +500,10 @@ async function loadData() {
     }
 
     // 2. 加载 K 线数据（支持多周期）
+    let klineSource: any[] | null = null
     if (activePeriod.value === 'intraday') {
       const intraRaw = await getKlineData(stockCode, 1, '5min')
+      klineSource = intraRaw
       if (intraRaw && intraRaw.length > 1) {
         cachedIntradayData.value = intraRaw.map((d) => [
           parseTradeDate(d.tradeDate),
@@ -512,18 +514,10 @@ async function loadData() {
           safeVal(d.volume),
         ]).sort((a: any, b: any) => a[0] - b[0])
         intradayPreClose.value = Number(intraRaw[0]?.preClose) || 0
-        // 从分时数据补充stock头部信息
-        const latest = intraRaw[0]
-        if (latest) {
-          if (!stock.open) stock.open = safeVal(latest.openPrice)
-          if (!stock.high) stock.high = safeVal(latest.highPrice)
-          if (!stock.low) stock.low = safeVal(latest.lowPrice)
-          if (!stock.preClose) stock.preClose = safeVal(latest.preClose) || safeVal(latest.closePrice) * 0.99
-          stock.volume = safeVal(latest.volume)
-        }
       }
     } else {
       const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
+      klineSource = klineRaw
     if (klineRaw && klineRaw.length > 1) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
@@ -532,7 +526,7 @@ async function loadData() {
         safeVal(d.lowPrice),
         safeVal(d.highPrice),
         safeVal(d.volume),
-      ])
+      ])  
       // 从 K 线实时计算量化指标（API 返回降序，最新在前）
       const closes = cachedKlineData.map(d => d[2])  // close
       const highs = cachedKlineData.map(d => d[4])   // high
@@ -622,8 +616,8 @@ async function loadData() {
       })
     }
     // 从 K 线补充 volume/amount/turnoverRate 以及 info 未提供的字段
-    if (klineRaw && klineRaw.length > 0) {
-      const last = klineRaw[0] // API 返回降序，第一条最新
+    if (klineSource && klineSource.length > 0) {
+      const last = klineForFill[0] // API 返回降序，第一条最新
       stock.volume = safeVal(last.volume)
       stock.amount = safeVal(last.amount)
       if (!stock.turnoverRate) stock.turnoverRate = safeVal(last.turnoverRate)
@@ -687,6 +681,7 @@ async function reloadKlineData() {
       }
     } else {
       const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
+      klineSource = klineRaw
       if (klineRaw && klineRaw.length > 1) {
         cachedKlineData = klineRaw.map((d) => [
           parseTradeDate(d.tradeDate),
