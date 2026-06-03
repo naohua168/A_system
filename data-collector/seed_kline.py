@@ -116,8 +116,16 @@ def fetch_kline(code, is_index=False, period='day'):
     period_key = p['param']
     minute_keys = {'m5', 'm15', 'm30', 'm60'}
     if period_key in minute_keys:
-        # 分钟K线数据在 record[period_key] 内，或 qt 内
-        klines = record.get(period_key) or data.get('qt', {}).get(code, {}).get(period_key) or []
+        # 分钟K线用独立 endpoint: /appstock/app/kline/mkline
+        minute_url = f'https://ifzq.gtimg.cn/appstock/app/kline/mkline?param={prefix}{code},{period_key},,{p["count"]}'
+        try:
+            req2 = Request(minute_url, headers={'User-Agent': UA})
+            with urlopen(req2, timeout=15) as resp2:
+                d2 = json.loads(resp2.read().decode('utf-8'))
+            rec2 = d2.get('data', {}).get(prefix + code) or d2.get('data', {}).get(code) or {}
+            klines = rec2.get(period_key) or []
+        except Exception:
+            klines = []
     elif period_key == 'day':
         klines = record.get('qfqday') or record.get('day') or data.get('qt', {}).get(code, {}).get('day') or data.get('qt', {}).get(code, {}).get('qfqday') or []
     else:
