@@ -460,6 +460,7 @@ watch(showChanlun, (val) => {
   else { setChanlunData(null, false); renderChart() }
 })
 /** 周期切换时重新加载K线数据并重绘图表 */
+let periodDispose: (() => void) | null = null
 async function reloadKlineData() {
   loading.value = true
   try {
@@ -471,10 +472,15 @@ async function reloadKlineData() {
         safeVal(d.lowPoint), safeVal(d.highPoint),
         safeVal(d.volume),
       ]).sort((a: any, b: any) => a[0] - b[0])
-      renderChart()
     }
   } catch (_e) { console.warn('[Index] 周期K线加载失败:', _e) }
-  finally { loading.value = false }
+  finally {
+    loading.value = false
+    // 等 DOM 恢复后再渲染（nextTick 确保 kline-chart DOM 已重建）
+    nextTick(() => {
+      if (cachedKlineData && cachedKlineData.length > 10) renderChart()
+    })
+  }
 }
 
 watch(activePeriod, () => { reloadKlineData() })

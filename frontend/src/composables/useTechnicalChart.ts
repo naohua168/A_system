@@ -110,6 +110,16 @@ export function useTechnicalChart(
       })
       const volumes = klineData.map((d) => d[5])
 
+      // v-if 隐藏后重建了 DOM，需要重新 init
+      if (klineChart) {
+        try {
+          const dom = klineChart.getDom()
+          if (!dom || !(dom as HTMLElement).isConnected) {
+            klineChart.dispose()
+            klineChart = null
+          }
+        } catch { klineChart = null }
+      }
       if (!klineChart && klineChartRef.value?.isConnected) {
         try { klineChart = echarts.init(klineChartRef.value) } catch { return }
       }
@@ -322,6 +332,15 @@ export function useTechnicalChart(
     })
 
     // ── 底部指标图 ──
+    if (bottomChart) {
+      try {
+        const dom = bottomChart.getDom()
+        if (!dom || !(dom as HTMLElement).isConnected) {
+          bottomChart.dispose()
+          bottomChart = null
+        }
+      } catch { bottomChart = null }
+    }
     if (!bottomChart && bottomChartRef.value?.isConnected) bottomChart = echarts.init(bottomChartRef.value)
     if (!bottomChart) return
 
