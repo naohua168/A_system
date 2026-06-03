@@ -5,7 +5,7 @@
       <router-link to="/home" class="logo">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
           <path d="M3 3V21H21" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M7 15L11 9L15 13L21 5" stroke="#2997ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M7 15L11 9L15 13L21 5" stroke="#1890FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="logo-text">StockAI</span>
       </router-link>
@@ -50,9 +50,6 @@
 
       <!-- 右侧区域 -->
       <div class="header-right">
-        <button class="icon-btn search-btn" @click="showSearch = !showSearch">
-          <el-icon><Search /></el-icon>
-        </button>
         <AlertBell />
         <div class="user-area" @click="handleUserClick" v-click-outside="closeUserMenu">
           <div class="avatar" :class="{ unlogin: !isLoggedIn }">{{ userInitial }}</div>
@@ -81,38 +78,7 @@
       </div>
     </div>
 
-    <!-- 搜索层 -->
-    <transition name="fade">
-      <div v-if="showSearch" class="search-overlay" @click="showSearch = false; searchQuery = ''">
-        <div class="search-box" @click.stop>
-          <el-input
-            v-model="searchQuery"
-            placeholder="搜索股票代码/名称..."
-            size="large"
-            clearable
-            autofocus
-            @input="handleSearchInput"
-            @keyup.enter="jumpToFirst"
-          >
-            <template #prefix><el-icon><Search /></el-icon></template>
-          </el-input>
-          <!-- 搜索结果 -->
-          <div v-if="searchResults.length > 0" class="search-results">
-            <div
-              v-for="r in searchResults"
-              :key="r.stockCode"
-              class="search-result-item"
-              @click="goToStock(r)"
-            >
-              <span class="sr-code">{{ r.stockCode }}</span>
-              <span class="sr-name">{{ r.stockName }}</span>
-              <span class="sr-market">{{ r.market }}</span>
-            </div>
-          </div>
-          <div v-else-if="searchQuery && !searchLoading" class="search-empty">未找到匹配的股票</div>
-        </div>
-      </div>
-    </transition>
+    <!-- 搜索（已移除） -->
   </header>
 </template>
 
@@ -122,7 +88,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import AlertBell from '@/components/common/AlertBell.vue'
 import {
-  Search, ArrowDown, SwitchButton, Star, Coin,
+  ArrowDown, SwitchButton, Star,
   TrendCharts, DataAnalysis, Aim, Histogram, Reading,
 } from '@element-plus/icons-vue'
 
@@ -130,14 +96,7 @@ const userStore = useUserStore()
 const route = useRoute()
 const router = useRouter()
 const showUserMenu = ref(false)
-const showSearch = ref(false)
 const openDropdown = ref('')
-const searchQuery = ref('')
-const searchResults = ref<{ stockCode: string; stockName: string; market: string }[]>([])
-const searchLoading = ref(false)
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-
-import { searchStocks } from '@/api/market'
 
 const DATA_ICON = { template: '<svg.../>' }
 
@@ -164,7 +123,6 @@ function closeUserMenu() {
 const mainNavItems = [
   { path: '/home', label: '行情', icon: TrendCharts },
   { path: '/stocks', label: '股票', icon: DataAnalysis },
-  { path: '/funds', label: '基金', icon: Coin },
   { path: '/news', label: '资讯', icon: Reading },
   { path: '/watchlist', label: '自选', icon: Star },
   { path: '/chat', label: 'AI分析', icon: undefined },
@@ -178,7 +136,6 @@ const dataItems = [
   { path: '/dragon-tiger', label: '龙虎榜', desc: '席位数据·净买入排行', icon: Aim },
   { path: '/fund-flow', label: '资金流向', desc: '个股/行业/概念资金流入排行', icon: TrendCharts },
   { path: '/lockup', label: '限售解禁', desc: '解禁日历·个股查询', icon: Reading },
-  { path: '/consensus-eps', label: '一致预期', desc: '券商盈利预测·评级调整', icon: DataAnalysis },
 ]
 
 // ── 活跃判断 ──
@@ -194,32 +151,6 @@ function handleLogout() {
   showUserMenu.value = false
   userStore.logout()
   router.push('/login')
-}
-
-// ── 搜索 ──
-function handleSearchInput() {
-  if (searchTimer) clearTimeout(searchTimer)
-  const q = searchQuery.value.trim()
-  if (!q || q.length < 1) { searchResults.value = []; return }
-  searchTimer = setTimeout(async () => {
-    searchLoading.value = true
-    try {
-      const res: any = await searchStocks(q)
-      searchResults.value = (Array.isArray(res) ? res : []).slice(0, 8)
-    } catch { searchResults.value = [] }
-    finally { searchLoading.value = false }
-  }, 300)
-}
-
-function goToStock(r: { stockCode: string }) {
-  showSearch.value = false
-  searchQuery.value = ''
-  searchResults.value = []
-  router.push(`/stock/${r.stockCode}`)
-}
-
-function jumpToFirst() {
-  if (searchResults.value.length > 0) goToStock(searchResults.value[0])
 }
 
 // Click outside directive
@@ -380,27 +311,27 @@ const vClickOutside = {
     background: rgba(255, 255, 255, 0.08);
   }
 
-  &.active {
-    background: rgba(41, 151, 255, 0.12);
-  }
+      &.active {
+        background: rgba(24, 144, 255, 0.15);
+      }
 
-  .dropdown-icon {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 15px;
-  }
+      .dropdown-icon {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 15px;
+      }
 
-  &.active .dropdown-icon {
-    background: rgba(41, 151, 255, 0.15);
-    color: #2997ff;
-  }
+      &.active .dropdown-icon {
+        background: rgba(24, 144, 255, 0.2);
+        color: #40A9FF;
+      }
 
   .dropdown-content {
     flex: 1;
@@ -471,7 +402,7 @@ const vClickOutside = {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2997ff, #0066cc);
+  background: linear-gradient(135deg, #40A9FF, #1890FF);
   color: white;
   display: flex;
   align-items: center;

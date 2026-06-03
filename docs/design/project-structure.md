@@ -1,9 +1,9 @@
 # 项目目录结构说明文档
 
 > **文档版本**: V2.2  
-> **更新日期**: 2026-05-20  
-> **项目名称**: 基金股票智能分析系统 (A_system)  
-> **变更摘要**: 全部 16 项优化任务完工；L4 后端 PUT/PATCH/DELETE 端点补齐 + Resilience4j 熔断器 + LayerController + OpenAPI/Swagger；L5 AI 服务 FusionEngine 权重自动学习 + SiliconFlow 硬编码 Key 清除；L3 RSI 除零 bug 修复 + 144 测试全通；L2 MLlib 12 测试 + 废弃 MapReduce；L1 旧架构清理；前端 20 页面 + i18n 120+ 键 + FundListView；修复 6 个后端预存编译错误。
+> **更新日期**: 2026-06-03  
+> **项目名称**: 智能分析系统 (A_system)  
+> **变更摘要**: v4.2 移除基金/板块详情/一致预期 3 模块；全部信号视图重写；HomeView 三次迭代；云图成分股移除（外网不可达）；auto_seed treemap camelCase 改造；数据过期/路由白屏/缠论不显示修复。
 
 ---
 
@@ -438,7 +438,6 @@ frontend/
     │   ├── request.ts                  #   Axios 实例（baseURL=/api, 15s 超时, JWT 拦截器, 401跳转）
     │   ├── types.ts                    #   API 层通用类型（分页Result、查询参数）
     │   ├── market.ts                   #   行情层 API（列表/详情/K线/搜索/行业/板块K线）
-    │   ├── fund.ts                     #   基金模块 API
     │   ├── analysis.ts                 #   分析模块 API
     │   ├── signal.ts                   #   信号模块 API（题材/龙虎榜/北向/解禁/资金流向/行业对比）
     │   ├── info.ts                     #   [新增] 资讯模块 API（研报/新闻/公告/一致预期）
@@ -473,9 +472,7 @@ frontend/
     │   ├── StockListView.vue           #   股票列表（搜索、行业筛选、排序、分页）
     │   ├── StockDetailView.vue         #   个股详情（K线、技术指标、缠论、信号Tab、AI分析）
     │   ├── IndexDetailView.vue         #   指数详情
-    │   ├── SectorDetailView.vue        #   [V2.0 完善] 板块详情（含真实 K 线聚合数据）
-    │   ├── FundListView.vue            #   基金列表
-    │   ├── FundDetailView.vue          #   基金详情（净值走势、持仓明细）
+    │   ├── PortfolioView.vue           #   [V2.0 改进] 持仓管理（localStorage 持久化）
     │   ├── PortfolioView.vue           #   [V2.0 改进] 持仓管理（localStorage 持久化）
     │   ├── WatchlistView.vue           #   自选列表
     │   ├── ChatView.vue                #   AI 智能对话
@@ -485,9 +482,7 @@ frontend/
     │   ├── NorthboundView.vue          #   北向资金
     │   ├── LockupView.vue              #   限售解禁
     │   ├── IndustryCompareView.vue     #   行业对比
-    │   ├── SectorDetailView.vue        #   行业详情（合并板块详情）
     │   ├── FundFlowView.vue            #   [V2.0 改进] 资金流向（真实 API 替代 Mock）
-    │   ├── ConsensusEpsView.vue        #   [V2.0 改进] 一致预期（真实 API 替代 Mock）
     │   └── LayerDetailView.vue         #   [新增] 系统架构详情（L1~L6 全层展示）
     │
     ├── router/

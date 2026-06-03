@@ -1,14 +1,18 @@
-# 基金股票智能分析系统 (v4.1)
+# 智能分析系统 (v5.0)
 
-轻量级金融数据分析平台，覆盖 **数据采集 → Redis 缓存 → 后端 API → 前端展示** 全链路。
-采用 **CSV→Redis 直写管道** 实现零外部依赖，已剔除全部 Hadoop/Hive/Spark/Kafka 等大数据组件。
+全栈金融数据分析平台，覆盖 **实时行情 → Redis 缓存 → 后端 API → 前端展示** 全链路。
+采用 **Lambda 架构**：速度层（Redis + WebSocket 15s 实时推送）+ 批处理层（HDFS + Hive 离线分析）+ 服务层（HBase Redis 兜底）。
+每日 20:00 自动推送**市场复盘大屏**，数据来自 Hive ETL 全量分析。
 
-> **当前版本**: v4.1 (2026-06-03)
-> - ✅ **数据采集层** — 腾讯 API 直取实时行情 + K 线 + 信号数据，RESP 协议直写 Redis
+> **当前版本**: v5.0 (2026-06-03)
+> - ✅ **速度层** — 腾讯 API → CSV → auto_seed(2min) → Redis → WS(15s) → 前端实时页面
+> - ✅ **批处理层** — HDFS Parquet 全量存储 → Hive 数仓(ODS→DWD→DWS)→ hdfs_to_redis
+> - ✅ **服务层** — HBase stock_fallback 兜底，Redis miss 时自动回退
 > - ✅ **后端 API** — 10+ Controller, 40+ 端点, Redis 直读 + MyBatis MySQL
-> - ✅ **前端** — 33 视图页面, ECharts K 线/缠论/技术指标, Element Plus UI
+> - ✅ **前端** — 30 视图页面 + 每日复盘大屏, ECharts K 线/缠论/技术指标, Element Plus UI
 > - ✅ **AI 服务** — FastAPI + 多智能体对话 (可选)
 > - ✅ **缠论分析** — Python bridge + Redis K 线，个股/指数自动检测
+> - ✅ **大数据基础设施** — Hadoop 3.2.1 (2×DataNode) + Hive 2.3.2 + HBase 2.2.6，6 独立容器
 
 ---
 
@@ -547,6 +551,27 @@ docker exec redis redis-cli DBSIZE
 ---
 
 ## 12. 变更日志
+
+### v4.2 (2026-06-03)
+
+| 变更 | 详细 |
+|:-----|:------|
+| **移除** | 基金模块（3 页面 + API + 路由 + 后端端点 + Redis key）|
+| **移除** | 板块详情页 SectorDetailView + 一致性预期 ConsensusEpsView |
+| **移除** | 股票列表排序/行业筛选/北交所/ETF 标签 |
+| **移除** | 云图成分股功能（东财 push2 API 被网络防火墙屏蔽无法获取股票-行业映射）|
+| **重写** | HotReasonView, DragonTigerView, LockupView, FundFlowView, NewsView |
+| **重写** | HomeView（情绪横幅、信号卡片加强、两栏→全宽云图、热门股票横向滚动）|
+| **重写** | StockListView（列优化、移除全部排序/筛选 UI）|
+| **重写** | IndexDetailView（底部统计网格、缠论面板横向化）|
+| **重写** | SectorDetailPanel（三次简化：移除 K 线→详情跳转→成分股列表）|
+| **修复** | 数据过期（资金流向 TTL 12h、限售解禁 TTL 24h）|
+| **修复** | K 线缩放右端固定（useTechnicalChart.ts isSyncing 锁）|
+| **修复** | 缠论不显示（echarts.ts 补注册 MarkPoint/MarkArea/Graphic）|
+| **修复** | StockDetailView 路由 500（缺少 `</div>` 闭合）|
+| **修复** | 云图 0 成分股（数据源无 children）|
+| **新增** | fund_flow_refresh.py / agg_lockup.py 数据刷新脚本 |
+| **新增** | auto_seed.py treemap camelCase 字段 + akshare 成分股 fallback |
 
 ### v4.1 (2026-06-03)
 

@@ -1,22 +1,22 @@
 // ============================================================
-// Apple 风格设计系统 - 设计变量
-// 参考 apple/DESIGN.md
+// 同花顺风格设计系统 - 设计变量
+// 参考 https://www.10jqka.com.cn/
 // ============================================================
 
 // --- Colors ---
-$primary: #0066cc;
-$primary-focus: #0071e3;
-$primary-on-dark: #2997ff;
-$ink: #1d1d1f;
-$body: #1d1d1f;
+$primary: #1890FF;
+$primary-focus: #40A9FF;
+$primary-on-dark: #40A9FF;
+$ink: #333333;
+$body: #333333;
 $body-on-dark: #ffffff;
 $body-muted: #cccccc;
-$ink-muted-80: #333333;
-$ink-muted-48: #7a7a7a;
-$divider-soft: #f0f0f0;
-$hairline: #e0e0e0;
+$ink-muted-80: #555555;
+$ink-muted-48: #888888;
+$divider-soft: #eeeeee;
+$hairline: #e8e8e8;
 $canvas: #ffffff;
-$canvas-parchment: #f5f5f7;
+$canvas-parchment: #f5f6fa;
 $surface-pearl: #fafafc;
 $surface-tile-1: #272729;
 $surface-tile-2: #2a2a2c;
@@ -25,11 +25,11 @@ $surface-black: #000000;
 $surface-chip: #d2d2d7;
 
 // 涨跌色
-$rise: #e74c3c;
-$rise-bg: #ffeeed;
-$fall: #27ae60;
-$fall-bg: #e8f8f0;
-$flat: #7a7a7a;
+$rise: #D93026;
+$rise-bg: #fef0ef;
+$fall: #34A853;
+$fall-bg: #edf8f1;
+$flat: #888888;
 
 // --- Typography ---
 $font-display: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;

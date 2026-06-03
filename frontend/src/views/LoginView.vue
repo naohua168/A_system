@@ -5,7 +5,7 @@
       <div class="brand-content">
         <div class="brand-icon">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect width="48" height="48" rx="12" fill="#0066cc"/>
+            <rect width="48" height="48" rx="12" fill="#1890FF"/>
             <path d="M12 36V16L22 26L28 18L38 30" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="32" cy="14" r="4" fill="white" fill-opacity="0.8"/>
           </svg>
@@ -14,7 +14,7 @@
         <p class="brand-subtitle">智能金融分析平台</p>
         <div class="brand-features">
           <div class="feature" v-for="f in features" :key="f.text">
-            <el-icon color="#2997ff" :size="18"><Check /></el-icon>
+            <el-icon color="#1890FF" :size="18"><Check /></el-icon>
             <span>{{ f.text }}</span>
           </div>
         </div>

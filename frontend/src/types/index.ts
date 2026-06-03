@@ -247,16 +247,6 @@ export interface ResearchReportResponse {
   note?: string
 }
 
-export interface ConsensusEps {
-  id: number
-  stockCode: string
-  year: string
-  forecastCount: number
-  minEps: number
-  avgEps: number
-  maxEps: number
-}
-
 export interface NewsItem {
   id: number
   stockCode: string
@@ -328,44 +318,9 @@ export interface InfoPdf {
 export interface AllInfoResponse {
   stockCode: string
   researchReports: { total: number; records: ResearchReport[] }
-  consensusEps: ConsensusEps[]
   stockNews: { total: number; records: NewsItem[] }
   filings: { total: number; records: Filing[] }
   reportPdfs: { total: number; records: InfoPdf[] }
-}
-
-// ── 基金层 (Fund) — 对应后端 FundController ──
-
-export interface Fund {
-  id: number
-  fundCode: string
-  fundName: string
-  fundType: string
-  company: string
-  manager: string
-  establishDate: string
-  nav: number
-  accumulatedNav: number
-  scale?: number
-}
-
-export interface FundHolding {
-  id: number
-  fundCode: string
-  stockCode: string
-  stockName: string
-  ratio: number
-  rankNum: number
-  reportDate: string
-}
-
-export interface FundNav {
-  id: number
-  fundCode: string
-  navDate: string
-  nav: number
-  accumulatedNav: number
-  dailyReturn: number
 }
 
 // ── 分析层 (Analysis) — 对应后端 AnalysisController ──

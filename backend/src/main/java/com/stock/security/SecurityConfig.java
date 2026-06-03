@@ -47,7 +47,9 @@ public class SecurityConfig {
                     "/api/user/register",
                     "/api/public/**",
                     "/api/v2/**",
+                    "/api/watchlist/**",
                     "/api/analysis/*/chanlun",
+                    "/ws/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**"
                 ).permitAll()

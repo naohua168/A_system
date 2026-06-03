@@ -50,12 +50,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '指数详情' },
       },
       {
-        path: 'sector/:name',
-        name: 'SectorDetail',
-        component: () => import('@/views/SectorDetailView.vue'),
-        meta: { title: '板块详情' },
-      },
-      {
         path: 'chat',
         name: 'Chat',
         component: () => import('@/views/ChatView.vue'),
@@ -66,18 +60,6 @@ const routes: RouteRecordRaw[] = [
         name: 'News',
         component: () => import('@/views/NewsView.vue'),
         meta: { title: '资讯' },
-      },
-      {
-        path: 'fund/:code',
-        name: 'FundDetail',
-        component: () => import('@/views/FundDetailView.vue'),
-        meta: { title: '基金详情' },
-      },
-      {
-        path: 'funds',
-        name: 'FundList',
-        component: () => import('@/views/FundListView.vue'),
-        meta: { title: '基金列表' },
       },
       // ====== 信号层页面（a-stock-data 新增）======
       {
@@ -115,12 +97,6 @@ const routes: RouteRecordRaw[] = [
         name: 'Lockup',
         component: () => import('@/views/LockupView.vue'),
         meta: { title: '限售解禁' },
-      },
-      {
-        path: 'consensus-eps',
-        name: 'ConsensusEps',
-        component: () => import('@/views/ConsensusEpsView.vue'),
-        meta: { title: '一致预期' },
       },
       // ====== 系统架构详情页（L1~L6）======
       {

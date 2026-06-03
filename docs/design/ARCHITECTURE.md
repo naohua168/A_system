@@ -80,7 +80,6 @@ frontend/src/
 │   ├── index.ts            # 指数 API（全部 /v2/*）
 │   ├── signal.ts           # 信号 API（全部 /v2/*）
 │   ├── info.ts             # 资讯 API（全部 /v2/*）
-│   ├── fund.ts             # 基金 API（全部 /v2/*）
 │   ├── analysis.ts         # 分析 API（缠论/行业排行）
 │   ├── watchlist.ts        # 自选 API
 │   └── user.ts             # 用户 API
@@ -98,14 +97,13 @@ frontend/src/
 │   ├── HomeView.vue           # 首页概览
 │   ├── StockListView.vue      # 股票列表
 │   ├── StockDetailView.vue    # 个股详情（K线+缠论+信号）
-│   ├── SectorDetailView.vue   # 板块详情
 │   ├── IndexDetailView.vue    # 指数详情
 │   ├── WatchlistView.vue      # 自选股
 │   ├── ...                    # 其他页面
 ├── components/             # 可复用组件
 │   ├── chart/                 # 图表组件
 │   │   ├── TreemapChart.vue   # 行业云图
-│   │   └── SectorDetailPanel.vue  # 板块详情面板
+│   │   └── SectorDetailPanel.vue  # 行业概况面板（仅展示+关闭）
 │   ├── common/                # 通用组件
 │   │   ├── AppLayout.vue      # 布局
 │   │   ├── SkeletonLoader.vue # 骨架屏

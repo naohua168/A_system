@@ -83,7 +83,7 @@ const messages: Record<string, Record<string, string>> = {
     'signal.industryCompare': '行业对比',
     'signal.fundFlow': '资金流向',
     'signal.lockup': '限售解禁',
-    'signal.consensusEps': '一致预期',
+
     'signal.date': '日期',
     'signal.stock': '个股',
     'signal.netAmount': '净买入额',
@@ -215,7 +215,7 @@ const messages: Record<string, Record<string, string>> = {
     'signal.industryCompare': 'Industry Compare',
     'signal.fundFlow': 'Fund Flow',
     'signal.lockup': 'Lockup Calendar',
-    'signal.consensusEps': 'Consensus EPS',
+
     'signal.date': 'Date',
     'signal.stock': 'Stock',
     'signal.netAmount': 'Net Amount',

@@ -86,13 +86,16 @@
       </div>
 
       <template v-else>
+        <div class="news-count-bar">
+          共 <strong>{{ totalForDate }}</strong> 条资讯
+        </div>
         <div
-          v-for="(item, idx) in currentItems" :key="item.id"
+          v-for="(item, idx) in pagedItems" :key="item.id"
           class="nl-item"
           @click="openLink(item)"
         >
           <div class="nl-left">
-            <span class="nl-time" :class="{ 'nl-time-hidden': idx > 0 && item.time.slice(0,5) === currentItems[idx-1].time.slice(0,5) }">{{ item.time }}</span>
+            <span class="nl-time" :class="{ 'nl-time-hidden': idx > 0 && item.time.slice(0,5) === pagedItems[idx-1].time.slice(0,5) }">{{ item.time }}</span>
             <span class="nl-dot"></span>
           </div>
           <div class="nl-card">
@@ -109,9 +112,9 @@
           </div>
         </div>
 
-        <div class="load-more" v-if="hasMore">
-          <el-button :loading="loadingMore" text type="primary" @click="loadMore">
-            {{ loadingMore ? '加载中...' : '加载更多' }}
+        <div class="load-more" v-if="showLoadMore">
+          <el-button :loading="loadingMore" text type="primary" @click="loadMore(loadMoreCount)">
+            {{ loadingMore ? '加载中...' : '加载更多 ' + displayCount + '/' + totalForDate + ' 条' }}
           </el-button>
         </div>
       </template>
@@ -120,10 +123,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Calendar, WarningFilled, Document } from '@element-plus/icons-vue'
 import { getClsNews, getGlobalNews } from '@/api/info'
 import type { ClsNewsItem, GlobalNewsItem } from '@/types'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 // ══════════════════════════════════════════
 // 工具函数（放在最前面，避免 computed 引用未定义）
@@ -218,6 +222,26 @@ const allItems = ref<FeedItem[]>([])
 const clsDone = ref(false)
 const globalDone = ref(false)
 
+// ── 分页 ──
+const PAGE_SIZE = 20
+const displayCount = ref(PAGE_SIZE)
+
+const totalForDate = computed(() =>
+  allItems.value.filter(i => i.date === activeDate.value).length
+)
+
+const pagedItems = computed(() =>
+  currentItems.value.slice(0, displayCount.value)
+)
+
+const showLoadMore = computed(() =>
+  displayCount.value < totalForDate.value
+)
+
+const loadMoreCount = computed(() =>
+  Math.min(PAGE_SIZE, totalForDate.value - displayCount.value)
+)
+
 // ══════════════════════════════════════════
 // computed
 // ══════════════════════════════════════════
@@ -225,10 +249,8 @@ const globalDone = ref(false)
 const currentItems = computed(() =>
   allItems.value
     .filter(i => i.date === activeDate.value)
-    .sort((a, b) => a.time.localeCompare(b.time))
+    .sort((a, b) => b.time.localeCompare(a.time)) // 降序：最新的在最上面
 )
-
-const hasMore = computed(() => !clsDone.value || !globalDone.value)
 
 const dateDisplayText = computed(() => {
   const d = dateFromStr(activeDate.value)
@@ -251,16 +273,16 @@ const canGoNext = computed(() => activeDate.value < tomorrowStr)
 // 数据转换
 // ══════════════════════════════════════════
 
-function cls2feed(item: ClsNewsItem): FeedItem {
+function cls2feed(item: ClsNewsItem, idx?: number): FeedItem {
   const pubTime = (item as any).publishTime || (item as any).datetime || ''
   const { date, time } = parsePubTime(pubTime)
-  return { id: `cls-${item.id}`, type: 'cls', title: item.title, date, time, content: item.content || '', source: '财联社' }
+  return { id: item.id ? `cls-${item.id}` : `cls-${idx}-${time || Math.random()}`, type: 'cls', title: item.title, date, time, content: item.content || '', source: '财联社' }
 }
 
-function global2feed(item: GlobalNewsItem): FeedItem {
+function global2feed(item: GlobalNewsItem, idx?: number): FeedItem {
   const pubTime = (item as any).publishTime || (item as any).datetime || ''
   const { date, time } = parsePubTime(pubTime)
-  return { id: `global-${item.id}`, type: 'global', title: item.title, date, time, content: item.summary || '', source: item.source || '全球资讯', url: item.url }
+  return { id: item.id ? `global-${item.id}` : `global-${idx}-${time || Math.random()}`, type: 'global', title: item.title, date, time, content: item.summary || '', source: item.source || '全球资讯', url: item.url }
 }
 
 // ══════════════════════════════════════════
@@ -281,9 +303,10 @@ async function loadData() {
     ])
 
     // 转换 + 去重
+    let idx = 0
     const raw: FeedItem[] = [
-      ...((clsRes?.records || []).map(cls2feed)),
-      ...((globalRes?.records || []).map(global2feed)),
+      ...((clsRes?.records || []).map((r: any) => cls2feed(r, idx++))),
+      ...((globalRes?.records || []).map((r: any) => global2feed(r, idx++))),
     ]
     const seen = new Set<string>()
     raw.forEach(i => { if (!seen.has(i.id)) { seen.add(i.id); allItems.value.push(i) } })
@@ -312,14 +335,21 @@ async function loadData() {
   }
 }
 
-async function loadMore() {
+async function loadMore(count: number) {
+  // 前端分页：直接增加显示数量，不再触发 API 请求
+  displayCount.value = Math.min(displayCount.value + count, totalForDate.value)
+  loadingMore.value = false
+}
+
+// 保留原有 loadMoreWithFetch 用于需要从 API 加载更多数据的情况
+async function loadMoreFromApi() {
   loadingMore.value = true
   try {
     const ps: Promise<any>[] = []
     if (!clsDone.value) {
       ps.push(
         getClsNews(100).then((r: any) => {
-          const items = (r?.records || []).map(cls2feed)
+          const items = (r?.records || []).map((x: any, i: number) => cls2feed(x, i + allItems.value.length))
           const exist = new Set(allItems.value.map(i => i.id))
           items.forEach(i => { if (!exist.has(i.id)) { allItems.value.push(i) } })
           clsDone.value = items.length < 100
@@ -329,7 +359,7 @@ async function loadMore() {
     if (!globalDone.value) {
       ps.push(
         getGlobalNews(100).then((r: any) => {
-          const items = (r?.records || []).map(global2feed)
+          const items = (r?.records || []).map((x: any, i: number) => global2feed(x, i + allItems.value.length))
           const exist = new Set(allItems.value.map(i => i.id))
           items.forEach(i => { if (!exist.has(i.id)) { allItems.value.push(i) } })
           globalDone.value = items.length < 100
@@ -376,6 +406,10 @@ function openLink(item: FeedItem) {
 }
 
 onMounted(loadData)
+useAutoRefresh(loadData, 300_000)
+
+// 切换日期时重置分页
+watch(activeDate, () => { displayCount.value = PAGE_SIZE })
 </script>
 
 <style scoped lang="scss">
@@ -516,6 +550,12 @@ onMounted(loadData)
   width: 2px;
   background: linear-gradient(to bottom, transparent 0%, $hairline 6%, $hairline 94%, transparent 100%);
   pointer-events: none;
+}
+
+/* 计数条 */
+.news-count-bar {
+  font-size: 12px; color: $ink-muted-48; padding: 0 0 $spacing-sm;
+  strong { font-weight: 600; color: $ink; }
 }
 
 .nl-item {

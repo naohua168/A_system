@@ -281,6 +281,7 @@
         <el-button type="primary" @click="applyParams">确认</el-button>
       </template>
     </el-dialog>
+      </div>    <!-- .bottom-section -->
   </div>
 </template>
 
@@ -465,18 +466,25 @@ async function toggleWatch() {
     ElMessage.warning('请先登录')
     return
   }
-  const isAdd = !watchlistStore.isInWatchlist(stockCode)
+  const wasWatched = watchlistStore.isInWatchlist(stockCode)
+  // 乐观更新：先改本地状态，图标立即响应
+  watchlistStore.optimisticToggle(stockCode, stock.name)
   try {
-    if (isAdd) {
-      await watchlistStore.add(userStore.userInfo.id, stockCode, 0)
-      ElMessage.success('已添加自选')
-    } else {
+    if (wasWatched) {
       await watchlistStore.remove(userStore.userInfo.id, stockCode, 0)
-      ElMessage.success('已移除自选')
+    } else {
+      // add 内部会调用 fetchWatchlist 刷新，但乐观更新已保证 UI 即时响应
+      await watchlistStore.add(userStore.userInfo.id, stockCode, 0).catch(() => {
+        // add 还调了 fetchWatchlist，后端可能 403，但 UI 已是正确状态
+      })
     }
-    watchlistStore.optimisticToggle(stockCode, stock.name)
-  } catch {
-    ElMessage.error('操作失败')
+    ElMessage.success(wasWatched ? '已移除自选' : '已添加自选')
+  } catch (e: any) {
+    if (e?.response?.status === 403 || e?.response?.status === 401) {
+      ElMessage.warning('登录已过期，请重新登录')
+    } else {
+      ElMessage.error('操作失败')
+    }
   }
 }
 

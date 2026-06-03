@@ -48,19 +48,6 @@
           </template>
         </el-input>
       </div>
-      <div class="filter-area">
-        <el-select v-model="store.selectedIndustry" placeholder="全部行业" clearable @change="store.setIndustry($event || '')">
-          <el-option v-for="ind in industries" :key="ind" :label="ind" :value="ind" />
-        </el-select>
-        <el-select v-model="sortField" placeholder="排序" @change="handleSort">
-          <el-option label="默认排序" value="" />
-          <el-option label="涨幅 ↑" value="change_pct_desc" />
-          <el-option label="涨幅 ↓" value="change_pct_asc" />
-          <el-option label="价格 ↑" value="price_desc" />
-          <el-option label="价格 ↓" value="price_asc" />
-          <el-option label="成交量 ↑" value="volume_desc" />
-        </el-select>
-      </div>
     </div>
 
     <el-table
@@ -69,47 +56,66 @@
       stripe
       highlight-current-row
       @row-click="goToDetail"
+      size="small"
       class="stock-table"
+      :header-cell-style="{ background: '#f5f6fa', color: '#666', fontWeight: 500, fontSize: '12px', padding: '10px 8px' }"
+      :cell-style="{ padding: '8px 6px', fontSize: '12px' }"
     >
-      <el-table-column prop="stockCode" label="代码" width="100" />
-      <el-table-column prop="stockName" label="名称" min-width="140">
+      <el-table-column label="代码" width="80">
+        <template #default="{ row }">
+          <span class="stock-code">{{ row.stockCode }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="名称" min-width="110" prop="stockName">
         <template #default="{ row }">
           <span class="stock-name">{{ row.stockName }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="最新价" width="120" align="right">
+      <el-table-column label="最新价" width="80" align="right">
         <template #default="{ row }">
           <span class="mono">{{ formatPrice(row.price) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="涨跌幅" width="110" align="right">
+      <el-table-column label="涨跌幅" width="80" align="right">
         <template #default="{ row }">
           <span :class="['change-tag', Number(row.changePct ?? 0) >= 0 ? 'rise' : 'fall']">
             {{ formatPercent(row.changePct) }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="涨跌额" width="100" align="right">
+      <el-table-column label="成交额" width="90" align="right">
         <template #default="{ row }">
-          <span :class="['mono', Number(row.change ?? 0) >= 0 ? 'text-rise' : 'text-fall']">
-            {{ formatPoints(row.change) }}
-          </span>
+          <span class="mono">{{ fmtAmount(row.amountWan) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="成交量" width="110" align="right">
+      <el-table-column label="换手率" width="75" align="right">
         <template #default="{ row }">
-          <span class="mono">{{ formatVol(row.volume) }}</span>
+          <span class="mono">{{ row.turnoverPct ? row.turnoverPct.toFixed(2) + '%' : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="industry" label="行业" width="100" />
-      <el-table-column label="市盈率" width="90" align="right">
+      <el-table-column label="流通市值" width="95" align="right">
         <template #default="{ row }">
-          <span class="mono">{{ row.pe ? safeNum(row.pe, 1) : '-' }}</span>
+          <span class="mono">{{ row.mcapYi ? row.mcapYi.toFixed(1) + '亿' : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="80" fixed="right">
+      <el-table-column label="市盈率" width="75" align="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click.stop="$router.push(`/stock/${row.stockCode}`)">详情</el-button>
+          <span class="mono">{{ row.pe && row.pe > 0 ? row.pe.toFixed(1) : '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="市净率" width="75" align="right">
+        <template #default="{ row }">
+          <span class="mono">{{ row.pb && row.pb > 0 ? row.pb.toFixed(2) : '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="昨收" width="75" align="right">
+        <template #default="{ row }">
+          <span class="mono">{{ row.lastClose ? row.lastClose.toFixed(2) : '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="70" fixed="right" align="center">
+        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click.stop="goToDetail(row)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -132,8 +138,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStockStore } from '@/stores/stock'
-import { getIndustries } from '@/api/market'
-import { formatVol, formatPrice, formatPercent, formatPoints, safeNum } from '@/utils/format'
+import { formatPrice, formatPercent } from '@/utils/format'
 
 interface MarketNode {
   key: string
@@ -144,8 +149,6 @@ interface MarketNode {
 const router = useRouter()
 const store = useStockStore()
 const searchKeyword = ref('')
-const sortField = ref('')
-const industries = ref<string[]>([])
 const activeDropdown = ref<string | null>(null)
 
 /** 市场分类（参考东方财富：一级横向，二级下拉） */
@@ -158,8 +161,6 @@ const marketTree: MarketNode[] = [
   ]},
   { key: 'sh-kcb', label: '科创板' },
   { key: 'sz-cyb', label: '创业板' },
-  { key: 'bj', label: '北交所' },
-  { key: 'etf', label: 'ETF' },
 ]
 
 /** 打开下拉菜单（关闭其他） */
@@ -193,29 +194,20 @@ function handleSearch() {
   store.setKeyword(searchKeyword.value)
 }
 
-function handleSort() {
-  if (!sortField.value) {
-    store.fetchList({ page: 1 })
-    return
-  }
-  const [field, dir] = sortField.value.split('_')
-  store.fetchList({
-    page: 1,
-    sortField: field,
-    sortOrder: dir === 'asc' ? 'asc' : 'desc',
-  })
-}
-
 function goToDetail(row: any) {
   router.push(`/stock/${row.stockCode}`)
+}
+
+function fmtAmount(wan: number | undefined | null): string {
+  if (!wan || wan <= 0) return '-'
+  const yi = wan / 10000
+  if (yi >= 1) return yi.toFixed(1) + '亿'
+  return wan.toFixed(0) + '万'
 }
 
 onMounted(() => {
   store.fetchList()
   document.addEventListener('click', closeDropdown)
-  getIndustries().then((res) => {
-    industries.value = res
-  }).catch(() => {})
 })
 </script>
 
@@ -317,23 +309,19 @@ onMounted(() => {
   gap: 12px;
 
   .search-area { flex: 1; max-width: 420px; }
-  .filter-area { display: flex; gap: 8px; }
 }
 
 .stock-table {
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  .stock-name { font-weight: 500; }
-  .mono { font-family: 'Menlo', 'Consolas', monospace; }
+  .stock-code { color: #1890FF; font-weight: 600; font-family: 'Consolas', monospace; }
+  .stock-name { font-weight: 500; color: #333; }
+  .mono { font-family: 'Consolas', monospace; color: #333; }
   .change-tag {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-weight: 600;
-    font-family: 'Menlo', 'Consolas', monospace;
-    &.rise { color: white; background: #f56c6c; }
-    &.fall { color: white; background: #67c23a; }
+    font-weight: 600; font-family: 'Consolas', monospace;
+    &.rise { color: #D93026; }
+    &.fall { color: #34A853; }
   }
 }
 

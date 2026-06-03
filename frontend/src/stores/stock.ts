@@ -68,19 +68,54 @@ export const useStockStore = defineStore('stock', () => {
         currentPage.value = res.page
         pageSize.value = res.size
       } else {
-        const res = await marketApi.getStockList({
-          page: params?.page ?? currentPage.value,
-          size: params?.size ?? pageSize.value,
-          keyword: params?.keyword ?? keyword.value,
-          industry: params?.industry ?? selectedIndustry.value,
-          market: mkt,
-          sortField: params?.sortField,
-          sortOrder: params?.sortOrder,
-        }, listController.signal)
-        records.value = res.records
-        total.value = res.total
-        currentPage.value = res.page
-        pageSize.value = res.size
+        // 市场过滤（后端不支持，前端本地按 stockCode 前缀过滤）
+        if (mkt && mkt !== '') {
+          // 读取全量股票列表
+          const allRes = await marketApi.getStockList({
+            page: 1, size: 5000,
+            keyword: params?.keyword ?? keyword.value,
+            industry: params?.industry ?? selectedIndustry.value,
+          }, listController.signal)
+          const allStocks = allRes.records || []
+          const prefixMap: Record<string, string[]> = {
+            'sh': ['6','9'], 'sz': ['0','2','3'],
+            'sh-kcb': ['688','689'], 'sz-cyb': ['300','301'],
+            'bj': ['4','8'],
+            'hs': ['6','0','3','688','689','300','301','9'],
+          }
+          const prefixes = prefixMap[mkt] || []
+          const filtered = allStocks.filter((s: any) =>
+            prefixes.some(p => (s.stockCode || '').startsWith(p))
+          )
+          // 搜索过滤
+          const kw = ((params?.keyword ?? keyword.value) || '').toLowerCase()
+          const searchFiltered = kw ? filtered.filter((s: any) =>
+            (s.stockName || '').toLowerCase().includes(kw) ||
+            (s.stockCode || '').toLowerCase().includes(kw)
+          ) : filtered
+          // 本地分页
+          const page = params?.page ?? currentPage.value
+          const size = params?.size ?? pageSize.value
+          const from = (page - 1) * size
+          records.value = searchFiltered.slice(from, from + size)
+          total.value = searchFiltered.length
+          currentPage.value = page
+          pageSize.value = size
+        } else {
+          const res = await marketApi.getStockList({
+            page: params?.page ?? currentPage.value,
+            size: params?.size ?? pageSize.value,
+            keyword: params?.keyword ?? keyword.value,
+            industry: params?.industry ?? selectedIndustry.value,
+            market: mkt,
+            sortField: params?.sortField,
+            sortOrder: params?.sortOrder,
+          }, listController.signal)
+          records.value = res.records
+          total.value = res.total
+          currentPage.value = res.page
+          pageSize.value = res.size
+        }
       }
     } catch (e: unknown) {
       const canceled = e instanceof Error && (e.name === 'CanceledError' || (e as any)?.code === 'ERR_CANCELED')

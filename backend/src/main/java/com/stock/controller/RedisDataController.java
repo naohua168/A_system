@@ -26,10 +26,53 @@ public class RedisDataController {
 
     @GetMapping("/market/list")
     public Map<String, Object> marketList(@RequestParam(defaultValue = "1") int page,
-                                          @RequestParam(defaultValue = "20") int size) {
+                                          @RequestParam(defaultValue = "20") int size,
+                                          @RequestParam(required = false) String market,
+                                          @RequestParam(required = false) String keyword,
+                                          @RequestParam(required = false) String sortField,
+                                          @RequestParam(required = false) String sortOrder) {
         List<Map<String, Object>> all = redisReader.getAsList("market:stock_basic");
-        // stock_basic 已含 changePct/price（由 auto_seed.py 从 CSV 写入），无需额外 enrich
-        return pageResult(all, page, size);
+        // 市场过滤（由 stockCode 前缀判断）
+        List<Map<String, Object>> filtered = all;
+        if (market != null && !market.isEmpty()) {
+            filtered = all.stream()
+                .filter(s -> {
+                    Object sc = s.get("stockCode");
+                    if (sc == null) return false;
+                    String code = sc.toString();
+                    switch (market) {
+                        case "sh": return code.startsWith("6") || code.startsWith("9");
+                        case "sz": return code.startsWith("0") || code.startsWith("3") || code.startsWith("2");
+                        case "sh-kcb": return code.startsWith("688") || code.startsWith("689");
+                        case "sz-cyb": return code.startsWith("300") || code.startsWith("301");
+                        case "bj": return code.startsWith("4") || code.startsWith("8");
+                        case "hs": return code.startsWith("6") || code.startsWith("0") || code.startsWith("3") || code.startsWith("688") || code.startsWith("689") || code.startsWith("300") || code.startsWith("301");
+                        default: return true;
+                    }
+                })
+                .collect(java.util.stream.Collectors.toList());
+        }
+        // 搜索过滤
+        if (keyword != null && !keyword.isEmpty()) {
+            String kw = keyword.toLowerCase();
+            filtered = filtered.stream()
+                .filter(s -> {
+                    String name = String.valueOf(s.getOrDefault("stockName", "")).toLowerCase();
+                    String code = String.valueOf(s.getOrDefault("stockCode", "")).toLowerCase();
+                    return name.contains(kw) || code.contains(kw);
+                })
+                .collect(java.util.stream.Collectors.toList());
+        }
+        // 排序
+        if (sortField != null && !sortField.isEmpty()) {
+            boolean asc = "asc".equalsIgnoreCase(sortOrder);
+            filtered.sort((a, b) -> {
+                double va = toDouble(a.get(sortField));
+                double vb = toDouble(b.get(sortField));
+                return asc ? Double.compare(va, vb) : Double.compare(vb, va);
+            });
+        }
+        return pageResult(filtered, page, size);
     }
 
     @GetMapping("/market/detail/{code}")
@@ -337,11 +380,6 @@ public class RedisDataController {
         return redisReader.getAsList("market:research_" + code);
     }
 
-    @GetMapping("/info/consensus-eps/{code}")
-    public List<Map<String, Object>> consensusEps(@PathVariable String code) {
-        return redisReader.getAsList("market:consensus_eps_" + code);
-    }
-
     @GetMapping("/info/news/{code}")
     public List<Map<String, Object>> stockNews(@PathVariable String code,
                                                 @RequestParam(defaultValue = "30") int days) {
@@ -356,34 +394,6 @@ public class RedisDataController {
     }
 
     // ========================================================================
-    // 基金 /fund
-    // ========================================================================
-
-    @GetMapping("/fund/list")
-    public Map<String, Object> fundList(@RequestParam(defaultValue = "1") int page,
-                                        @RequestParam(defaultValue = "20") int size) {
-        return pageResult(redisReader.getAsList("market:fund_list"), page, size);
-    }
-
-    @GetMapping("/fund/{code}")
-    public Map<String, Object> fundInfo(@PathVariable String code) {
-        List<Map<String, Object>> list = redisReader.getAsList("market:fund_list");
-        return list.stream().filter(m -> code.equals(m.get("fundCode")) || code.equals(m.get("fund_code"))).findFirst()
-            .orElse(Map.of("fundCode", code, "note", "数据加载中"));
-    }
-
-    @GetMapping("/fund/{code}/nav")
-    public List<Map<String, Object>> fundNav(@PathVariable String code,
-                                              @RequestParam(defaultValue = "30") int days) {
-        return redisReader.getAsList("market:fund_nav");
-    }
-
-    @GetMapping("/fund/{code}/holdings")
-    public List<Map<String, Object>> fundHoldings(@PathVariable String code) {
-        return redisReader.getAsList("market:fund_holdings_" + code);
-    }
-
-    // ========================================================================
     // 健康检查
     // ========================================================================
 
@@ -392,8 +402,8 @@ public class RedisDataController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "ok");
         result.put("redis_keys", List.of("market:stock_basic", "market:cls_news",
-            "market:northbound", "market:fund_nav", "market:global_news",
-            "market:hot_reason", "market:fund_list"));
+            "market:northbound", "market:global_news",
+            "market:hot_reason"));
         result.put("data_source", "Hive→Redis pipeline (每60s)");
         return result;
     }
@@ -413,5 +423,11 @@ public class RedisDataController {
         result.put("size", size);
         result.put("totalPages", (int) Math.ceil((double) all.size() / size));
         return result;
+    }
+
+    private double toDouble(Object value) {
+        if (value == null) return 0;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        try { return Double.parseDouble(value.toString()); } catch (Exception e) { return 0; }
     }
 }

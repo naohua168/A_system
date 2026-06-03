@@ -62,45 +62,6 @@
       </div>
     </section>
 
-    <!-- 基金持仓 -->
-    <section class="section">
-      <div class="section-header">
-        <h4>基金持仓</h4>
-      </div>
-      <div class="fund-grid" v-if="fundHoldings.length > 0">
-        <div v-for="f in fundHoldings" :key="f.code"
-          class="fund-card"
-          @click="$router.push(`/fund/${f.code}`)"
-        >
-          <div class="fund-header">
-            <h4>{{ f.name }}</h4>
-            <span class="caption">{{ f.code }}</span>
-          </div>
-          <div class="fund-body">
-            <div class="fund-stat">
-              <span class="label">持有份额</span>
-              <span class="val">{{ f.shares.toFixed(2) }}</span>
-            </div>
-            <div class="fund-stat">
-              <span class="label">最新净值</span>
-              <span class="val">{{ f.nav.toFixed(4) }}</span>
-            </div>
-          </div>
-          <div class="fund-footer">
-            <span class="fund-pnl" :class="f.pnl >= 0 ? 'text-rise' : 'text-fall'">
-              收益: {{ f.pnl >= 0 ? '+' : '' }}{{ formatMoney(f.pnl) }}
-            </span>
-            <span class="fund-return" :class="f.returnRate >= 0 ? 'text-rise' : 'text-fall'">
-              {{ f.returnRate >= 0 ? '+' : '' }}{{ f.returnRate.toFixed(2) }}%
-            </span>
-          </div>
-        </div>
-      </div>
-      <div v-else class="empty-state">
-        <el-icon :size="48" color="#ccc"><Coin /></el-icon>
-        <p>暂无基金持仓</p>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -108,20 +69,15 @@
 /** 持仓管理 — 基于 localStorage 的本地持仓模拟，用于演示。
  *  实际生产中应对接后端用户持仓表。
  */
-import { ref, onMounted, watch } from 'vue'
-import { Wallet, Coin } from '@element-plus/icons-vue'
+import { ref, onMounted } from 'vue'
+import { Wallet } from '@element-plus/icons-vue'
 import { getStockList } from '@/api/market'
-import { getFundList } from '@/api/fund'
 import { formatMoney, formatPrice } from '@/utils/format'
 
 interface Holding {
   code: string; name: string; shares: number
   price: number; cost: number; pnl: number; returnRate: number
   preClose?: number; dailyPnl?: number
-}
-interface FundHolding {
-  code: string; name: string; shares: number
-  nav: number; pnl: number; returnRate: number
 }
 
 const STORAGE_KEY = 'portfolio_holdings'
@@ -130,20 +86,22 @@ const totalAssets = ref(0)
 const dailyPnL = ref(0)
 const totalReturn = ref(0)
 const stockHoldings = ref<Holding[]>([])
-const fundHoldings = ref<FundHolding[]>([])
 
 /** 从 localStorage 读取本地持仓配置 */
-function loadLocalHoldings(): { stocks: Record<string, { shares: number; cost: number }>; funds: Record<string, { shares: number }> } {
+function loadLocalHoldings(): { stocks: Record<string, { shares: number; cost: number }> } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return { stocks: parsed.stocks || {} }
+    }
   } catch { /* ignore */ }
-  return { stocks: { '600519': { shares: 100, cost: 1550 }, '300750': { shares: 500, cost: 185 }, '000858': { shares: 300, cost: 162.5 } }, funds: {} }
+  return { stocks: { '600519': { shares: 100, cost: 1550 }, '300750': { shares: 500, cost: 185 }, '000858': { shares: 300, cost: 162.5 } } }
 }
 
 /** 保存当前持仓配置到 localStorage */
-function saveLocalHoldings(stocks: Record<string, { shares: number; cost: number }>, funds: Record<string, { shares: number }>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ stocks, funds }))
+function saveLocalHoldings(stocks: Record<string, { shares: number; cost: number }>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ stocks }))
 }
 
 async function loadData() {
@@ -175,26 +133,6 @@ async function loadData() {
   } catch (_e) {
     console.warn('[Portfolio] 加载股票失败:', _e)
     stockHoldings.value = []
-  }
-
-  try {
-    const fundRes = await getFundList({ page: 1, size: 50 }) as any
-    const fundMap = new Map((fundRes?.records || []).map((r: any) => [r.fundCode || r.code, r]))
-    const holdings: FundHolding[] = []
-    for (const [code, cfg] of Object.entries(local.funds)) {
-      const rec: any = fundMap.get(code)
-      if (!rec) continue
-      const nav = Number(rec.nav) || 1
-      const { shares } = cfg as { shares: number }
-      const cost = nav * 0.95
-      const pnl = (nav - cost) * shares
-      const returnRate = ((nav - cost) / cost) * 100
-      holdings.push({ code, name: rec.fundName || rec.name || code, shares, nav, pnl, returnRate })
-    }
-    fundHoldings.value = holdings
-  } catch (_e) {
-    console.warn('[Portfolio] 加载基金失败:', _e)
-    fundHoldings.value = []
   }
 }
 
@@ -260,57 +198,6 @@ onMounted(loadData)
     &:hover { background: $surface-pearl; }
 
     .col-code { color: $ink-muted-48; }
-  }
-}
-
-.fund-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: $spacing-md;
-
-  .fund-card {
-    background: $canvas;
-    border: 1px solid $divider-soft;
-    border-radius: $rounded-lg;
-    padding: $spacing-lg;
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow: $shadow-elevated;
-    }
-
-    .fund-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: $spacing-md;
-
-      h4 { font-size: 16px; margin: 0; }
-      .caption { color: $ink-muted-48; }
-    }
-
-    .fund-body {
-      display: flex;
-      gap: $spacing-xl;
-      margin-bottom: $spacing-md;
-
-      .fund-stat {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        .label { font-size: 12px; color: $ink-muted-48; }
-        .val { font-family: $font-display; font-size: 16px; font-weight: 600; }
-      }
-    }
-
-    .fund-footer {
-      display: flex;
-      gap: $spacing-lg;
-      font-size: 14px;
-      font-weight: 500;
-    }
   }
 }
 

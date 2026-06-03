@@ -28,10 +28,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-        <!-- HttpClient (Spring Boot 2.x 默认不包含 httpclient，但旧 Docker 构建环境有此依赖) -->
+        <!-- HttpClient 5.x (AppConfig中使用了hc.client5) -->
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>5.2.1</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -1,6 +1,6 @@
 """
 数据层自愈管道 — CSV→Redis (纯 socket 实现, 零外部依赖)
-每 20 分钟自动运行，确保所有 Redis key 不因 TTL 过期
+每 2 分钟自动运行，确保所有 Redis key 不因 TTL 过期
 """
 import sys, json, csv, glob, os, re, time, socket, urllib.request, urllib.parse, threading
 from datetime import datetime
@@ -157,6 +157,7 @@ def _ensure_fresh_csv():
     _ensure_hot_reason_csv()
     _ensure_industry_compare_csv()
     _ensure_dragon_tiger_csv()
+    _ensure_news_data()
 
 
 # ════════════════════════════════════════════════
@@ -386,46 +387,140 @@ def _ensure_industry_compare_csv():
 
 
 def _ensure_dragon_tiger_csv():
-    """龙虎榜：东方财富数据中心接口直取"""
+    """龙虎榜：东方财富数据中心接口直取（最近5个交易日）"""
     if _csv_is_fresh('dragon_tiger_*.csv', _market_hours_max_age(7200)):
         return
-    from datetime import date as _d
-    today_str = _d.today().strftime('%Y-%m-%d')
-    print(f'  [{datetime.now():%H:%M:%S}] 龙虎榜 CSV 过期，从 EastMoney API 直取...')
+    from datetime import date as _d, timedelta
+    today = _d.today()
+    # 生成最近5个交易日（不含今日，可能跨周末）
+    target_dates = [today]
+    for i in range(1, 8):
+        d = today - timedelta(days=i)
+        if d.weekday() < 5:  # 周一至周五
+            target_dates.append(d)
+        if len(target_dates) >= 5:
+            break
+    print(f'  [{datetime.now():%H:%M:%S}] 龙虎榜 CSV 过期，从 EastMoney API 直取 {len(target_dates)} 天...')
     try:
-        filter_enc = urllib.parse.quote(f"(TRADE_DATE>='{today_str}')(TRADE_DATE<='{today_str}')")
-        url = ('https://datacenter-web.eastmoney.com/api/data/v1/get'
-               f'?reportName=RPT_DAILYBILLBOARD_DETAILSNEW'
-               f'&columns=ALL&pageSize=500'
-               f'&sortColumns=BILLBOARD_NET_AMT&sortTypes=-1'
-               f'&filter={filter_enc}')
-        d = _fetch_json(url, EASTMONEY_HEADERS)
-        items = d.get('result', {}).get('data', [])
-        if not items:
-            print('  ⚠️ EastMoney 龙虎榜返回空')
+        all_rows = []
+        for td in target_dates:
+            ds = td.strftime('%Y-%m-%d')
+            filter_enc = urllib.parse.quote(f"(TRADE_DATE>='{ds}')(TRADE_DATE<='{ds}')")
+            url = ('https://datacenter-web.eastmoney.com/api/data/v1/get'
+                   f'?reportName=RPT_DAILYBILLBOARD_DETAILSNEW'
+                   f'&columns=ALL&pageSize=500'
+                   f'&sortColumns=BILLBOARD_NET_AMT&sortTypes=-1'
+                   f'&filter={filter_enc}')
+            try:
+                d = _fetch_json(url, EASTMONEY_HEADERS)
+                items = d.get('result', {}).get('data', [])
+                for item in items:
+                    reason = item.get('BILLBOARD_REASON', '') or item.get('BOARD_REASON', '') or ''
+                    net_buy = item.get('BILLBOARD_NET_AMT', 0) or 0
+                    change = item.get('CHANGE_RATE', 0) or 0
+                    turnover = item.get('TURNOVERRATE', 0) or 0
+                    buy_amt = item.get('BILLBOARD_BUY_AMT', 0) or 0
+                    sell_amt = item.get('BILLBOARD_SELL_AMT', 0) or 0
+                    all_rows.append({
+                        'stock_code': item.get('SECURITY_CODE', ''),
+                        'stock_name': item.get('SECURITY_NAME_ABBR', ''),
+                        'reason': reason,
+                        'net_buy_wan': str(net_buy),
+                        'change_pct': str(change),
+                        'turnover_pct': str(turnover),
+                        'buy_wan': str(buy_amt),
+                        'sell_wan': str(sell_amt),
+                        'trade_date': item.get('TRADE_DATE', ds)[:10],
+                    })
+                print(f'    {ds}: {len(items)} 条')
+            except Exception as e:
+                print(f'    {ds}: 失败 {e}')
+                continue
+        if not all_rows:
+            print('  ⚠️ 多天龙虎榜均返回空')
             return
-        rows = []
-        for item in items:
-            # 东方财富龙虎榜字段：BILLBOARD_REASON=上榜原因, BILLBOARD_NET_AMT=净买入额
-            reason = item.get('BILLBOARD_REASON', '') or item.get('BOARD_REASON', '') or ''
-            net_buy = item.get('BILLBOARD_NET_AMT', 0) or 0
-            change = item.get('CHANGE_PCT', 0) or 0
-            rows.append({
-                'stock_code': item.get('SECURITY_CODE', ''),
-                'stock_name': item.get('SECURITY_NAME_ABBR', ''),
-                'reason': reason,
-                'net_buy_wan': str(net_buy),
-                'change_pct': str(change),
-                'trade_date': today_str,
-            })
         fp = os.path.join(CSV_DIR, f'dragon_tiger_{datetime.now():%Y%m%d_%H%M%S}.csv')
         with open(fp, 'w', newline='', encoding='utf-8-sig') as f:
-            w = csv.DictWriter(f, fieldnames=['stock_code', 'stock_name', 'reason', 'net_buy_wan', 'change_pct', 'trade_date'])
-            w.writeheader(); w.writerows(rows)
+            fieldnames = ['stock_code', 'stock_name', 'reason', 'net_buy_wan', 'change_pct',
+                          'turnover_pct', 'buy_wan', 'sell_wan', 'trade_date']
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader(); w.writerows(all_rows)
         os.chmod(fp, 0o644)
-        print(f'  ✅ 龙虎榜 CSV 刷新: {os.path.basename(fp)} ({len(rows)} 条)')
+        # 统计各日期条数
+        from collections import Counter
+        date_counts = Counter(r['trade_date'] for r in all_rows)
+        detail = ', '.join(f'{d}:{c}' for d, c in sorted(date_counts.items()))
+        print(f'  ✅ 龙虎榜 CSV 刷新: {os.path.basename(fp)} ({len(all_rows)} 条) [{detail}]')
     except Exception as e:
         print(f'  ❌ 龙虎榜直取失败: {e}')
+
+
+# ════════════════════════════════════════════════
+# 全球资讯数据获取（东方财富 np-weblist 7×24 快讯）
+# ════════════════════════════════════════════════
+EM_NEWS_HEADERS = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://kuaixun.eastmoney.com/'}
+
+def _ensure_news_data():
+    """从东方财富获取全球资讯，直接写入 Redis market:global_news 和 market:cls_news"""
+    import uuid
+    try:
+        url = 'https://np-weblist.eastmoney.com/comm/web/getFastNewsList'
+        params = {
+            'client': 'web', 'biz': 'web_724', 'fastColumn': '102',
+            'sortEnd': '', 'pageSize': '100',
+            'req_trace': str(uuid.uuid4()),
+        }
+        req = urllib.request.Request(url + '?' + urllib.parse.urlencode(params), headers=EM_NEWS_HEADERS)
+        resp = urllib.request.urlopen(req, timeout=15)
+        d = json.loads(resp.read().decode())
+        raw_list = d.get('data', {}).get('fastNewsList', [])
+        if not raw_list:
+            print(f'  [{datetime.now():%H:%M:%S}] ⚠️ 东财全球资讯返回空')
+            return
+
+        # 转换格式: 源数据 {title, summary, showTime}
+        seen = set()
+        global_list = []
+        cls_list = []
+        news_id = 0
+        for item in raw_list:
+            title = (item.get('title') or '').strip()
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            news_id += 1
+            summary = (item.get('summary') or '')[:300]
+            show_time = (item.get('showTime') or '')
+            # showTime 格式如 "06-03 14:30"，补全年份
+            if show_time and not show_time.startswith('20'):
+                show_time = datetime.now().strftime('%Y-') + show_time
+            # 提取新闻链接（如有）
+            news_url = item.get('url') or item.get('sourceUrl') or item.get('articleUrl') or ''
+
+            global_list.append({
+                'title': title,
+                'summary': summary,
+                'publishTime': show_time,
+                'source': '东方财富',
+                'url': news_url,
+                'id': news_id,
+            })
+            cls_list.append({
+                'title': title,
+                'content': summary,
+                'datetime': show_time,
+                'source': '东方财富',
+                'id': 10000 + news_id,
+            })
+
+        # 写入 Redis
+        if global_list:
+            safe_write_no_skip('market:global_news', global_list, TTL_SHORT, 200)
+        if cls_list:
+            safe_write_no_skip('market:cls_news', cls_list, TTL_SHORT, 200)
+        print(f'  [{datetime.now():%H:%M:%S}] ✅ 全球资讯刷新: {len(global_list)} 条 (TTL={TTL_SHORT}s)')
+    except Exception as e:
+        print(f'  [{datetime.now():%H:%M:%S}] ❌ 全球资讯直取失败: {e}')
 
 
 def _read_stock_codes_from_csv() -> list:
@@ -628,6 +723,73 @@ def safe_write_force_price(key, data, ttl=TTL_SHORT, limit=None):
         data = data[:limit]
     return redis_setex(key, data, ttl)
 
+
+# ── 行业树图成分股增强 ──────────────────────────────────────────
+def _enrich_treemap_with_children(treemap):
+    """利用 akshare 获取每只股票的行业归属，按行业分组附加到 treemap children"""
+    if not treemap:
+        return
+    try:
+        import akshare as ak
+
+        # 1) 获取所有行业板块名称与代码
+        df_name = ak.stock_board_industry_name_em()
+        if df_name.empty:
+            print('  ⚠️ [treemap] akshare 行业板块名称为空')
+            return
+
+        board_map = {}
+        for _, row in df_name.iterrows():
+            code = str(row.get('板块代码', '')).strip()
+            name = str(row.get('板块名称', '')).strip()
+            if code and name:
+                board_map[name] = code
+
+        # 2) 逐个板块获取成分股
+        industry_stocks = {}
+        for name, code in board_map.items():
+            try:
+                df_cons = ak.stock_board_industry_cons_em(symbol=code)
+                if df_cons.empty:
+                    continue
+                stocks = []
+                for _, srow in df_cons.iterrows():
+                    scode = str(srow.get('代码', ''))
+                    sname = str(srow.get('名称', ''))
+                    cp = 0.0
+                    try: cp = round(float(srow.get('涨跌幅', 0) or 0), 2)
+                    except: pass
+                    price = 0.0
+                    try: price = round(float(srow.get('最新价', 0) or 0), 2)
+                    except: pass
+                    if scode and sname:
+                        stocks.append({
+                            'stockCode': scode, 'stockName': sname,
+                            'changePercent': cp, 'price': price,
+                        })
+                if stocks:
+                    industry_stocks[name] = stocks
+            except Exception as e:
+                print(f'  ⚠️ [treemap] akshare 获取 {name}({code}) 失败: {e}')
+                continue
+
+        # 3) 回填 treemap
+        matched = 0
+        for entry in treemap:
+            iname = entry.get('industryName', '')
+            stocks = industry_stocks.get(iname, [])
+            if stocks:
+                entry['children'] = stocks
+                matched += 1
+
+        total = sum(len(v) for v in industry_stocks.values())
+        print(f'  [treemap] 成分股增强(akshare): {matched}/{len(treemap)} 个行业, {total} 只个股')
+    except ImportError:
+        print('  ⚠️ [treemap] akshare 未安装，跳过成分股增强')
+    except Exception as e:
+        print(f'  ⚠️ [treemap] akshare 增强失败: {e}')
+
+
 def fill_static():
     """
     从 CSV 填充全部真实数据 — 不生成任何模拟数据
@@ -644,6 +806,9 @@ def fill_static():
 
     # ── 确保实时行情 CSV 是最新的 ──
     _ensure_fresh_csv()
+
+    # ── 全球资讯直取刷新（短 TTL，必须每次刷新）──
+    _ensure_news_data()
 
     # ════════════════════════════════════════════
     # 1. stock_basic (全量 + price/pe/pb/市值)
@@ -828,8 +993,12 @@ def fill_static():
         print(f'  industry_compare: {len(ind_comp)} (TTL={TTL_SHORT}s)')
         total += cnt
 
-        treemap = [{'industry': x['industry'], 'change_pct': x['change_pct'],
-                     'mcap_yi': 0, 'stocks': x['stock_count']} for x in ind_comp]
+        treemap = [{'industryName': x['industry'], 'changePct': x['change_pct'],
+                     'mcapYi': 0, 'stockCount': x['stock_count']} for x in ind_comp]
+
+        # 附加 children 成分股 — 使用东财 A 股全量 API 按行业分组
+        _enrich_treemap_with_children(treemap)
+
         safe_write_no_skip('market:industry_treemap', treemap, TTL_SHORT)
         print(f'  industry_treemap: {len(treemap)} (TTL={TTL_SHORT}s)')
         total += len(treemap)
@@ -868,38 +1037,6 @@ def fill_static():
     else:
         print('  ** hot_reason CSV 不存在 **')
 
-    cn = latest_csv('cls_news_*.csv')
-    if cn:
-        seen = set()
-        uniq = []
-        for r in cn:
-            k = r.get('标题','') + r.get('发布日期','')
-            if k not in seen and k.strip():
-                seen.add(k)
-                uniq.append({'title': r.get('标题',''), 'content': r.get('内容',''),
-                             'datetime': r.get('发布日期',''), 'source': r.get('发布时间','')})
-        safe_write('market:cls_news', uniq, TTL_MEDIUM, 200)
-        print(f'  cls_news: {min(len(uniq),200)}')
-        total += min(len(uniq), 200)
-    else:
-        print('  ** cls_news CSV 不存在 **')
-
-    gn = latest_csv('global_news_*.csv')
-    if gn:
-        seen = set()
-        uniq = []
-        for r in gn:
-            k = r.get('标题','') + r.get('发布时间','')
-            if k not in seen and k.strip():
-                seen.add(k)
-                uniq.append({'title': r.get('标题',''), 'summary': r.get('摘要',''),
-                             'publish_time': r.get('发布时间',''), 'url': r.get('链接','')})
-        safe_write('market:global_news', uniq, TTL_MEDIUM, 100)
-        print(f'  global_news: {min(len(uniq),100)}')
-        total += min(len(uniq), 100)
-    else:
-        print('  ** global_news CSV 不存在 **')
-
     # ── 龙虎榜 ──
     dt = latest_csv('dragon_tiger_*.csv')
     if dt:
@@ -911,7 +1048,11 @@ def fill_static():
                     'stock_code': code,
                     'stock_name': r.get('stock_name', ''),
                     'reason': str(r.get('reason', '')),
-                    'change_pct': r.get('change_pct', 0),
+                    'net_buy_wan': float(r.get('net_buy_wan', 0) or 0),
+                    'change_pct': float(r.get('change_pct', 0) or 0),
+                    'turnover_pct': float(r.get('turnover_pct', 0) or 0),
+                    'buy_wan': float(r.get('buy_wan', 0) or 0),
+                    'sell_wan': float(r.get('sell_wan', 0) or 0),
                     'trade_date': r.get('trade_date', ''),
                 })
         safe_write_no_skip('market:dragon_tiger', uniq, TTL_SHORT)
@@ -920,45 +1061,26 @@ def fill_static():
     else:
         print('  ** dragon_tiger CSV 不存在 **')
 
-    # ════════════════════════════════════════════
-    # 8. 基金
-    # ════════════════════════════════════════════
-    fb = latest_csv('fund_basic_*.csv')
-    if fb:
-        fund_list = []
-        for r in fb:
-            code = r.get('fund_code', '')
-            if not code:
-                continue
-            fund_list.append({
-                'fundCode': code, 'fundName': r.get('fund_name', ''),
-                'fundType': r.get('fund_type', ''), 'company': r.get('company', ''),
-                'manager': r.get('manager', ''), 'establishDate': r.get('establish_date', ''),
-                'nav': float(r.get('nav', 0)) if r.get('nav') else 0,
-                'accumulatedNav': float(r.get('accumulated_nav', 0)) if r.get('accumulated_nav') else 0,
-                'scale': float(r.get('scale', 0)) if r.get('scale') else 0,
-                'fund_code': code, 'fund_name': r.get('fund_name', ''),
-                'fund_type': r.get('fund_type', ''), 'establish_date': r.get('establish_date', ''),
-                'accumulated_nav': float(r.get('accumulated_nav', 0)) if r.get('accumulated_nav') else 0,
-            })
-        safe_write_no_skip('market:fund_list', fund_list, TTL_LONG)
-        print(f'  fund_list: {len(fund_list)}')
-        total += len(fund_list)
-    else:
-        print('  ** fund_basic CSV 不存在 **')
+    # ── 资金流向（基于 stock_basic 真实行情推导，每轮刷新） ──
+    try:
+        subprocess.run(
+            [sys.executable, '/app/ffr.py'],
+            capture_output=True, timeout=120)
+        print('  fund_flow: 基于 stock_basic 刷新完成')
+    except Exception as e:
+        print(f'  fund_flow 刷新失败: {e}')
 
-    # 基金净值 
-    fn = latest_csv('fund_nav_*.csv')
-    if fn:
-        fn_list = [{'fundCode': r.get('code', ''), 'navDate': r.get('date', ''),
-                    'nav': float(r.get('nav', 0)) if r.get('nav') else 0,
-                    'accumulatedNav': float(r.get('nav', 0)) if r.get('nav') else 0}
-                   for r in fn if r.get('code')]
-        safe_write('market:fund_nav', fn_list, TTL_MEDIUM, 200)
-        print(f'  fund_nav: {min(len(fn_list),200)}')
-        total += min(len(fn_list), 200)
+    # ── 锁解汇总（聚合所有 lockup_* key → lockup_upcoming） ──
+    try:
+        subprocess.run(
+            [sys.executable, '/app/al.py'],
+            capture_output=True, timeout=120)
+        print('  lockup_upcoming: 聚合刷新完成')
+    except Exception as e:
+        print(f'  lockup_upcoming 刷新失败: {e}')
 
     return total
+
 
 def _kline_needs_refresh():
     """检查日K是否需要刷新"""
@@ -989,7 +1111,6 @@ def _refresh_kline():
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f'  ✅ 分钟K线刷新已启动（5min/15min/30min/60min）')
 
-
 def seed_all():
     """全量填充（含 K 线刷新 + HDFS 备份）"""
     print(f'[{datetime.now():%H:%M:%S}] 数据自愈管道启动 (socket 模式)...')
@@ -1012,9 +1133,9 @@ def seed_all():
     # 涨跌排行兜底 seed_analysis（HDFS 不可用时用 stock_basic 生成）
     try:
         import subprocess
-        subprocess.Popen(
+        subprocess.run(
             [sys.executable, '/app/seed_analysis.py'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            capture_output=True, timeout=60)
     except Exception:
         pass
     elapsed = time.time() - t0
@@ -1023,14 +1144,16 @@ def seed_all():
     return total
 
 def _analysis_refresh_loop():
-    """涨跌排行单独刷新 + 分钟K线刷新 — 每5分钟更新一次（不阻塞主管道）"""
+    """涨跌排行 + 新闻 + 分钟K线刷新 — 每5分钟更新一次（不阻塞主管道）"""
     import subprocess
     while True:
         try:
-            time.sleep(300)  # 5分钟
+            time.sleep(120)  # 2分钟
             subprocess.run(
                 [sys.executable, '/app/seed_analysis.py'],
                 capture_output=True, timeout=120)
+            # 新闻数据刷新（短TTL，每5分钟刷新确保最新）
+            _ensure_news_data()
             # 分钟K线刷新（短TTL=1h，需要每5分钟检查并刷新）
             if _min_kline_needs_refresh():
                 for min_period in ['5min', '15min', '30min', '60min']:
@@ -1043,14 +1166,14 @@ def _analysis_refresh_loop():
 if __name__ == '__main__':
     print('=== 数据管道 (redis-cli 自愈) ===')
     seed_all()
-    # 启动涨跌排行独立刷新线程（每5分钟）
+    # 启动涨跌排行独立刷新线程（每2分钟）
     import threading
     analysis_thread = threading.Thread(target=_analysis_refresh_loop, daemon=True)
     analysis_thread.start()
     while True:
         try:
-            time.sleep(1200)
+            time.sleep(120)  # 2分钟全量刷新
             seed_all()
         except Exception as e:
-            print(f'[{datetime.now():%H:%M:%S}] 管道异常(20分钟后重试): {e}')
-            time.sleep(1200)
+            print(f'[{datetime.now():%H:%M:%S}] 管道异常(120s后重试): {e}')
+            time.sleep(120)

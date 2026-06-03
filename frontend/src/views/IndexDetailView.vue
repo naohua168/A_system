@@ -71,147 +71,102 @@
       </template>
     </div>
 
-    <!-- 底部信息 -->
+    <!-- 底部信息：统计指标 + 缠论 -->
     <div class="bottom-section">
-      <div class="row-2col">
-        <div class="info-card">
-          <h4>指数信息</h4>
-          <div class="info-grid-2col">
-            <div class="info-row"><span class="label">开盘</span><span class="val">{{ safeNum(info.open) }}</span></div>
-            <div class="info-row"><span class="label">最高</span><span class="val text-rise">{{ safeNum(info.high) }}</span></div>
-            <div class="info-row"><span class="label">最低</span><span class="val text-fall">{{ safeNum(info.low) }}</span></div>
-            <div class="info-row"><span class="label">昨收</span><span class="val">{{ safeNum(info.preClose) }}</span></div>
-            <div class="info-row"><span class="label">成交量</span><span class="val">{{ formatVol(info.volume) }}</span></div>
+      <!-- 统计概览行 -->
+      <div class="stats-overview">
+        <div class="stat-block">
+          <div class="stat-title">指数行情</div>
+          <div class="stat-grid-4">
+            <div class="stat-item"><span class="stat-lb">开盘</span><span class="stat-val">{{ safeNum(info.open) }}</span></div>
+            <div class="stat-item"><span class="stat-lb">最高</span><span class="stat-val text-rise">{{ safeNum(info.high) }}</span></div>
+            <div class="stat-item"><span class="stat-lb">最低</span><span class="stat-val text-fall">{{ safeNum(info.low) }}</span></div>
+            <div class="stat-item"><span class="stat-lb">昨收</span><span class="stat-val">{{ safeNum(info.preClose) }}</span></div>
+            <div class="stat-item"><span class="stat-lb">成交量</span><span class="stat-val">{{ formatVol(info.volume) }}</span></div>
+            <div class="stat-item"><span class="stat-lb">振幅</span><span class="stat-val">{{ info.high && info.low ? ((info.high - info.low) / info.preClose * 100).toFixed(2) + '%' : '-' }}</span></div>
           </div>
         </div>
-        <div class="info-card quant-card">
-          <h4>量化指标</h4>
-          <div class="quant-stats">
-            <div class="stat"><span class="label">MA5</span><span class="val">{{ (quant.ma5 ?? 0).toFixed(2) }}</span></div>
-            <div class="stat"><span class="label">MA20</span><span class="val">{{ (quant.ma20 ?? 0).toFixed(2) }}</span></div>
-            <div class="stat"><span class="label">MACD</span><span class="val" :class="(quant.macd ?? 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (quant.macd ?? 0).toFixed(4) }}</span></div>
-            <div class="stat"><span class="label">RSI</span><span class="val" :class="(quant.rsi ?? 50) > 70 ? 'text-rise' : (quant.rsi ?? 50) < 30 ? 'text-fall' : ''">{{ (quant.rsi ?? 50).toFixed(1) }}</span></div>
-            <div class="stat"><span class="label">KDJ-K</span><span class="val">{{ (quant.kdjK ?? 50).toFixed(1) }}</span></div>
-            <div class="stat"><span class="label">KDJ-D</span><span class="val">{{ (quant.kdjD ?? 50).toFixed(1) }}</span></div>
+        <div class="stat-block">
+          <div class="stat-title">量化指标</div>
+          <div class="stat-grid-4">
+            <div class="stat-item"><span class="stat-lb">MA5</span><span class="stat-val">{{ quant.ma5 ? quant.ma5.toFixed(2) : '-' }}</span></div>
+            <div class="stat-item"><span class="stat-lb">MA20</span><span class="stat-val">{{ quant.ma20 ? quant.ma20.toFixed(2) : '-' }}</span></div>
+            <div class="stat-item"><span class="stat-lb">MACD柱</span><span class="stat-val" :class="(quant.macd ?? 0) >= 0 ? 'text-rise' : 'text-fall'">{{ quant.macd ? quant.macd.toFixed(4) : '-' }}</span></div>
+            <div class="stat-item"><span class="stat-lb">RSI</span><span class="stat-val" :class="(quant.rsi ?? 50) > 70 ? 'text-rise' : (quant.rsi ?? 50) < 30 ? 'text-fall' : ''">{{ quant.rsi ? quant.rsi.toFixed(1) : '-' }}</span></div>
+            <div class="stat-item"><span class="stat-lb">KDJ-K</span><span class="stat-val">{{ quant.kdjK ? quant.kdjK.toFixed(1) : '-' }}</span></div>
+            <div class="stat-item"><span class="stat-lb">KDJ-D</span><span class="stat-val">{{ quant.kdjD ? quant.kdjD.toFixed(1) : '-' }}</span></div>
           </div>
         </div>
       </div>
 
-      <!-- 缠论分析（与个股统一风格）— 仅开关开启时显示 -->
+      <!-- 缠论分析 -->
       <div class="chanlun-panel" v-if="showChanlun">
         <div class="cl-header">
           <div class="cl-header-left">
-            <svg class="cl-icon" viewBox="0 0 20 20" fill="none" width="18" height="18">
-              <path d="M2 18L6 8L10 13L14 3L18 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 2V18H18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"/>
-            </svg>
             <span class="cl-title">缠论技术分析</span>
-          </div>
-          <div class="cl-header-right">
             <span :class="['cl-trend-badge', chanlunStats.trendType === '上涨趋势' ? 'rise' : chanlunStats.trendType === '下跌趋势' ? 'fall' : 'flat']">
-              <span class="cl-trend-dot"></span>
               {{ chanlunStats.trendType }}
             </span>
-            <div class="cl-overview-chips">
-              <div class="cl-chip">
-                <span class="chip-label">级别</span>
-                <span class="chip-val">{{ chanlunStats.level }}</span>
-              </div>
-              <div class="cl-chip">
-                <span class="chip-label">当前笔</span>
-                <span class="chip-val" :class="chanlunStats.currentBi.includes('向上') ? 'rise' : 'fall'">{{ chanlunStats.currentBi }}</span>
-              </div>
-              <div class="cl-chip">
-                <span class="chip-label">位置</span>
-                <span :class="['chip-val', 'pos', chanlunStats.pricePosition === '上方' ? 'above' : chanlunStats.pricePosition === '下方' ? 'below' : 'inside']">{{ chanlunStats.pricePosition }}</span>
-              </div>
-            </div>
+          </div>
+          <div class="cl-header-right">
+            <span class="cl-chip"><span class="chip-label">级别</span><span class="chip-val">{{ chanlunStats.level }}</span></span>
+            <span class="cl-chip"><span class="chip-label">当前笔</span><span class="chip-val" :class="chanlunStats.currentBi.includes('向上') ? 'rise' : 'fall'">{{ chanlunStats.currentBi }}</span></span>
+            <span class="cl-chip"><span class="chip-label">位置</span><span :class="['chip-val', 'pos', chanlunStats.pricePosition === '上方' ? 'above' : chanlunStats.pricePosition === '下方' ? 'below' : 'inside']">{{ chanlunStats.pricePosition }}</span></span>
           </div>
         </div>
 
+        <!-- 四维指标 -->
         <div class="cl-metrics-grid">
-          <div class="cl-metric-card ding">
-            <div class="metric-icon"><svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M8 2V14M2 8H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
-            <div class="metric-val">{{ chanlunStats.dingCount }}</div>
-            <div class="metric-label">顶分型</div>
-          </div>
-          <div class="cl-metric-card di">
-            <div class="metric-icon"><svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M2 8H14M8 14V2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
-            <div class="metric-val">{{ chanlunStats.diCount }}</div>
-            <div class="metric-label">底分型</div>
-          </div>
-          <div class="cl-metric-card bi">
-            <div class="metric-icon"><svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M2 3L14 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
-            <div class="metric-val">{{ chanlunStats.biCount }}</div>
-            <div class="metric-label">笔</div>
-          </div>
-          <div class="cl-metric-card zs">
-            <div class="metric-icon"><svg viewBox="0 0 16 16" fill="none" width="14" height="14"><rect x="3" y="5" width="10" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/></svg></div>
-            <div class="metric-val">{{ chanlunStats.zhongshuCount }}</div>
-            <div class="metric-label">中枢</div>
-          </div>
+          <div class="cl-metric-card ding"><div class="metric-val">{{ chanlunStats.dingCount }}</div><div class="metric-label">顶分型</div></div>
+          <div class="cl-metric-card di"><div class="metric-val">{{ chanlunStats.diCount }}</div><div class="metric-label">底分型</div></div>
+          <div class="cl-metric-card bi"><div class="metric-val">{{ chanlunStats.biCount }}</div><div class="metric-label">笔</div></div>
+          <div class="cl-metric-card zs"><div class="metric-val">{{ chanlunStats.zhongshuCount }}</div><div class="metric-label">中枢</div></div>
         </div>
 
+        <!-- 中枢区间 + 买卖点 -->
         <div class="cl-detail-row">
           <div class="cl-detail-card">
-            <div class="cl-detail-header">
-              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><rect x="3" y="5" width="10" height="6" rx="2" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="4" x2="6" y2="12" stroke="currentColor" stroke-width="1" opacity="0.3"/><line x1="10" y1="4" x2="10" y2="12" stroke="currentColor" stroke-width="1" opacity="0.3"/></svg>
-              中枢区间
-            </div>
+            <div class="cl-detail-header">中枢区间</div>
             <div class="cl-detail-body">
-              <div class="zs-list">
-                <div v-for="zs in chanlunStats.zhongshuInfo" :key="zs.name" class="zs-item">
+              <div class="zs-hbar" v-if="chanlunStats.zhongshuInfo.length">
+                <div v-for="zs in chanlunStats.zhongshuInfo" :key="zs.name" class="zs-hitem">
                   <span class="zs-tag">{{ zs.name }}</span>
-                  <span class="zs-price">{{ zs.zd.toFixed(2) }} – {{ zs.zg.toFixed(2) }}</span>
+                  <span class="zs-range"><b class="text-rise">{{ zs.zg.toFixed(2) }}</b> — <b class="text-fall">{{ zs.zd.toFixed(2) }}</b></span>
+                  <span class="zs-width">宽 {{ (zs.zg - zs.zd).toFixed(2) }}</span>
                 </div>
-                <div v-if="!chanlunStats.zhongshuInfo.length" class="zs-empty">暂无中枢</div>
               </div>
+              <span v-else class="cl-empty">暂无中枢</span>
             </div>
           </div>
-
           <div class="cl-detail-card">
-            <div class="cl-detail-header">
-              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              买卖信号
-            </div>
+            <div class="cl-detail-header">买卖信号</div>
             <div class="cl-detail-body">
               <div class="fx-pair">
                 <div class="fx-item ding">
-                  <span class="fx-label">最近顶</span>
-                  <span class="fx-price">{{ chanlunStats.lastDingFeng.price ?? '-' }}</span>
-                  <span class="fx-date">{{ chanlunStats.lastDingFeng.date || '' }}</span>
+                  <span class="fx-label">顶</span>
+                  <span class="fx-price">{{ chanlunStats.lastDingFeng.price || '-' }}</span>
                 </div>
                 <div class="fx-item di">
-                  <span class="fx-label">最近底</span>
-                  <span class="fx-price">{{ chanlunStats.lastDiFeng.price ?? '-' }}</span>
-                  <span class="fx-date">{{ chanlunStats.lastDiFeng.date || '' }}</span>
+                  <span class="fx-label">底</span>
+                  <span class="fx-price">{{ chanlunStats.lastDiFeng.price || '-' }}</span>
                 </div>
               </div>
               <div class="bp-row">
                 <template v-if="chanlunStats.buyPoints.length || chanlunStats.sellPoints.length">
-                  <span v-for="bp in chanlunStats.buyPoints" :key="bp.type" class="bp-tag buy">
-                    {{ bp.type.replace('_', ' ') }}
-                    <span class="bp-desc">{{ bp.desc }}</span>
-                  </span>
-                  <span v-for="sp in chanlunStats.sellPoints" :key="sp.type" class="bp-tag sell">
-                    {{ sp.type.replace('_', ' ') }}
-                    <span class="bp-desc">{{ sp.desc }}</span>
-                  </span>
+                  <span v-for="bp in chanlunStats.buyPoints" :key="bp.type" class="bp-tag buy">{{ bp.type.replace('buy_', 'B') }} <i>{{ bp.desc }}</i></span>
+                  <span v-for="sp in chanlunStats.sellPoints" :key="sp.type" class="bp-tag sell">{{ sp.type.replace('sell_', 'S') }} <i>{{ sp.desc }}</i></span>
                 </template>
-                <span v-else class="bp-none">暂无买卖点</span>
+                <span v-else class="cl-empty">暂无买卖点</span>
               </div>
               <div class="beichi-row">
                 <span class="beichi-label">背驰</span>
-                <span :class="['beichi-val', chanlunStats.beichi === '顶背驰' ? 'ding' : chanlunStats.beichi === '底背驰' ? 'di' : 'none']">
-                  {{ chanlunStats.beichi }}
-                </span>
+                <span :class="['beichi-val', chanlunStats.beichi === '顶背驰' ? 'ding' : chanlunStats.beichi === '底背驰' ? 'di' : 'none']">{{ chanlunStats.beichi }}</span>
               </div>
             </div>
           </div>
         </div>
 
         <div v-if="chanlunStats.signals.length" class="cl-signals-bar">
-          <span class="cl-signals-label">提示</span>
           <span v-for="s in chanlunStats.signals" :key="s.text" :class="['cl-signal', s.type]">{{ s.text.replace('_', ' ') }}</span>
         </div>
       </div>
@@ -260,6 +215,8 @@ import { useTechnicalChart } from '@/composables/useTechnicalChart'
 import { useIndicatorParams } from '@/composables/useIndicatorParams'
 import { safeVal, parseTradeDate } from '@/utils/format'
 import { formatVol } from '@/utils/format'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import { useMarketWebSocket } from '@/composables/useMarketWebSocket'
 import IntradayChart from '@/components/chart/IntradayChart.vue'
 
 const route = useRoute()
@@ -495,6 +452,37 @@ onBeforeUnmount(() => {
   disposeChart()
 })
 
+// WebSocket 实时推送指数数据
+useMarketWebSocket().subscribe('indices', (data: any) => {
+  if (!Array.isArray(data)) return
+  const match = data.find((i: any) => (i.indexCode || i.code) === code)
+  if (!match) return
+  info.price = Number(match.closePoint) || info.price
+  info.changePercent = Number(match.changePct ?? match.changePercent) || info.changePercent
+  info.open = Number(match.openPoint) || info.open
+  info.high = Number(match.highPoint) || info.high
+  info.low = Number(match.lowPoint) || info.low
+  info.preClose = Number(match.preClose) || info.preClose
+  info.volume = Number(match.volume) || info.volume
+  info.amount = Number(match.amount) || info.amount
+})
+// 轮询降级保障
+async function refreshPrice() {
+  try {
+    const idxInfo: any = await getIndexInfo(code)
+    if (!idxInfo) return
+    info.price = Number(idxInfo.closePoint) || info.price
+    info.changePercent = Number(idxInfo.changePct ?? idxInfo.changePercent) || info.changePercent
+    info.open = Number(idxInfo.openPoint) || info.open
+    info.high = Number(idxInfo.highPoint) || info.high
+    info.low = Number(idxInfo.lowPoint) || info.low
+    info.preClose = Number(idxInfo.preClose) || info.preClose
+    info.volume = Number(idxInfo.volume) || info.volume
+    info.amount = Number(idxInfo.amount) || info.amount
+  } catch { /* 静默 */ }
+}
+useAutoRefresh(refreshPrice, 60_000)
+
 watch(showChanlun, (val) => {
   if (val) fetchChanlunData()
   else { setChanlunData(null, false); renderChart() }
@@ -594,89 +582,90 @@ watch(activePeriod, () => {
 }
 
 .bottom-section { display: flex; flex-direction: column; gap: $spacing-md; }
-.row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: $spacing-md; }
-.info-card { background: $canvas-parchment; border-radius: $rounded-lg; padding: $spacing-lg;
-  h4 { font-size: 15px; margin-bottom: $spacing-md; }
-  .info-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 $spacing-lg; }
-  .info-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid $divider-soft; font-size: 13px;
-    &:nth-last-child(-n+2) { border-bottom: none; }
-    .label { color: $ink-muted-48; } .val { font-weight: 500; } }
-}
-.quant-card { position: relative; }
-.quant-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: $spacing-sm;
-  .stat { display: flex; flex-direction: column; gap: 2px;
-    .label { font-size: 12px; color: $ink-muted-48; } .val { font-size: 18px; font-weight: 600; } }
-}
-// 缠论分析面板 — Apple 风格数据面板（与个股统一）
+
+/* 统计概览行 */
+.stats-overview { display: grid; grid-template-columns: 1fr 1fr; gap: $spacing-md; }
+.stat-block { background: $canvas-parchment; border-radius: $rounded-lg; padding: $spacing-md $spacing-lg; }
+.stat-title { font-size: 12px; font-weight: 600; color: $ink-muted-48; margin-bottom: $spacing-sm; text-transform: uppercase; letter-spacing: 0.3px; }
+.stat-grid-4 { display: grid; grid-template-columns: repeat(3, 1fr); gap: $spacing-xs $spacing-lg; }
+.stat-item { display: flex; flex-direction: column; gap: 1px; padding: 4px 0; }
+.stat-lb { font-size: 11px; color: $ink-muted-48; }
+.stat-val { font-size: 16px; font-weight: 600; font-family: $font-display; }
+/* ===== 缠论分析面板 ===== */
 .chanlun-panel {
   background: $canvas; border: 1px solid $hairline; border-radius: $rounded-md; padding: $spacing-md $spacing-lg;
-  background: $canvas; border: 1px solid $hairline; border-radius: $rounded-md; padding: $spacing-md $spacing-lg;
+
   .cl-header {
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: $spacing-sm;
     margin-bottom: $spacing-sm; padding-bottom: $spacing-xs; border-bottom: 1px solid $divider-soft;
-    .cl-header-left { display: flex; align-items: center; gap: 6px;
-      .cl-icon { color: $ink-muted-48; } .cl-title { font-size: 13px; font-weight: 600; color: $ink; letter-spacing: 0.3px; } }
-    .cl-header-right { display: flex; align-items: center; gap: $spacing-sm; flex-wrap: wrap; }
-    .cl-trend-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+
+    .cl-header-left { display: flex; align-items: center; gap: 8px; }
+    .cl-title { font-size: 13px; font-weight: 600; color: $ink; }
+    .cl-header-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .cl-trend-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
       padding: 3px 12px; border-radius: $rounded-pill;
-      .cl-trend-dot { width: 6px; height: 6px; border-radius: 50%; }
-      &.rise { background: $rise-bg; color: $rise; .cl-trend-dot { background: $rise; } }
-      &.fall { background: $fall-bg; color: $fall; .cl-trend-dot { background: $fall; } }
-      &.flat { background: rgba(41,151,255,0.08); color: $primary; .cl-trend-dot { background: $primary; } } }
+      &.rise { background: $rise-bg; color: $rise; }
+      &.fall { background: $fall-bg; color: $fall; }
+      &.flat { background: rgba(41,151,255,0.08); color: $primary; } }
   }
-  .cl-overview-chips { display: flex; gap: 6px; }
-  .cl-chip { display: flex; align-items: center; gap: 4px; padding: 2px 10px; background: $canvas-parchment; border-radius: $rounded-pill;
+
+  .cl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; background: $canvas-parchment; border-radius: $rounded-pill;
     .chip-label { font-size: 10px; color: $ink-muted-48; }
     .chip-val { font-size: 11px; font-weight: 600; color: $ink;
       &.rise { color: $rise; } &.fall { color: $fall; }
       &.pos.above { color: $rise; } &.pos.inside { color: $primary; } &.pos.below { color: $fall; } } }
+
   .cl-metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: $spacing-xs; margin-bottom: $spacing-sm; }
   .cl-metric-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: $spacing-xs;
     background: $canvas-parchment; border-radius: $rounded-sm; border: 1px solid $divider-soft;
-    .metric-icon { opacity: 0.5; margin-bottom: 2px; }
     .metric-val { font-size: 22px; font-weight: 700; font-family: $font-display; line-height: 1.1; }
     .metric-label { font-size: 10px; color: $ink-muted-48; font-weight: 500; }
-    &.ding .metric-icon, &.ding .metric-val { color: $rise; }
-    &.di .metric-icon, &.di .metric-val { color: $fall; }
-    &.bi .metric-icon, &.bi .metric-val { color: $ink; }
-    &.zs .metric-icon, &.zs .metric-val { color: $primary; } }
+    &.ding .metric-val { color: $rise; } &.di .metric-val { color: $fall; }
+    &.bi .metric-val { color: $ink; } &.zs .metric-val { color: $primary; } }
+
   .cl-detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: $spacing-sm; margin-bottom: $spacing-xs; }
+
   .cl-detail-card { background: $canvas-parchment; border: 1px solid $divider-soft; border-radius: $rounded-sm; overflow: hidden;
-    .cl-detail-header { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.5px; color: $ink-muted-48;
+    .cl-detail-header { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: $ink-muted-48;
       padding: $spacing-xs $spacing-sm; border-bottom: 1px solid $divider-soft; }
     .cl-detail-body { padding: $spacing-xs $spacing-sm; } }
-  .zs-list { display: flex; flex-direction: column; gap: 3px; }
-  .zs-item { display: flex; justify-content: space-between; align-items: center; padding: 3px 0;
-    .zs-tag { font-size: 11px; font-weight: 500; color: $primary; padding: 1px 8px; background: rgba(41,151,255,0.06); border-radius: $rounded-xs; }
-    .zs-price { font-size: 11px; color: $ink-muted-80; font-family: $font-display; font-weight: 500; } }
-  .zs-empty { font-size: 11px; color: $ink-muted-48; font-style: italic; }
+
+  /* 中枢横向排列 */
+  .zs-hbar { display: flex; flex-wrap: wrap; gap: 4px; }
+  .zs-hitem { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgba(41,151,255,0.03); border-radius: $rounded-xs; font-size: 11px;
+    .zs-tag { font-weight: 600; color: $primary; }
+    .zs-range b { font-family: $font-display; font-weight: 600; }
+    .zs-width { color: $ink-muted-48; font-size: 10px; } }
+
+  /* 分型对 */
   .fx-pair { display: flex; gap: $spacing-xs; margin-bottom: $spacing-xs; padding-bottom: $spacing-xs; border-bottom: 1px solid $divider-soft; }
-  .fx-item { flex: 1; display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: rgba(0,0,0,0.015); border-radius: $rounded-xs;
-    .fx-label { font-size: 10px; color: $ink-muted-48; min-width: 32px; }
+  .fx-item { flex: 1; display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgba(0,0,0,0.015); border-radius: $rounded-xs;
+    .fx-label { font-size: 10px; color: $ink-muted-48; }
     .fx-price { font-size: 14px; font-weight: 700; font-family: $font-display; }
-    .fx-date { font-size: 10px; color: $ink-muted-48; margin-left: auto; }
     &.ding .fx-price { color: $rise; } &.di .fx-price { color: $fall; } }
+
+  /* 买卖点行 */
   .bp-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: $spacing-xs; }
-  .bp-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: $rounded-xs;
+  .bp-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: $rounded-xs;
     &.buy { background: rgba(231,76,60,0.08); color: $rise; }
     &.sell { background: rgba(39,174,96,0.08); color: $fall; }
-    .bp-desc { font-weight: 400; opacity: 0.7; font-size: 10px; } }
-  .bp-none { font-size: 11px; color: $ink-muted-48; font-style: italic; }
-  .beichi-row { display: flex; align-items: center; gap: $spacing-xs; padding-top: $spacing-xs;
-    border-top: 1px solid $divider-soft;
+    i { font-style: normal; opacity: 0.7; font-size: 10px; } }
+  .cl-empty { font-size: 11px; color: $ink-muted-48; font-style: italic; }
+
+  /* 背驰 */
+  .beichi-row { display: flex; align-items: center; gap: $spacing-xs; padding-top: $spacing-xs; border-top: 1px solid $divider-soft;
     .beichi-label { font-size: 11px; color: $ink-muted-48; }
     .beichi-val { font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: $rounded-pill;
       &.ding { background: rgba(231,76,60,0.1); color: $rise; }
       &.di { background: rgba(39,174,96,0.1); color: $fall; }
       &.none { background: rgba(0,0,0,0.03); color: $ink-muted-48; } } }
-  .cl-signals-bar { display: flex; align-items: center; flex-wrap: wrap; gap: $spacing-xs;
-    padding: $spacing-xs 0 0; border-top: 1px solid $divider-soft;
-    .cl-signals-label { font-size: 10px; color: $ink-muted-48; font-weight: 600; margin-right: 2px; }
+
+  /* 信号条 */
+  .cl-signals-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: $spacing-xs 0 0; border-top: 1px solid $divider-soft;
     .cl-signal { font-size: 10px; font-weight: 600; padding: 2px 10px; border-radius: $rounded-pill;
       &.buy { background: rgba(231,76,60,0.08); color: $rise; }
       &.hold { background: rgba(243,156,18,0.08); color: #f39c12; }
       &.sell { background: rgba(39,174,96,0.08); color: $fall; } } }
-}
-.text-fall { color: #27ae60; }
-</style>
+}</style>
+

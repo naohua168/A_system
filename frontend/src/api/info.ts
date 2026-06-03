@@ -1,5 +1,5 @@
 import request from './request'
-import type { ResearchReportResponse, ConsensusEps, ClsNewsResponse, GlobalNewsResponse, FilingResponse } from '@/types'
+import type { ResearchReportResponse, ClsNewsResponse, GlobalNewsResponse, FilingResponse } from '@/types'
 
 /** 研报 */
 export function getResearchReports(code: string): Promise<ResearchReportResponse> {
@@ -7,10 +7,6 @@ export function getResearchReports(code: string): Promise<ResearchReportResponse
 }
 export function getResearchByDateRange(code: string, startDate: string, endDate: string): Promise<ResearchReportResponse> {
   return request.get('/v2/info/research/range', { params: { code, startDate, endDate } })
-}
-/** 一致预期 */
-export function getConsensusEps(code: string): Promise<ConsensusEps> {
-  return request.get('/v2/info/consensus-eps/' + code)
 }
 /** 个股新闻 */
 export function getStockNews(code: string, days = 30): Promise<any> {

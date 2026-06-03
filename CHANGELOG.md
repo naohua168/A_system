@@ -1,5 +1,61 @@
 # 变更日志
 
+## [3.0.0] - 2026-06-04 (规划) — Hadoop + Hive + HBase 大数据集成
+
+### 架构升级
+- **Lambda 架构**：速度层(Redis/WS) + 批处理层(HDFS/Hive) + 服务层(HBase)
+- Hadoop 3.2.1 真实分布式集群（2×DataNode），非伪分布式
+- 数据量：HDFS Parquet 存储全量数据约 14 GB
+
+### 新增组件（6 个独立 Docker 容器）
+- HDFS NameNode + 2×DataNode（真实多节点）
+- Hive Metastore + Hive Server2
+- HBase Master + RegionServer
+
+### 新增功能
+- **每日复盘大屏**：20:00 自动推送，含行业轮动热力图/资金流向TOP/北向资金趋势/技术指标扫描
+- **HBase 兜底**：Redis miss 时自动回退到 HBase stock_fallback（30天K线+最新价快照）
+- **Hive ETL 作业**：日终 ODS→DWD→DWS→ADS 离线分析
+
+### 新增文件
+- `docs/design/bigdata-integration.md` — 完整集成方案设计文档
+
+## [2.5.0] - 2026-06-03 — 页面全面重写、数据修复、模块精简
+
+### ⚠️ 移除
+- **基金模块**: 删除 FundDetailView.vue、FundListView.vue、fund.ts API、路由 /fund/:code 和 /funds、AppHeader 基金入口、后端 RedisDataController 中所有基金端点及 Redis fund key
+- **板块详情页**: 删除 SectorDetailView.vue 及路由 /sector/:name
+- **股票列表**: 移除排序功能/排序下拉框/行业筛选下拉框/北交所/ETF 标签
+- **一致性预期**: 删除 ConsensusEpsView.vue
+- **云图成分股**: 从 SectorDetailPanel 移除 K 线、成分股列表、详情跳转（企业防火墙屏蔽东财 push2 API，无法获取股票-行业映射）
+
+### 新增
+- **auto_seed.py**: 新增 `_enrich_treemap_with_children()` 函数（akshare 替代方案），统一 treemap 字段为 camelCase（industryName/changePct/stockCount/mcapYi）
+- **数据脚本**: `fund_flow_refresh.py`（资金流向 40 只热门股，TTL=12h）、`agg_lockup.py`（限售解禁聚合，TTL=24h）
+
+### 修复
+- **数据过期**: 资金流向 TTL=1h→12h、限售解禁 TTL=1h→24h，加入 auto_seed.py 定期刷新
+- **K线缩放**: useTechnicalChart.ts 修复 dataZoom 缩放右端固定（始终最新数据）
+- **缠论不显示**: echarts.ts 补注 MarkPointComponent/MarkAreaComponent/GraphicComponent
+- **StockDetailView 路由白屏**: 修复模板缺少闭合 `</div>` 导致的 Vite 编译错误
+- **Cloud/treemap 成分股**: 修改前恒为 0，因数据源无 children 字段（企业内部网络不可达外部 API）
+
+### 重写
+- **HomeView.vue**: 多次迭代 — 市场情绪横幅（涨跌比例条）、信号卡片加强（北向 Badge + 明细、行业排行 TOP5 带序号、龙虎榜 TOP3 Chips）、云图全宽布局、热门股票横向滚动卡片条、移除成分股面板功能
+- **HotReasonView.vue**: 完全重写 — 概念聚类（mergeConceptName 映射表）、实时轮询、概览统计、搜索筛选、live indicator
+- **DragonTigerView.vue**: 重写概览卡片、TOP4 资金卡片、进度条、亿级格式化
+- **LockupView.vue**: 重写月度柱状图（ECharts）、日期筛选、统计概览
+- **StockListView.vue**: 优化列（新增成交额/换手率/流通市值/市净率/昨收），移除成交量/行业/涨跌额；移除全部排序/筛选 UI
+- **FundFlowView.vue**: 数据修复（字段映射 superNetIn→superLargeIn）、状态管理
+- **IndexDetailView.vue**: 底部信息区重设计 — 两栏 stat-block 紧凑网格，缠论面板优化（横向中枢标签、紧凑买卖点信号）
+- **SectorDetailPanel.vue**: 三次简化 — 逐次移除 K 线/详情跳转/成分股列表（最终仅显示行业名称+涨跌幅+实时更新提示）
+- **NewsView.vue**: 集成真实后端 API、日期导航、来源过滤、时间线布局、skeleton 加载态
+
+### 变更
+- **数据采集器**: auto_seed.py 非交易时段每 30 分钟 subprocess 刷新 Redis（防止进程崩溃后数据停滞）
+- **前端过滤**: StockListView 市场标签改为本地 stockCode 前缀过滤（sh/sz/sh-kcb/sz-cyb）
+- **资金流向**: 五维数据字段映射修复，fund_flow_refresh 基于 stock_basic 生成真实数据
+
 ## [2.4.1] - 2026-05-24 — 数据通路修复与前端优化
 
 ### 修复
