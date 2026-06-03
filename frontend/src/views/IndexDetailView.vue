@@ -272,9 +272,9 @@ const { periods, overlayIndicators, bottomIndicators, bottomActive,
 
 let cachedKlineData: number[][] | null = null
 function getKlineData() { return cachedKlineData || [] }
-// 分时图专用数据
-let cachedIntradayData: number[][] = []
-let intradayPreClose = 0
+// 分时图专用数据（必须用 ref 让 Vue 追踪模板变更）
+const cachedIntradayData = ref<number[][]>([])
+const intradayPreClose = ref(0)
 
 const loading = ref(true)
 const chartRef = ref<HTMLElement>()
@@ -345,13 +345,13 @@ async function loadData() {
     if (activePeriod.value === 'intraday') {
       const intraKline: any[] = await getIndexKline(code, 1, '5min') as any[]
       if (Array.isArray(intraKline) && intraKline.length > 1) {
-        cachedIntradayData = intraKline.map((d: any) => [
+        cachedIntradayData.value = intraKline.map((d: any) => [
           parseTradeDate(d.tradeDate),
           safeVal(d.openPoint), safeVal(d.closePoint),
           safeVal(d.lowPoint), safeVal(d.highPoint),
           safeVal(d.volume),
         ]).sort((a: any, b: any) => a[0] - b[0])
-        intradayPreClose = Number(intraKline[0]?.preClose) || safeVal(intraKline[0]?.preClose) || 0
+        intradayPreClose.value = Number(intraKline[0]?.preClose) || safeVal(intraKline[0]?.preClose) || 0
       }
     } else {
       // 2b. K线数据 — 仅用于图表渲染和量化指标计算（支持多周期）
@@ -500,13 +500,13 @@ async function reloadKlineData() {
     if (activePeriod.value === 'intraday') {
       const intraKline: any[] = await getIndexKline(code, 1, '5min') as any[]
       if (Array.isArray(intraKline) && intraKline.length > 1) {
-        cachedIntradayData = intraKline.map((d: any) => [
+        cachedIntradayData.value = intraKline.map((d: any) => [
           parseTradeDate(d.tradeDate),
           safeVal(d.openPoint), safeVal(d.closePoint),
           safeVal(d.lowPoint), safeVal(d.highPoint),
           safeVal(d.volume),
         ]).sort((a: any, b: any) => a[0] - b[0])
-        intradayPreClose = Number(intraKline[0]?.preClose) || 0
+        intradayPreClose.value = Number(intraKline[0]?.preClose) || 0
       }
     } else {
       const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]

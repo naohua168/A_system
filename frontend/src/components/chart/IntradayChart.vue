@@ -46,7 +46,12 @@ function render() {
     if (close > maxPrice) maxPrice = close
   })
 
-  const padding = (maxPrice - minPrice) * 0.08 || 0.5
+  // NaN/Infinity 防护
+  if (!isFinite(minPrice)) minPrice = 0
+  if (!isFinite(maxPrice)) maxPrice = 100
+  const padding = Math.max((maxPrice - minPrice) * 0.08, 0.1)
+  const yMin = minPrice - padding
+  const yMax = maxPrice + padding
   const opt: any = {
     grid: [{ left: 48, right: 48, top: 12, height: '58%' }, { left: 48, right: 48, top: '74%', height: '18%' }],
     xAxis: [{
@@ -66,9 +71,9 @@ function render() {
       splitLine: { show: false }, axisLabel: { show: false },
     }],
     yAxis: [{
-      min: minPrice - padding, max: maxPrice + padding,
+      min: yMin, max: yMax,
       splitLine: { lineStyle: { color: 'rgba(200,200,210,0.3)', type: 'dashed' } },
-      axisLabel: { fontSize: 10, color: '#888' },
+      axisLabel: { fontSize: 10, color: '#888', formatter: (v: number) => v.toFixed(2) },
     }, {
       gridIndex: 1, min: 0,
       splitLine: { show: false }, axisLabel: { show: false },

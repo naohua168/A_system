@@ -360,9 +360,9 @@ let cachedKlineData: number[][] | null = null
 function getCachedKlineData() {
   return cachedKlineData || []
 }
-// 分时图专用数据
-let cachedIntradayData: number[][] = []
-let intradayPreClose = 0
+// 分时图专用数据（必须用 ref 让 Vue 追踪模板变更）
+const cachedIntradayData = ref<number[][]>([])
+const intradayPreClose = ref(0)
 
 // 真实股票数据（从 API 加载）
 const stock = reactive({
@@ -503,7 +503,7 @@ async function loadData() {
     if (activePeriod.value === 'intraday') {
       const intraRaw = await getKlineData(stockCode, 1, '5min')
       if (intraRaw && intraRaw.length > 1) {
-        cachedIntradayData = intraRaw.map((d) => [
+        cachedIntradayData.value = intraRaw.map((d) => [
           parseTradeDate(d.tradeDate),
           safeVal(d.openPrice),
           safeVal(d.closePrice),
@@ -511,7 +511,16 @@ async function loadData() {
           safeVal(d.highPrice),
           safeVal(d.volume),
         ]).sort((a: any, b: any) => a[0] - b[0])
-        intradayPreClose = Number(intraRaw[0]?.preClose) || 0
+        intradayPreClose.value = Number(intraRaw[0]?.preClose) || 0
+        // 从分时数据补充stock头部信息
+        const latest = intraRaw[0]
+        if (latest) {
+          if (!stock.open) stock.open = safeVal(latest.openPrice)
+          if (!stock.high) stock.high = safeVal(latest.highPrice)
+          if (!stock.low) stock.low = safeVal(latest.lowPrice)
+          if (!stock.preClose) stock.preClose = safeVal(latest.preClose) || safeVal(latest.closePrice) * 0.99
+          stock.volume = safeVal(latest.volume)
+        }
       }
     } else {
       const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
@@ -666,7 +675,7 @@ async function reloadKlineData() {
     if (activePeriod.value === 'intraday') {
       const intraRaw = await getKlineData(stockCode, 1, '5min')
       if (intraRaw && intraRaw.length > 1) {
-        cachedIntradayData = intraRaw.map((d) => [
+        cachedIntradayData.value = intraRaw.map((d) => [
           parseTradeDate(d.tradeDate),
           safeVal(d.openPrice),
           safeVal(d.closePrice),
@@ -674,7 +683,7 @@ async function reloadKlineData() {
           safeVal(d.highPrice),
           safeVal(d.volume),
         ]).sort((a: any, b: any) => a[0] - b[0])
-        intradayPreClose = Number(intraRaw[0]?.preClose) || 0
+        intradayPreClose.value = Number(intraRaw[0]?.preClose) || 0
       }
     } else {
       const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
