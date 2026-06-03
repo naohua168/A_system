@@ -13,6 +13,7 @@ import { ref, reactive } from 'vue'
 
 /** 周期选项卡定义 */
 export const periods = [
+  { key: 'intraday', label: '分时' },
   { key: '5min', label: '5分' },
   { key: '15min', label: '15分' },
   { key: '30min', label: '30分' },

@@ -55,11 +55,16 @@
       </div>
     </div>
 
-    <!-- K线图 -->
+    <!-- K线图 / 分时图 -->
     <div class="chart-main" ref="chartRef" v-loading="loading">
       <template v-if="!loading">
-        <div class="kline-chart" ref="klineChartRef"></div>
-        <div class="bottom-chart" ref="bottomChartRef"></div>
+        <template v-if="activePeriod === 'intraday'">
+          <IntradayChart :data="cachedIntradayData" :pre-close="intradayPreClose" :code="code" />
+        </template>
+        <template v-else>
+          <div class="kline-chart" ref="klineChartRef"></div>
+          <div class="bottom-chart" ref="bottomChartRef"></div>
+        </template>
       </template>
     </div>
 
@@ -252,6 +257,7 @@ import { useTechnicalChart } from '@/composables/useTechnicalChart'
 import { useIndicatorParams } from '@/composables/useIndicatorParams'
 import { safeVal, parseTradeDate } from '@/utils/format'
 import { formatVol } from '@/utils/format'
+import IntradayChart from '@/components/chart/IntradayChart.vue'
 
 const route = useRoute()
 const code = route.params.code as string
@@ -266,6 +272,9 @@ const { periods, overlayIndicators, bottomIndicators, bottomActive,
 
 let cachedKlineData: number[][] | null = null
 function getKlineData() { return cachedKlineData || [] }
+// 分时图专用数据
+let cachedIntradayData: number[][] = []
+let intradayPreClose = 0
 
 const loading = ref(true)
 const chartRef = ref<HTMLElement>()
@@ -332,8 +341,21 @@ async function loadData() {
       info.amount = Number(idxInfo.amount) || 0
     }
 
-    // 2. K线数据 — 仅用于图表渲染和量化指标计算（支持多周期）
-    const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]
+    // 2. 分时图数据（今日5分钟K线）
+    if (activePeriod.value === 'intraday') {
+      const intraKline: any[] = await getIndexKline(code, 1, '5min') as any[]
+      if (Array.isArray(intraKline) && intraKline.length > 1) {
+        cachedIntradayData = intraKline.map((d: any) => [
+          parseTradeDate(d.tradeDate),
+          safeVal(d.openPoint), safeVal(d.closePoint),
+          safeVal(d.lowPoint), safeVal(d.highPoint),
+          safeVal(d.volume),
+        ]).sort((a: any, b: any) => a[0] - b[0])
+        intradayPreClose = Number(intraKline[0]?.preClose) || safeVal(intraKline[0]?.preClose) || 0
+      }
+    } else {
+      // 2b. K线数据 — 仅用于图表渲染和量化指标计算（支持多周期）
+      const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]
     if (Array.isArray(kline) && kline.length > 1) {
       // API 返回降序 [newest...oldest]，第一条是最新
       cachedKlineData = kline.map((d) => [
@@ -386,6 +408,7 @@ async function loadData() {
       }
       // 缠论：初始为空，开启开关后由 fetchChanlunData() 填充
     }
+    } // end else (非分时模式)
   } catch (_e) { console.warn('[Index] 加载失败:', _e) }
   finally { loading.value = false }
 }
@@ -473,21 +496,35 @@ function getDaysForPeriod(p: string): number {
 async function reloadKlineData() {
   loading.value = true
   try {
-    const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]
-    if (Array.isArray(kline) && kline.length > 1) {
-      cachedKlineData = kline.map((d: any) => [
-        parseTradeDate(d.tradeDate),
-        safeVal(d.openPoint), safeVal(d.closePoint),
-        safeVal(d.lowPoint), safeVal(d.highPoint),
-        safeVal(d.volume),
-      ]).sort((a: any, b: any) => a[0] - b[0])
+    // 分时模式：加载今日5分钟K线
+    if (activePeriod.value === 'intraday') {
+      const intraKline: any[] = await getIndexKline(code, 1, '5min') as any[]
+      if (Array.isArray(intraKline) && intraKline.length > 1) {
+        cachedIntradayData = intraKline.map((d: any) => [
+          parseTradeDate(d.tradeDate),
+          safeVal(d.openPoint), safeVal(d.closePoint),
+          safeVal(d.lowPoint), safeVal(d.highPoint),
+          safeVal(d.volume),
+        ]).sort((a: any, b: any) => a[0] - b[0])
+        intradayPreClose = Number(intraKline[0]?.preClose) || 0
+      }
+    } else {
+      const kline: any[] = await getIndexKline(code, getDaysForPeriod(activePeriod.value), activePeriod.value) as any[]
+      if (Array.isArray(kline) && kline.length > 1) {
+        cachedKlineData = kline.map((d: any) => [
+          parseTradeDate(d.tradeDate),
+          safeVal(d.openPoint), safeVal(d.closePoint),
+          safeVal(d.lowPoint), safeVal(d.highPoint),
+          safeVal(d.volume),
+        ]).sort((a: any, b: any) => a[0] - b[0])
+      }
     }
   } catch (_e) { console.warn('[Index] 周期K线加载失败:', _e) }
   finally {
     loading.value = false
-    // 等 DOM 恢复后再渲染（nextTick 确保 kline-chart DOM 已重建）
     nextTick(() => {
-      if (cachedKlineData && cachedKlineData.length > 1) renderChart()
+      // 分时图不用 renderChart，由 IntradayChart 组件 watch data 自动渲染
+      if (activePeriod.value !== 'intraday' && cachedKlineData && cachedKlineData.length > 1) renderChart()
     })
   }
 }

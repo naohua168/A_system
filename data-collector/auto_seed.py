@@ -961,26 +961,33 @@ def fill_static():
     return total
 
 def _kline_needs_refresh():
-    """检查 K 线是否需要刷新（仅当 TTL 极低时，避免阻塞 auto_seed）"""
+    """检查日K是否需要刷新"""
     ttl = _redis_ttl('market:kline_000001')
-    return ttl < 60  # 仅剩 <1min 才刷新
+    return ttl < 3600  # 日K TTL < 1h 才刷新
+
+def _min_kline_needs_refresh():
+    """检查分钟K线是否需要刷新（独立检查，不受日K影响）"""
+    ttl = _redis_ttl('market:kline_5min_000001')
+    return ttl < 1800  # 分钟K线 TTL < 30min 则刷新
 
 
 def _refresh_kline():
     """增量刷新 K 线数据（后台进程，不阻塞 auto_seed 主流程）"""
-    if not _kline_needs_refresh():
-        return 0
-    print(f'[{datetime.now():%H:%M:%S}] K线 TTL 低, 后台启动 seed_kline...')
     import subprocess
-    subprocess.Popen(
-        [sys.executable, '/app/seed_kline.py'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # 分钟K线后台刷新（更短 TTL 需频繁刷新）
-    for min_period in ['5min', '15min', '30min', '60min']:
+    # ── 日K/周K/月K（只要日K TTL 低才刷新）──
+    if _kline_needs_refresh():
+        print(f'[{datetime.now():%H:%M:%S}] 日K TTL 低, 后台启动 seed_kline...')
         subprocess.Popen(
-            [sys.executable, '/app/seed_kline.py', '--period', min_period],
+            [sys.executable, '/app/seed_kline.py'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f'  ✅ K线刷新已在后台启动（含分钟K线）')
+        print(f'  ✅ 日K刷新已启动')
+    # ── 分钟K线（独立检查，不受日K影响）──
+    if _min_kline_needs_refresh():
+        for min_period in ['5min', '15min', '30min', '60min']:
+            subprocess.Popen(
+                [sys.executable, '/app/seed_kline.py', '--period', min_period],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f'  ✅ 分钟K线刷新已启动（5min/15min/30min/60min）')
 
 
 def seed_all():
@@ -1016,7 +1023,7 @@ def seed_all():
     return total
 
 def _analysis_refresh_loop():
-    """涨跌排行单独刷新 — 每5分钟更新一次（不阻塞主管道）"""
+    """涨跌排行单独刷新 + 分钟K线刷新 — 每5分钟更新一次（不阻塞主管道）"""
     import subprocess
     while True:
         try:
@@ -1024,6 +1031,12 @@ def _analysis_refresh_loop():
             subprocess.run(
                 [sys.executable, '/app/seed_analysis.py'],
                 capture_output=True, timeout=120)
+            # 分钟K线刷新（短TTL=1h，需要每5分钟检查并刷新）
+            if _min_kline_needs_refresh():
+                for min_period in ['5min', '15min', '30min', '60min']:
+                    subprocess.Popen(
+                        [sys.executable, '/app/seed_kline.py', '--period', min_period],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
 

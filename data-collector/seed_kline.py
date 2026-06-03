@@ -237,6 +237,9 @@ def collect_one_stock(code, period='day'):
         return code, 0
     key = f'market:kline_{period}_{code}' if period != 'day' else f'market:kline_{code}'
     ok = redis_setex(key, klines, p['ttl'])
+    # 分钟K线采集加50ms限速，避免腾讯API过热
+    if period != 'day' and period != 'week' and period != 'month':
+        time.sleep(0.05)
     return code, len(klines) if ok else 0
 
 

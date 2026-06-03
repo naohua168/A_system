@@ -75,16 +75,21 @@
       </div>
     </div>
 
-    <!-- K线图 -->
+    <!-- K线图 / 分时图 -->
     <div class="chart-main" ref="chartRef" v-loading="chartLoading">
-      <template v-if="!chartLoading && (!cachedKlineData || cachedKlineData.length < 10)">
-        <div class="chart-empty">
-          <span class="chart-empty-text">暂无K线数据</span>
-        </div>
-      </template>
-      <template v-else>
-        <div class="kline-chart" ref="klineChartRef"></div>
-        <div class="bottom-chart" ref="bottomChartRef"></div>
+      <template v-if="!chartLoading">
+        <template v-if="activePeriod === 'intraday'">
+          <IntradayChart :data="cachedIntradayData" :pre-close="intradayPreClose" :code="stockCode" />
+        </template>
+        <template v-else-if="!cachedKlineData || cachedKlineData.length < 10">
+          <div class="chart-empty">
+            <span class="chart-empty-text">暂无K线数据</span>
+          </div>
+        </template>
+        <template v-else>
+          <div class="kline-chart" ref="klineChartRef"></div>
+          <div class="bottom-chart" ref="bottomChartRef"></div>
+        </template>
       </template>
     </div>
 
@@ -296,6 +301,7 @@ import { useTechnicalChart } from '@/composables/useTechnicalChart'
 import { useIndicatorParams } from '@/composables/useIndicatorParams'
 import { useStockWebSocket } from '@/composables/useStockWebSocket'
 import type { KlineUpdateData } from '@/composables/useStockWebSocket'
+import IntradayChart from '@/components/chart/IntradayChart.vue'
 
 const route = useRoute()
 const stockCode = route.params.code as string
@@ -354,6 +360,9 @@ let cachedKlineData: number[][] | null = null
 function getCachedKlineData() {
   return cachedKlineData || []
 }
+// 分时图专用数据
+let cachedIntradayData: number[][] = []
+let intradayPreClose = 0
 
 // 真实股票数据（从 API 加载）
 const stock = reactive({
@@ -491,7 +500,21 @@ async function loadData() {
     }
 
     // 2. 加载 K 线数据（支持多周期）
-    const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
+    if (activePeriod.value === 'intraday') {
+      const intraRaw = await getKlineData(stockCode, 1, '5min')
+      if (intraRaw && intraRaw.length > 1) {
+        cachedIntradayData = intraRaw.map((d) => [
+          parseTradeDate(d.tradeDate),
+          safeVal(d.openPrice),
+          safeVal(d.closePrice),
+          safeVal(d.lowPrice),
+          safeVal(d.highPrice),
+          safeVal(d.volume),
+        ]).sort((a: any, b: any) => a[0] - b[0])
+        intradayPreClose = Number(intraRaw[0]?.preClose) || 0
+      }
+    } else {
+      const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
     if (klineRaw && klineRaw.length > 1) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
@@ -572,6 +595,7 @@ async function loadData() {
         chanlunStats.lastDiFeng = { price: lows[len - 5 + minIdx], date: '' }
       }
     }
+    } // end else (非分时模式)
     // 3. 从 API 提取实时行情（优先使用 stock API，其含涨跌幅兜底计算）
     if (info) {
       Object.assign(stock, {
@@ -639,16 +663,31 @@ function getDaysForPeriod(p: string): number {
 }
 async function reloadKlineData() {
   try {
-    const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
-    if (klineRaw && klineRaw.length > 1) {
-      cachedKlineData = klineRaw.map((d) => [
-        parseTradeDate(d.tradeDate),
-        safeVal(d.openPrice),
-        safeVal(d.closePrice),
-        safeVal(d.lowPrice),
-        safeVal(d.highPrice),
-        safeVal(d.volume),
-      ]).sort((a, b) => a[0] - b[0])
+    if (activePeriod.value === 'intraday') {
+      const intraRaw = await getKlineData(stockCode, 1, '5min')
+      if (intraRaw && intraRaw.length > 1) {
+        cachedIntradayData = intraRaw.map((d) => [
+          parseTradeDate(d.tradeDate),
+          safeVal(d.openPrice),
+          safeVal(d.closePrice),
+          safeVal(d.lowPrice),
+          safeVal(d.highPrice),
+          safeVal(d.volume),
+        ]).sort((a: any, b: any) => a[0] - b[0])
+        intradayPreClose = Number(intraRaw[0]?.preClose) || 0
+      }
+    } else {
+      const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
+      if (klineRaw && klineRaw.length > 1) {
+        cachedKlineData = klineRaw.map((d) => [
+          parseTradeDate(d.tradeDate),
+          safeVal(d.openPrice),
+          safeVal(d.closePrice),
+          safeVal(d.lowPrice),
+          safeVal(d.highPrice),
+          safeVal(d.volume),
+        ]).sort((a, b) => a[0] - b[0])
+      }
     }
   } catch (_e) { console.warn('[Stock] 周期K线加载失败:', _e) }
   renderChart()
