@@ -30,7 +30,6 @@ export function useTechnicalChart(
   let klineChart: echarts.ECharts | null = null
   let bottomChart: echarts.ECharts | null = null
   let disposed = false
-  let connected = false
 
   /** dataZoom 索引模式 — endValue 永远 = dataLen - 1 */
   let startValue = 0
@@ -319,7 +318,8 @@ export function useTechnicalChart(
     klineChart.setOption(opt, { notMerge: true })
     isInitialRender = false
 
-    // ── dataZoom 事件：dispatchAction 强制右端固定，echarts.connect 自动同步 ──
+    // ── dataZoom 事件：dispatchAction 强制右端固定，双向手动同步 ──
+    // 不使用 echarts.connect（页面切换残留实例导致 getBoundingClientRect 报错）
     klineChart.off('dataZoom')
     klineChart.on('dataZoom', (params: any) => {
       try {
@@ -332,15 +332,11 @@ export function useTechnicalChart(
         endValue = dataLen - 1
         isSyncing = true
         try {
-          // dispatchAction 会更新内部状态并重绘 slider，触发的 datazoom 事件被 isSyncing 锁阻挡
-          klineChart.dispatchAction({
-            type: 'dataZoom',
-            startValue: startValue,
-            endValue: dataLen - 1,
-          })
-        } finally {
-          isSyncing = false
-        }
+          const dz = { type: 'dataZoom' as const, startValue, endValue: dataLen - 1 }
+          klineChart.dispatchAction(dz)
+          // 同步到底部图
+          if (bottomChart && !bottomChart.isDisposed()) bottomChart.dispatchAction(dz)
+        } finally { isSyncing = false }
       } catch { /* ignore zoom error */ }
     })
 
@@ -443,13 +439,6 @@ export function useTechnicalChart(
     }
     bottomChart.setOption(bottomOption)
 
-    // ── echarts.connect 双图缩放同步 ──
-    if (!connected && klineChart && bottomChart && !klineChart.isDisposed() && !bottomChart.isDisposed()) {
-      try {
-        (echarts as any).connect([klineChart, bottomChart])
-        connected = true
-      } catch { /* ignore connect error */ }
-    }
   } catch (e) { console.warn('[Chart] render error:', e) }
   finally {
     isRendering = false
@@ -488,7 +477,6 @@ export function useTechnicalChart(
     } catch { /* ignore dispose errors */ }
     klineChart = null
     bottomChart = null
-    connected = false
   }
 
   return { renderChart, handleResize, dispose, setChanlunData }
