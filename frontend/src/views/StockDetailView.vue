@@ -489,7 +489,7 @@ async function loadData() {
 
     // 2. 加载 K 线数据（支持多周期）
     const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
-    if (klineRaw && klineRaw.length > 10) {
+    if (klineRaw && klineRaw.length > 1) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
         safeVal(d.openPrice),
@@ -637,7 +637,7 @@ function getDaysForPeriod(p: string): number {
 async function reloadKlineData() {
   try {
     const klineRaw = await getKlineData(stockCode, getDaysForPeriod(activePeriod.value), activePeriod.value)
-    if (klineRaw && klineRaw.length > 10) {
+    if (klineRaw && klineRaw.length > 1) {
       cachedKlineData = klineRaw.map((d) => [
         parseTradeDate(d.tradeDate),
         safeVal(d.openPrice),
