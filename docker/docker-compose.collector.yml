@@ -119,6 +119,8 @@ services:
       - collector-net
       - app-net
     environment:
+      # 时区
+      - TZ=Asia/Shanghai
       # 采集配置
       - LOG_LEVEL=INFO
       - COLLECTOR_MODE=continuous

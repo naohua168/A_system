@@ -203,7 +203,7 @@ def _ensure_northbound_csv():
                 'source': 'hexin_api',
             })
         fp = os.path.join(CSV_DIR, f'northbound_{datetime.now():%Y%m%d_%H%M%S}.csv')
-        with open(fp, 'w', newline='', encoding='utf-8-sig') as f:
+        with open(fp, 'w', newline='', encoding='utf-8') as f:
             w = csv.DictWriter(f, fieldnames=['time', 'hgt_yi', 'sgt_yi', 'source'])
             w.writeheader(); w.writerows(rows)
         os.chmod(fp, 0o644)
@@ -1007,17 +1007,35 @@ def fill_static():
 
     nb = latest_csv('northbound_*.csv')
     if nb:
-        seen = set()
-        uniq = []
+        # hexin time 仅 HH:MM 格式，同一 CSV 内都是同一交易日
+        # 取最后一条记录（15:00 收盘累计值）作为当日北向资金数据
+        last_row = None
+        csv_date = ''
+        nb_files = sorted(glob.glob(os.path.join(CSV_DIR, 'northbound_*.csv')))
+        if nb_files:
+            try:
+                csv_mtime = os.path.getmtime(nb_files[-1])
+                csv_date = datetime.fromtimestamp(csv_mtime).strftime('%Y-%m-%d')
+            except:
+                csv_date = datetime.now().strftime('%Y-%m-%d')
         for r in nb:
-            # CSV 字段可能是 time 或 trade_date（不同采集器版本）
-            d = r.get('time', '') or r.get('trade_date', '') or r.get('date', '')
-            if d not in seen and d:
-                seen.add(d)
-                uniq.append({'trade_date': d, 'hgt_yi': r.get('hgt_yi','0'), 'sgt_yi': r.get('sgt_yi','0')})
-        safe_write_no_skip('market:northbound', uniq[-50:], TTL_SHORT, 50)
-        print(f'  northbound: {min(len(uniq),50)} (TTL={TTL_SHORT}s)')
-        total += min(len(uniq), 50)
+            raw_time = r.get('time', '') or r.get('trade_date', '') or r.get('date', '')
+            if not raw_time:
+                continue
+            # 只处理 HH:MM 格式的 intraday 数据，记录最后一条
+            if re.match(r'^\d{1,2}:\d{2}$', raw_time):
+                last_row = r  # 不断覆盖，最终保留最后一条（15:00）
+            else:
+                last_row = r  # 已有完整日期的直接使用
+        if last_row and csv_date:
+            uniq = [{'trade_date': csv_date,
+                     'hgt_yi': float(last_row.get('hgt_yi', 0)),
+                     'sgt_yi': float(last_row.get('sgt_yi', 0))}]
+            safe_write_no_skip('market:northbound', uniq, TTL_SHORT)
+            print(f'  northbound: 1 (TTL={TTL_SHORT}s) date={csv_date} hgt={uniq[0][\"hgt_yi\"]} sgt={uniq[0][\"sgt_yi\"]}')
+            total += 1
+        else:
+            print('  ** northbound: 无有效数据（跳过）**')
     else:
         print('  ** northbound CSV 不存在 **')
 
