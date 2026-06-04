@@ -1028,11 +1028,11 @@ def fill_static():
             else:
                 last_row = r  # 已有完整日期的直接使用
         if last_row and csv_date:
-            uniq = [{'trade_date': csv_date,
-                     'hgt_yi': float(last_row.get('hgt_yi', 0)),
-                     'sgt_yi': float(last_row.get('sgt_yi', 0))}]
+            uniq = [{'tradeDate': csv_date,
+                     'hgtYi': float(last_row.get('hgt_yi', 0) or last_row.get('hgtYi', 0)),
+                     'sgtYi': float(last_row.get('sgt_yi', 0) or last_row.get('sgtYi', 0)),
             safe_write_no_skip('market:northbound', uniq, TTL_SHORT)
-            print(f'  northbound: 1 (TTL={TTL_SHORT}s) date={csv_date} hgt={uniq[0][\"hgt_yi\"]} sgt={uniq[0][\"sgt_yi\"]}')
+            print(f'  northbound: 1 (TTL={TTL_SHORT}s) date={csv_date} hgt={uniq[0]["hgtYi"]} sgt={uniq[0]["sgtYi"]}')
             total += 1
         else:
             print('  ** northbound: 无有效数据（跳过）**')
