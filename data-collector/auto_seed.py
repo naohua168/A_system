@@ -1,8 +1,9 @@
 """
-数据层自愈管道 — CSV→Redis (纯 socket 实现, 零外部依赖)
-每 2 分钟自动运行，确保所有 Redis key 不因 TTL 过期
+数据层管道 — 收盘快照模式 (纯 socket 实现, 零外部依赖)
+交易日 15:00 后运行一次，全量采集写入 Redis (TTL=24h) + MySQL
+新闻数据单独线程持续实时刷新
 """
-import sys, json, csv, glob, os, re, time, socket, urllib.request, urllib.parse, threading
+import sys, json, csv, glob, os, re, time, socket, subprocess, urllib.request, urllib.parse, threading
 from datetime import datetime
 
 CSV_DIR = '/data/raw'
@@ -14,7 +15,7 @@ REDIS_PORT = 6379
 # 静态基础数据可以长 TTL + skip，减少不必要写入
 TTL_LONG = 604800       # 7 天（基础数据：行业、基金、指数列表）
 TTL_MEDIUM = 86400      # 24 小时（动态数据：信号、资讯）
-TTL_SHORT = 3600        # 1 小时（高频价格数据：stock_basic/detail/sector_ranking）
+TTL_SHORT = 86400       # 24 小时（收盘快照模式：每日15:00后刷新一次，存到次日收盘）
 
 TENCENT_QUOTE_COLS = [
     'stock_code', 'stock_name', 'price', 'last_close', 'open', 'volume',
@@ -79,7 +80,7 @@ def _fetch_tencent_quote(codes: list) -> list:
     def fetch_batch(batch_codes: list):
         nonlocal results
         try:
-            market_map = {'0': 'sh', '3': 'sz', '6': 'sh'}  # 深市主板/创业板走sz
+            market_map = {'0': 'sz', '3': 'sz', '6': 'sh'}  # 0=深主板, 3=创业板, 6=沪主板
             qs = []
             for c in batch_codes:
                 prefix = market_map.get(c[0], 'sz')
@@ -518,6 +519,49 @@ def _ensure_news_data():
             safe_write_no_skip('market:global_news', global_list, TTL_SHORT, 200)
         if cls_list:
             safe_write_no_skip('market:cls_news', cls_list, TTL_SHORT, 200)
+
+        # ── 同时写入 MySQL info_news（新闻持久化，支持历史查询） ──
+        try:
+            import hashlib
+            from datetime import datetime as _dt
+            mysql_rows = []
+            for item in global_list:
+                news_id = hashlib.md5(item['title'].encode('utf-8')).hexdigest()[:16]
+                pt = item.get('publishTime', '')
+                try:
+                    dt_val = _dt.strptime(pt, '%Y-%m-%d %H:%M') if pt and '-' in pt else _dt.now()
+                except:
+                    dt_val = _dt.now()
+                mysql_rows.append((
+                    news_id, item['title'][:500], item['summary'],
+                    'global', dt_val, item['summary'], item['url'][:500],
+                ))
+            for item in cls_list:
+                news_id = hashlib.md5(item['title'].encode('utf-8')).hexdigest()[:16]
+                pt = item.get('datetime', '')
+                try:
+                    dt_val = _dt.strptime(pt, '%Y-%m-%d %H:%M') if pt and '-' in pt else _dt.now()
+                except:
+                    dt_val = _dt.now()
+                mysql_rows.append((
+                    news_id, item['title'][:500], item['content'],
+                    'cls', dt_val, item['content'], '',
+                ))
+            if mysql_rows:
+                import pymysql as _pm
+                _conn = _pm.connect(host='mysql', port=3306, user='root',
+                                    password='hadoop123', database='stock_history',
+                                    charset='utf8mb4', connect_timeout=5)
+                _cur = _conn.cursor()
+                _sql = """INSERT IGNORE INTO info_news (news_id,title,summary,source,publish_time,content,url)
+                          VALUES (%s,%s,%s,%s,%s,%s,%s)"""
+                _cur.executemany(_sql, mysql_rows)
+                _conn.commit()
+                _cur.close()
+                _conn.close()
+        except Exception as mysql_err:
+            print(f'  [{datetime.now():%H:%M:%S}] ⚠️ 新闻写MySQL失败(不影响Redis): {mysql_err}')
+
         print(f'  [{datetime.now():%H:%M:%S}] ✅ 全球资讯刷新: {len(global_list)} 条 (TTL={TTL_SHORT}s)')
     except Exception as e:
         print(f'  [{datetime.now():%H:%M:%S}] ❌ 全球资讯直取失败: {e}')
@@ -640,6 +684,14 @@ def _redis_ttl(key):
     except (ValueError, TypeError):
         return -2
 
+def _redis_exists(key):
+    """EXISTS key via socket"""
+    resp = _redis_cmd('EXISTS', key)
+    try:
+        return int(resp) == 1
+    except (ValueError, TypeError):
+        return False
+
 def _redis_get(key):
     """GET key via socket, returns parsed JSON or None
     使用长度前缀精确读取，避免 JSON 内容中的 \\r\\n 污染 RESP 解析"""
@@ -725,70 +777,6 @@ def safe_write_force_price(key, data, ttl=TTL_SHORT, limit=None):
 
 
 # ── 行业树图成分股增强 ──────────────────────────────────────────
-def _enrich_treemap_with_children(treemap):
-    """利用 akshare 获取每只股票的行业归属，按行业分组附加到 treemap children"""
-    if not treemap:
-        return
-    try:
-        import akshare as ak
-
-        # 1) 获取所有行业板块名称与代码
-        df_name = ak.stock_board_industry_name_em()
-        if df_name.empty:
-            print('  ⚠️ [treemap] akshare 行业板块名称为空')
-            return
-
-        board_map = {}
-        for _, row in df_name.iterrows():
-            code = str(row.get('板块代码', '')).strip()
-            name = str(row.get('板块名称', '')).strip()
-            if code and name:
-                board_map[name] = code
-
-        # 2) 逐个板块获取成分股
-        industry_stocks = {}
-        for name, code in board_map.items():
-            try:
-                df_cons = ak.stock_board_industry_cons_em(symbol=code)
-                if df_cons.empty:
-                    continue
-                stocks = []
-                for _, srow in df_cons.iterrows():
-                    scode = str(srow.get('代码', ''))
-                    sname = str(srow.get('名称', ''))
-                    cp = 0.0
-                    try: cp = round(float(srow.get('涨跌幅', 0) or 0), 2)
-                    except: pass
-                    price = 0.0
-                    try: price = round(float(srow.get('最新价', 0) or 0), 2)
-                    except: pass
-                    if scode and sname:
-                        stocks.append({
-                            'stockCode': scode, 'stockName': sname,
-                            'changePercent': cp, 'price': price,
-                        })
-                if stocks:
-                    industry_stocks[name] = stocks
-            except Exception as e:
-                print(f'  ⚠️ [treemap] akshare 获取 {name}({code}) 失败: {e}')
-                continue
-
-        # 3) 回填 treemap
-        matched = 0
-        for entry in treemap:
-            iname = entry.get('industryName', '')
-            stocks = industry_stocks.get(iname, [])
-            if stocks:
-                entry['children'] = stocks
-                matched += 1
-
-        total = sum(len(v) for v in industry_stocks.values())
-        print(f'  [treemap] 成分股增强(akshare): {matched}/{len(treemap)} 个行业, {total} 只个股')
-    except ImportError:
-        print('  ⚠️ [treemap] akshare 未安装，跳过成分股增强')
-    except Exception as e:
-        print(f'  ⚠️ [treemap] akshare 增强失败: {e}')
-
 
 def fill_static():
     """
@@ -839,6 +827,45 @@ def fill_static():
         cnt = safe_write_force_price('market:stock_basic', sb_list)
         print(f'  stock_basic: {len(sb_list)} (tencent_quote, TTL={TTL_SHORT}s)')
         total += cnt
+
+        # ── 用K线验证并修正 stock_basic 价格 ──
+        # 抽样检查前50只，若偏差>5%的股票超过10%，则全量修正
+        corrected_count = 0
+        sample_size = min(50, len(sb_list))
+        mismatches = 0
+        for entry in sb_list[:sample_size]:
+            code = entry.get('stock_code', '')
+            if not code:
+                continue
+            kdata = _redis_get(f'market:kline_{code}')
+            if kdata and isinstance(kdata, list) and len(kdata) > 0:
+                kl_close = float(kdata[0].get('closePrice', 0))
+                sb_price = float(entry.get('price', 0))
+                if sb_price > 0 and kl_close > 0:
+                    diff = abs(kl_close - sb_price) / max(sb_price, kl_close)
+                    if diff > 0.05:
+                        mismatches += 1
+        if mismatches / sample_size > 0.10 and sample_size > 0:
+            print(f'  ⚠️  stock_basic 与K线偏差较大 ({mismatches}/{sample_size}), 启动全量修正...')
+            for entry in sb_list:
+                code = entry.get('stock_code', '')
+                if not code:
+                    continue
+                kdata = _redis_get(f'market:kline_{code}')
+                if kdata and isinstance(kdata, list) and len(kdata) > 0:
+                    kl = kdata[0]
+                    kl_close = kl.get('closePrice')
+                    if kl_close:
+                        old_price = entry.get('price', '?')
+                        entry['price'] = str(kl_close)
+                        entry['change_pct'] = str(kl.get('changePct', entry.get('change_pct', '0')))
+                        entry['last_close'] = str(kl.get('preClose', entry.get('last_close', '0')))
+                        corrected_count += 1
+            if corrected_count > 0:
+                cnt2 = safe_write_force_price('market:stock_basic', sb_list)
+                print(f'  ✅ stock_basic: K线修正 {corrected_count} 只股票 ✅')
+        else:
+            print(f'  stock_basic: K线验证通过 ({sample_size}抽检, {mismatches}偏差)')
 
         # detail_{code} — 每个股票一个 key，短 TTL
         detail_cnt = 0
@@ -897,79 +924,61 @@ def fill_static():
         print('  ** tencent_quote CSV 不存在！stock_basic & detail 写入跳过 **')
 
     # ════════════════════════════════════════════
-    # 2. 指数
+    # 2. 指数 — 优先从 K 线获取最新数据，CSV 兜底
     # ════════════════════════════════════════════
-    idx = latest_csv('tencent_index_*.csv')
-    if idx:
-        idx_list = []
-        for r in idx:
-            code = r.get('index_code', '').lstrip('sh').lstrip('sz')
+    INDEX_CODES = ['000001', '399001', '399006', '000688', '000300']
+    INDEX_NAMES = {'000001': '上证指数', '399001': '深证成指', '399006': '创业板指',
+                   '000688': '科创50', '000300': '沪深300'}
+    idx_list = []
+    idx_from_kline = 0
+    for ic in INDEX_CODES:
+        kline_raw = _redis_get(f'market:index_kline_{ic}')
+        if kline_raw and isinstance(kline_raw, list) and len(kline_raw) > 0:
+            latest = kline_raw[0]  # 降序第一条最新
+            prev_close = None
+            if len(kline_raw) >= 2:
+                prev_close = kline_raw[1].get('closePoint')
             idx_list.append({
-                'index_code': code or r.get('index_code',''),
-                'index_name': r.get('index_name',''),
-                'close_point': r.get('price', '0'),
-                'change_pct': r.get('change_pct', '0'),
-                'open_point': r.get('open', '0'),
-                'high_point': r.get('high', '0'),
-                'low_point': r.get('low', '0'),
-                'volume': r.get('volume', '0'),
-                'amount': r.get('amount', '0'),
-                'pre_close': r.get('pre_close', r.get('yest_close', '0')),
+                'index_code': ic,
+                'index_name': INDEX_NAMES.get(ic, ''),
+                'close_point': latest.get('closePoint', 0),
+                'change_pct': latest.get('changePct', 0),
+                'open_point': latest.get('openPoint', 0),
+                'high_point': latest.get('highPoint', 0),
+                'low_point': latest.get('lowPoint', 0),
+                'volume': latest.get('volume', 0),
+                'amount': latest.get('amount', 0),
+                'pre_close': prev_close if prev_close else latest.get('closePoint', 0),
             })
-        cnt = safe_write_force_price('market:index_list', idx_list)
-        print(f'  index_list: {len(idx_list)} (TTL={TTL_SHORT}s, force refresh)')
+            idx_from_kline += 1
+    if idx_list:
+        cnt = safe_write_force_price('market:index_list', to_camel(idx_list))
+        print(f'  index_list: {len(idx_list)} (from K-line, TTL={TTL_SHORT}s, force refresh)')
         total += cnt
     else:
-        print('  ** tencent_index CSV 不存在！index_list 写入跳过 **')
-
-    # ── 指数价格修正：用 K 线收盘价覆盖 CSV 数据 ──
-    # CSV 可能滞后（例如 5/30 CSV 只有 5/29 收盘），K 线数据确保最新
-    index_codes = [i.get('index_code','') for i in idx] if idx else []
-    if index_codes:
-        corrected = 0
-        for ic_raw in index_codes:
-            if not ic_raw:
-                continue
-            # CSV index_code 带 sh/sz 前缀（如 sh000001），K 线 key 无前缀
-            ic = ic_raw
-            for p in ('sh', 'sz', 'SH', 'SZ'):
-                if ic.startswith(p):
-                    ic = ic[len(p):]
-                    break
-            kline_raw = _redis_get(f'market:index_kline_{ic}')
-            if kline_raw and isinstance(kline_raw, list) and len(kline_raw) > 0:
-                latest = kline_raw[0]  # 降序，第一条最新
-                close_val = latest.get('closePoint')
-                trade_date = latest.get('tradeDate', '')
-                if close_val and trade_date:
-                    # 在 idx_list 中找到对应条目并更新价格（idx_list 已去前缀，用 ic 匹配）
-                    for entry in idx_list:
-                        if entry.get('index_code') == ic:
-                            old_price = entry.get('close_point', '?')
-                            entry['close_point'] = close_val
-                            # 重新计算 change_pct
-                            entry['change_pct'] = latest.get('changePct', entry.get('change_pct', 0))
-                            entry['open_point'] = latest.get('openPoint', entry.get('open_point', 0))
-                            entry['high_point'] = latest.get('highPoint', entry.get('high_point', 0))
-                            entry['low_point'] = latest.get('lowPoint', entry.get('low_point', 0))
-                            # 补全昨收盘(prev day close) — 指数 data 源常缺 preClose
-                            prev_close = None
-                            if len(kline_raw) >= 2:
-                                prev_close = kline_raw[1].get('closePoint')
-                            if prev_close:
-                                entry['pre_close'] = prev_close
-                            # 成交额 + 成交量
-                            if latest.get('amount'):
-                                entry['amount'] = latest['amount']
-                            if latest.get('volume'):
-                                entry['volume'] = latest['volume']
-                            corrected += 1
-                            break
-        if corrected > 0:
-            # 用修正后的数据重写 index_list
-            cnt2 = redis_setex('market:index_list', to_camel(idx_list), TTL_SHORT)
-            print(f'  index_list: 通过 K 线修正 {corrected}/{len(index_codes)} 个指数价格 ✅')
-            total += cnt2
+        # K 线不可用 → CSV 兜底
+        idx = latest_csv('tencent_index_*.csv')
+        if idx:
+            idx_list = []
+            for r in idx:
+                code = r.get('index_code', '').lstrip('sh').lstrip('sz')
+                idx_list.append({
+                    'index_code': code or r.get('index_code',''),
+                    'index_name': r.get('index_name',''),
+                    'close_point': r.get('price', '0'),
+                    'change_pct': r.get('change_pct', '0'),
+                    'open_point': r.get('open', '0'),
+                    'high_point': r.get('high', '0'),
+                    'low_point': r.get('low', '0'),
+                    'volume': r.get('volume', '0'),
+                    'amount': r.get('amount', '0'),
+                    'pre_close': r.get('pre_close', r.get('yest_close', '0')),
+                })
+            cnt = safe_write_force_price('market:index_list', idx_list)
+            print(f'  index_list: {len(idx_list)} (from CSV fallback, TTL={TTL_SHORT}s)')
+            total += cnt
+        else:
+            print('  ** index_list: 无 K 线数据且 CSV 不存在，跳过 **')
 
     # ════════════════════════════════════════════
     # 3. 行业 + 北向 + 题材 + 新闻 + 基金
@@ -984,23 +993,21 @@ def fill_static():
                 continue
             seen.add(name)
             ind_comp.append({
-                'industry': name,
-                'change_pct': r.get('change_pct', '0'),
-                'stock_count': int(r.get('up_count', 0) or 0) + int(r.get('down_count', 0) or 0),
-                'total_amount': 0,
+                'industryName': name,
+                'changePct': r.get('change_pct', '0'),
+                'stockCount': int(r.get('up_count', 0) or 0) + int(r.get('down_count', 0) or 0),
+                'totalAmount': 0,
             })
         cnt = safe_write_no_skip('market:industry_compare', ind_comp, TTL_SHORT)
         print(f'  industry_compare: {len(ind_comp)} (TTL={TTL_SHORT}s)')
         total += cnt
 
-        treemap = [{'industryName': x['industry'], 'changePct': x['change_pct'],
-                     'mcapYi': 0, 'stockCount': x['stock_count']} for x in ind_comp]
+        treemap = [{'industryName': x['industryName'], 'changePct': x['changePct'],
+                     'mcapYi': 0, 'stockCount': x['stockCount']} for x in ind_comp]
 
-        # 附加 children 成分股 — 使用东财 A 股全量 API 按行业分组
-        _enrich_treemap_with_children(treemap)
-
+        # 先写入基础 treemap（不含 children），不阻塞后续关键数据写入
         safe_write_no_skip('market:industry_treemap', treemap, TTL_SHORT)
-        print(f'  industry_treemap: {len(treemap)} (TTL={TTL_SHORT}s)')
+        print(f'  industry_treemap: {len(treemap)} base (TTL={TTL_SHORT}s)')
         total += len(treemap)
     else:
         print('  ** industry_compare CSV 不存在！行业数据跳过 **')
@@ -1030,10 +1037,50 @@ def fill_static():
         if last_row and csv_date:
             uniq = [{'tradeDate': csv_date,
                      'hgtYi': float(last_row.get('hgt_yi', 0) or last_row.get('hgtYi', 0)),
-                     'sgtYi': float(last_row.get('sgt_yi', 0) or last_row.get('sgtYi', 0)),
+                     'sgtYi': float(last_row.get('sgt_yi', 0) or last_row.get('sgtYi', 0))}]
             safe_write_no_skip('market:northbound', uniq, TTL_SHORT)
             print(f'  northbound: 1 (TTL={TTL_SHORT}s) date={csv_date} hgt={uniq[0]["hgtYi"]} sgt={uniq[0]["sgtYi"]}')
             total += 1
+            # ── 分钟级时序（262 个点）写入独立 key ──
+            # 收盘后 hexin API 变为累计值，用盘中 15:00 前最后一个 CSV
+            minute_key = f'market:northbound_minute:{csv_date.replace("-", "")}'
+            minute_rows = []
+            now_h = datetime.now().hour
+            if now_h >= 15 and nb_files:
+                # 找 15:00 前生成的当天 CSV（原始数据正确）
+                daytime_csv = None
+                for f in reversed(nb_files):
+                    fh = datetime.fromtimestamp(os.path.getmtime(f)).hour
+                    if 9 <= fh <= 14 and csv_date in f:
+                        daytime_csv = f
+                        break
+                if daytime_csv:
+                    try:
+                        with open(daytime_csv, 'r', encoding='utf-8') as f:
+                            reader = list(csv.DictReader(f))
+                            for r in reader:
+                                t = r.get('time', '').strip()
+                                if re.match(r'^\d{1,2}:\d{2}$', t):
+                                    minute_rows.append({
+                                        'time': t,
+                                        'hgtYi': float(r.get('hgt_yi', 0) or r.get('hgtYi', 0)),
+                                        'sgtYi': float(r.get('sgt_yi', 0) or r.get('sgtYi', 0)),
+                                    })
+                    except Exception:
+                        minute_rows = []
+            else:
+                # 盘中：直接用最新 CSV
+                for r in nb:
+                    t = r.get('time', '').strip()
+                    if re.match(r'^\d{1,2}:\d{2}$', t):
+                        minute_rows.append({
+                            'time': t,
+                            'hgtYi': float(r.get('hgt_yi', 0) or r.get('hgtYi', 0)),
+                            'sgtYi': float(r.get('sgt_yi', 0) or r.get('sgtYi', 0)),
+                        })
+            if minute_rows:
+                safe_write_no_skip(minute_key, minute_rows, TTL_SHORT)
+                print(f'  northbound_minute: {len(minute_rows)} 个时间点 key={minute_key}')
         else:
             print('  ** northbound: 无有效数据（跳过）**')
     else:
@@ -1047,8 +1094,8 @@ def fill_static():
             c = r.get('代码', '')
             if c not in seen and c:
                 seen.add(c)
-                uniq.append({'stock_code': c, 'stock_name': r.get('名称',''),
-                             'reason': r.get('题材归因',''), 'trade_date': r.get('date','')})
+                uniq.append({'stockCode': c, 'stockName': r.get('名称',''),
+                             'reason': r.get('题材归因',''), 'tradeDate': r.get('date','')})
         safe_write_no_skip('market:hot_reason', uniq, TTL_SHORT, 200)
         print(f'  hot_reason: {min(len(uniq),200)} (TTL={TTL_SHORT}s)')
         total += min(len(uniq), 200)
@@ -1063,30 +1110,21 @@ def fill_static():
             code = r.get('stock_code', '')
             if code and code not in {x.get('stock_code','') for x in uniq}:
                 uniq.append({
-                    'stock_code': code,
-                    'stock_name': r.get('stock_name', ''),
+                    'stockCode': code,
+                    'stockName': r.get('stock_name', ''),
                     'reason': str(r.get('reason', '')),
-                    'net_buy_wan': float(r.get('net_buy_wan', 0) or 0),
-                    'change_pct': float(r.get('change_pct', 0) or 0),
-                    'turnover_pct': float(r.get('turnover_pct', 0) or 0),
-                    'buy_wan': float(r.get('buy_wan', 0) or 0),
-                    'sell_wan': float(r.get('sell_wan', 0) or 0),
-                    'trade_date': r.get('trade_date', ''),
+                    'netBuyWan': float(r.get('net_buy_wan', 0) or 0),
+                    'changePct': float(r.get('change_pct', 0) or 0),
+                    'turnoverPct': float(r.get('turnover_pct', 0) or 0),
+                    'buyWan': float(r.get('buy_wan', 0) or 0),
+                    'sellWan': float(r.get('sell_wan', 0) or 0),
+                    'tradeDate': r.get('trade_date', ''),
                 })
         safe_write_no_skip('market:dragon_tiger', uniq, TTL_SHORT)
         print(f'  dragon_tiger: {len(uniq)} (TTL={TTL_SHORT}s)')
         total += len(uniq)
     else:
         print('  ** dragon_tiger CSV 不存在 **')
-
-    # ── 资金流向（基于 stock_basic 真实行情推导，每轮刷新） ──
-    try:
-        subprocess.run(
-            [sys.executable, '/app/ffr.py'],
-            capture_output=True, timeout=120)
-        print('  fund_flow: 基于 stock_basic 刷新完成')
-    except Exception as e:
-        print(f'  fund_flow 刷新失败: {e}')
 
     # ── 锁解汇总（聚合所有 lockup_* key → lockup_upcoming） ──
     try:
@@ -1129,69 +1167,156 @@ def _refresh_kline():
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f'  ✅ 分钟K线刷新已启动（5min/15min/30min/60min）')
 
-def seed_all():
-    """全量填充（含 K 线刷新 + HDFS 备份）"""
-    print(f'[{datetime.now():%H:%M:%S}] 数据自愈管道启动 (socket 模式)...')
-    t0 = time.time()
-    total = fill_static()
-    # K 线刷新（仅在 TTL 低时触发，白天交易时段一般跳过）
-    _refresh_kline()
-    # CSV → HDFS 数据湖备份（不阻塞主流程）
+def _repair_missing_kline():
+    """检查并修复缺失的个股K线数据（每次 seed_all 轮询探测）"""
     try:
-        from hdfs_upload import upload_latest
-        upload_latest()
+        raw = _redis_get('market:stock_basic')
+        if not raw or not isinstance(raw, list):
+            return
+        # 取前20只股票检查K线覆盖率
+        codes = [s.get('stockCode', '') or s.get('stock_code', '') for s in raw[:20]]
+        codes = [c for c in codes if c]
+        if not codes:
+            return
+        missing = sum(1 for c in codes if not _redis_exists(f'market:kline_{c}'))
+        missing_pct = missing / len(codes)
+        if missing_pct > 0.15:  # 缺失 > 15% → 启动后台全量采集
+            print(f'  [{datetime.now():%H:%M:%S}] 缺失K线 {missing}/{len(codes)}, 启动后台 seed_kline...')
+            import subprocess as _sp
+            _sp.Popen([sys.executable, '/app/seed_kline.py'],
+                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            print(f'  ✅ 日K全量刷新已启动（后台）')
+        elif missing > 0:
+            print(f'  kline: 缺失 {missing}/{len(codes)}（<15%，暂不触发）')
     except Exception:
         pass
-    # HDFS 分析结果 → Redis（Spark 批处理产出，无则用 seed_analysis 兜底）
-    try:
-        from hdfs_to_redis import sync_analysis_to_redis
-        sync_analysis_to_redis()
-    except Exception:
-        pass
-    # 涨跌排行兜底 seed_analysis（HDFS 不可用时用 stock_basic 生成）
-    try:
-        import subprocess
-        subprocess.run(
-            [sys.executable, '/app/seed_analysis.py'],
-            capture_output=True, timeout=60)
-    except Exception:
-        pass
-    elapsed = time.time() - t0
-    key_count = _redis_cmd('DBSIZE')
-    print(f'[{datetime.now():%H:%M:%S}] 完成! {total} 条, 耗时{elapsed:.0f}s, Redis共{key_count}key')
-    return total
 
-def _analysis_refresh_loop():
-    """涨跌排行 + 新闻 + 分钟K线刷新 — 每5分钟更新一次（不阻塞主管道）"""
-    import subprocess
-    while True:
+def _rebuild_index_list():
+    """从K线最新数据重新生成 index_list（K线刷新后调用）"""
+    INDEX_CODES = ['000001', '399001', '399006', '000688', '000300']
+    INDEX_NAMES = {'000001': '上证指数', '399001': '深证成指', '399006': '创业板指',
+                   '000688': '科创50', '000300': '沪深300'}
+    idx_list = []
+    for ic in INDEX_CODES:
+        kline_raw = _redis_get(f'market:index_kline_{ic}')
+        if kline_raw and isinstance(kline_raw, list) and len(kline_raw) > 0:
+            latest = kline_raw[0]
+            prev_close = kline_raw[1].get('closePoint') if len(kline_raw) >= 2 else latest.get('closePoint')
+            idx_list.append({
+                'index_code': ic, 'index_name': INDEX_NAMES.get(ic, ''),
+                'close_point': latest.get('closePoint', 0),
+                'change_pct': latest.get('changePct', 0),
+                'open_point': latest.get('openPoint', 0),
+                'high_point': latest.get('highPoint', 0),
+                'low_point': latest.get('lowPoint', 0),
+                'volume': latest.get('volume', 0),
+                'amount': latest.get('amount', 0),
+                'pre_close': prev_close if prev_close else latest.get('closePoint', 0),
+            })
+    if idx_list:
+        safe_write_force_price('market:index_list', to_camel(idx_list))
+    return len(idx_list)
+
+
+def data_rollover():
+    """
+    收盘快照 — 每日仅执行一次（交易日 15:00 后触发）
+
+    Step 1: fill_static   → 行情+信号+资金流向+锁解（含csv直取）
+    Step 2: seed_analysis → 涨跌排行衍生
+    Step 3: K线刷新       → 日K+分钟K（后台Popen），随后重算指数
+    Step 4: MySQL 归档    → 7张表日终快照
+    """
+    done_key = 'market:rollover_done_today'
+    if _redis_exists(done_key):
+        print(f'[{datetime.now():%H:%M:%S}] 今日 rollover 已完成，跳过')
+        return 0
+
+    print(f'[{datetime.now():%H:%M:%S}] ═══ 收盘快照启动 ═══')
+    t0 = time.time()
+    total = 0
+
+    try:
+        # ═══════════════════════════════════════════════
+        # Step 1: fill_static — 行情+信号+资金流向+锁解
+        # ═══════════════════════════════════════════════
+        print(f'[{datetime.now():%H:%M:%S}] Step 1/4: 行情+信号...')
+        total += fill_static()
+
+        # ═══════════════════════════════════════════════
+        # Step 2: 涨跌排行（fill_static 不包含此项）
+        # ═══════════════════════════════════════════════
+        print(f'[{datetime.now():%H:%M:%S}] Step 2/4: 涨跌排行...')
         try:
-            time.sleep(120)  # 2分钟
-            subprocess.run(
-                [sys.executable, '/app/seed_analysis.py'],
-                capture_output=True, timeout=120)
-            # 新闻数据刷新（短TTL，每5分钟刷新确保最新）
-            _ensure_news_data()
-            # 分钟K线刷新（短TTL=1h，需要每5分钟检查并刷新）
-            if _min_kline_needs_refresh():
-                for min_period in ['5min', '15min', '30min', '60min']:
-                    subprocess.Popen(
-                        [sys.executable, '/app/seed_kline.py', '--period', min_period],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            import subprocess
+            subprocess.run([sys.executable, '/app/seed_analysis.py'], capture_output=True, timeout=60)
+            print('  rankings: 刷新完成')
         except Exception:
             pass
 
-if __name__ == '__main__':
-    print('=== 数据管道 (redis-cli 自愈) ===')
-    seed_all()
-    # 启动涨跌排行独立刷新线程（每2分钟）
-    import threading
-    analysis_thread = threading.Thread(target=_analysis_refresh_loop, daemon=True)
-    analysis_thread.start()
+        # ═══════════════════════════════════════════════
+        # Step 3: K线刷新（后台Popen）→ 重算指数
+        # ═══════════════════════════════════════════════
+        print(f'[{datetime.now():%H:%M:%S}] Step 3/4: K线+指数...')
+        _repair_missing_kline()
+        _refresh_kline()
+        # K线刷新后立即重算指数（避免 fill_static 读到旧K线）
+        idx_cnt = _rebuild_index_list()
+        print(f'  index_list: {idx_cnt} (rebuilt after kline refresh)')
+        total += idx_cnt
+
+        # ═══════════════════════════════════════════════
+        # Step 4: MySQL 归档（后台Popen）+ 设完成标志
+        # ═══════════════════════════════════════════════
+        print(f'[{datetime.now():%H:%M:%S}] Step 4/4: MySQL 归档...')
+        now = datetime.now()
+        if now.weekday() < 5 and now.hour >= 15:
+            try:
+                import subprocess
+                subprocess.Popen(
+                    [sys.executable, '/app/daily_snapshot_to_mysql.py'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print('  ✅ 日终快照已触发（后台写入 MySQL stock_history）')
+            except Exception as e:
+                print(f'  ⚠️ 日终快照失败: {e}')
+
+        # ── 设完成标志（放最后，但被 try/except 兜底） ──
+        _redis_setex(done_key, {'date': str(now.date()), 'time': str(now.time())[:8]}, TTL_MEDIUM)
+        print(f'  ✅ rollover_done_today 已设置')
+
+    except Exception as e:
+        print(f'  ❌ rollover 异常: {e}')
+        import traceback
+        traceback.print_exc()
+        err_time = datetime.now()
+        _redis_setex(done_key, {'date': str(err_time.date()),
+                                'time': str(err_time.time())[:8],
+                                'error': str(e)[:100]}, TTL_MEDIUM)
+        print(f'  ⚠️ 异常后已设置 rollover 标志（标注 error）')
+
+    elapsed = time.time() - t0
+    key_count = _redis_cmd('DBSIZE')
+    print(f'[{datetime.now():%H:%M:%S}] ═══ 收盘快照完成 ═══ {total}条, {elapsed:.0f}s, Redis共{key_count}key')
+    return total
+
+def _news_refresh_loop():
+    """新闻数据实时刷新 — 每 5 分钟采集一次（独立线程，不阻塞）"""
     while True:
         try:
-            time.sleep(120)  # 2分钟全量刷新
-            seed_all()
-        except Exception as e:
-            print(f'[{datetime.now():%H:%M:%S}] 管道异常(120s后重试): {e}')
-            time.sleep(120)
+            _ensure_news_data()
+        except Exception:
+            pass
+        time.sleep(300)  # 5分钟
+
+if __name__ == '__main__':
+    print('=== 数据管道 (收盘快照模式) ===')
+    # 1) 收盘快照：写入 Redis (TTL=24h) + MySQL 归档
+    data_rollover()
+    # 2) 启动新闻实时刷新线程（每5分钟，盘中/盘后持续）
+    import threading
+    news_thread = threading.Thread(target=_news_refresh_loop, daemon=True)
+    news_thread.start()
+    print(f'[{datetime.now():%H:%M:%S}] 新闻刷新线程已启动（每5分钟）')
+    # 3) 主进程保持存活（供后台线程运行），不再循环 data_rollover
+    while True:
+        time.sleep(60)

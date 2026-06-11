@@ -76,4 +76,7 @@ public interface AnalysisService {
 
     /** 缠论分析（可指定优先使用指数K线） */
     Map<String, Object> getChanlunAnalysis(String stockCode, int days, boolean preferIndex);
+
+    /** 缠论分析（支持指定K线周期：day/week/month/5min/15min/30min/60min） */
+    Map<String, Object> getChanlunAnalysis(String stockCode, int days, String period, boolean preferIndex);
 }

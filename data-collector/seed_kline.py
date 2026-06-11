@@ -27,10 +27,10 @@ PERIODS = {
     'day':   {'param': 'day',   'count': 365,  'ttl': TTL_STOCK},
     'week':  {'param': 'week',  'count': 120,  'ttl': 86400 * 2},
     'month': {'param': 'month', 'count': 60,   'ttl': 86400 * 7},
-    '5min':  {'param': 'm5',    'count': 60,   'ttl': 3600},
-    '15min': {'param': 'm15',   'count': 40,   'ttl': 3600},
-    '30min': {'param': 'm30',   'count': 40,   'ttl': 3600},
-    '60min': {'param': 'm60',   'count': 40,   'ttl': 3600},
+    '5min':  {'param': 'm5',    'count': 60,   'ttl': 43200},
+    '15min': {'param': 'm15',   'count': 40,   'ttl': 43200},
+    '30min': {'param': 'm30',   'count': 40,   'ttl': 43200},
+    '60min': {'param': 'm60',   'count': 40,   'ttl': 43200},
 }
 
 INDICES = ['000001', '399001', '399006', '000688', '000300']
@@ -135,6 +135,8 @@ def fetch_kline(code, is_index=False, period='day'):
         return None
 
     rows = []
+    prev_close_saved = None  # 前一交易日的收盘价（用于 preClose 字段）
+    prev_change_pct = None   # 用于 changePct 的基准
     for k in klines:
         if len(k) < 6:
             continue
@@ -145,8 +147,20 @@ def fetch_kline(code, is_index=False, period='day'):
             h = float(k[3])
             l_ = float(k[4])
             v = int(float(k[5])) if isinstance(k[5], (int, float, str)) and str(k[5]).strip() else 0
-            a = float(k[6]) if len(k) > 6 and isinstance(k[6], (int, float, str)) and str(k[6]).strip() else 0
-            change_pct = round((c - o) / o * 100, 2) if o > 0 else 0
+            # amount: 优先取 k[6]（腾讯 qfqday 格式），不存在时估算
+            if len(k) > 6 and isinstance(k[6], (int, float, str)) and str(k[6]).strip() and float(k[6]) != 0:
+                a = float(k[6])
+            elif not is_index and v > 0 and c > 0:
+                a = v * 100 * c  # 成交量(手) × 100股 × 收盘价 ≈ 成交额(元)
+            else:
+                a = 0
+            # 涨跌幅 = (当前收盘 - 昨收) / 昨收 × 100
+            if prev_change_pct is not None and prev_change_pct > 0:
+                change_pct = round((c - prev_change_pct) / prev_change_pct * 100, 2)
+            else:
+                change_pct = 0.0
+            pre_close_val = prev_change_pct if prev_change_pct is not None else o
+            prev_change_pct = c
         except (ValueError, TypeError, IndexError):
             continue
 
@@ -161,6 +175,7 @@ def fetch_kline(code, is_index=False, period='day'):
                 'volume': v,
                 'amount': a,
                 'changePct': change_pct,
+                'preClose': pre_close_val,
             }
         else:
             row = {
@@ -173,7 +188,7 @@ def fetch_kline(code, is_index=False, period='day'):
                 'volume': v,
                 'amount': a,
                 'changePct': change_pct,
-                'preClose': o,
+                'preClose': pre_close_val,
                 'turnoverRate': 0,
             }
         rows.append(row)
@@ -187,25 +202,47 @@ def fetch_kline(code, is_index=False, period='day'):
 # 3. 批量采集
 # ════════════════════════════════════════════
 
-def read_stock_codes():
-    """从 CSV 读取股票代码列表"""
+def read_stock_codes(minute_mode=False):
+    """从 CSV 或 Redis 读取股票代码列表
+    minute_mode=True 时仅返回成交活跃的前300只（分钟K线用）
+    """
+    # 优先从 CSV 读取
     files = sorted(glob.glob(os.path.join(CSV_DIR, 'realtime_*.csv')))
     if not files:
         files = sorted(glob.glob(os.path.join(CSV_DIR, 'tencent_quote_*.csv')))
     if not files:
         files = sorted(glob.glob(os.path.join(CSV_DIR, 'stock_basic_*.csv')))
-    if not files:
-        print('ERROR: 找不到股票列表 CSV')
-        return []
+    if files:
+        print(f'  CSV: {os.path.basename(files[-1])}')
+        codes = []
+        with open(files[-1], 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                code = (row.get('stock_code') or row.get('code') or '').strip()
+                if code:
+                    codes.append(code)
+    else:
+        # 兜底：从 Redis market:stock_basic 读取全量股票
+        print('  未找到 CSV，从 Redis market:stock_basic 读取...')
+        raw = _redis_cmd('GET', 'market:stock_basic')
+        if not raw or raw.startswith('-'):
+            print('ERROR: Redis 中也无法获取 stock_basic')
+            return []
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                codes = [s.get('stockCode', '') or s.get('stock_code', '') for s in data if s.get('stockCode') or s.get('stock_code')]
+            else:
+                print(f'ERROR: market:stock_basic 非数组: {type(data)}')
+                return []
+        except json.JSONDecodeError as e:
+            print(f'ERROR: JSON 解析失败: {e}')
+            return []
+        print(f'  Redis stock_basic: {len(codes)} 只股票')
 
-    print(f'  CSV: {os.path.basename(files[-1])}')
-    codes = []
-    with open(files[-1], 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            code = (row.get('stock_code') or row.get('code') or '').strip()
-            if code:
-                codes.append(code)
+    if minute_mode and len(codes) > 500:
+        codes = codes[:500]
+        print(f'  分钟K线模式: 取前500只')
     return codes
 
 
@@ -213,11 +250,15 @@ def collect_indices(period='day'):
     """采集指数K线（支持多周期）"""
     p = PERIODS.get(period, PERIODS['day'])
     label = f'指数K线({period})' if period != 'day' else '指数K线'
+    today_str = datetime.now().strftime('%Y%m%d')
     print(f'[{datetime.now():%H:%M:%S}] 采集{label}...')
     total = 0
     for code in INDICES:
         klines = fetch_kline(code, is_index=True, period=period)
         if klines:
+            # 日K线：去掉今天未完成的数据（收盘前不显示当天K线柱子）
+            if period == 'day' and klines and klines[0].get('tradeDate') == today_str:
+                klines = klines[1:]  # 丢掉未完成的今天
             key = f'market:index_kline_{period}_{code}' if period != 'day' else f'market:index_kline_{code}'
             ok = redis_setex(key, klines, p['ttl'])
             n = len(klines)
@@ -235,6 +276,10 @@ def collect_one_stock(code, period='day'):
     klines = fetch_kline(code, is_index=False, period=period)
     if not klines:
         return code, 0
+    today_str = datetime.now().strftime('%Y%m%d')
+    # 日K线：去掉今天未完成的数据（收盘前不显示当天K线柱子）
+    if period == 'day' and klines and klines[0].get('tradeDate') == today_str:
+        klines = klines[1:]
     key = f'market:kline_{period}_{code}' if period != 'day' else f'market:kline_{code}'
     ok = redis_setex(key, klines, p['ttl'])
     # 分钟K线采集加50ms限速，避免腾讯API过热
@@ -271,21 +316,30 @@ def collect_stocks(codes, period='day'):
 # 4. 主入口
 # ════════════════════════════════════════════
 
-def seed_kline(period='day'):
-    """全量 K 线 seed 入口（支持多周期）"""
+def seed_kline(period='day', indices_only=False):
+    """全量 K 线 seed 入口（支持多周期）
+    indices_only=True 时仅采集指数K线（轻量，5只~2s）
+    """
     global t0
     t0 = time.time()
     period_label = {'day':'日K', 'week':'周K', 'month':'月K', '5min':'5分钟', '15min':'15分钟', '30min':'30分钟', '60min':'60分钟'}
     label = period_label.get(period, period)
-    print(f'=== K线数据 Seed 启动 [{datetime.now():%H:%M:%S}] ===')
+    mode = ' [仅指数]' if indices_only else ''
+    print(f'=== K线数据 Seed 启动 [{datetime.now():%H:%M:%S}]{mode} ===')
     print(f'周期: {label}')
 
     # 1. 指数K线
     idx_count = collect_indices(period)
     print(f'✅ 指数K线({period}): {idx_count}条')
 
-    # 2. 个股K线
-    codes = read_stock_codes()
+    if indices_only:
+        elapsed = time.time() - t0
+        print(f'⏱ 指数K线耗时: {elapsed:.0f}s')
+        return
+
+    # 2. 个股K线（分钟K线仅取前300只活跃股）
+    is_minute = period in ('5min', '15min', '30min', '60min')
+    codes = read_stock_codes(minute_mode=is_minute)
     if not codes:
         print('❌ 无股票列表，退出')
         return
@@ -305,5 +359,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='K线数据采集')
     parser.add_argument('--period', default='day', choices=list(PERIODS.keys()),
                         help='K线周期: day/week/month/5min/15min/30min/60min')
+    parser.add_argument('--indices-only', action='store_true',
+                        help='仅采集指数K线（轻量模式）')
     args = parser.parse_args()
-    seed_kline(args.period)
+    seed_kline(args.period, indices_only=args.indices_only)

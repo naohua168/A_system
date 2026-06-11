@@ -413,7 +413,7 @@ function getChanlunCount(): number {
 async function fetchChanlunData() {
   if (!showChanlun.value) return
   try {
-    const data = await getChanlunAnalysis(stockCode, getChanlunCount())
+    const data = await getChanlunAnalysis(stockCode, getChanlunCount(), activePeriod.value)
     // 后端返回 error 字段时静默处理（Python 分析失败）
     if (data && (data as any).error) {
       console.warn(`[Chanlun] API 返回错误: ${(data as any).error}`)
@@ -620,13 +620,15 @@ async function loadData() {
         totalMarketCap: info.mcapYi ?? 0,
         floatMarketCap: info.floatMcapYi ?? info.mcapYi ?? 0,
         turnoverRate: info.turnoverPct ?? 0,
+        // amountWan 单位: 万元 → 乘 10000 转为 元（适配 formatVol）
+        amount: (info.amountWan ?? 0) * 10000 || 0,
       })
     }
     // 从 K 线补充 volume/amount/turnoverRate 以及 info 未提供的字段
     if (klineSource && klineSource.length > 0) {
       const last = klineSource[0] // API 返回降序，第一条最新
-      stock.volume = safeVal(last.volume)
-      stock.amount = safeVal(last.amount)
+      stock.volume = safeVal(last.volume) || stock.volume
+      stock.amount = safeVal(last.amount) || stock.amount
       if (!stock.turnoverRate) stock.turnoverRate = safeVal(last.turnoverRate)
       // 若 stock API 未提供字段（或为 0），从 K 线兜底
       if (!stock.price) stock.price = safeVal(last.closePrice)

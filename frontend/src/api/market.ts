@@ -45,14 +45,11 @@ export function getEtfList(params?: { page?: number; size?: number; keyword?: st
 }
 
 export function getIndustryTreemap(tradeDate?: string): Promise<{
-  tradeDate: string
-  records: {
-    name: string
-    stockCount: number
-    avgChangePct: number
-    children: { stockCode: string; stockName: string; changePercent: number }[]
-  }[]
-}> {
+  industryName: string
+  changePct: number
+  stockCount: number
+  mcapYi: number
+}[]> {
   return request.get('/v2/market/industry-treemap', { params: { tradeDate } })
 }
 

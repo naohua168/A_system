@@ -87,12 +87,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '行业对比' },
       },
       {
-        path: 'fund-flow',
-        name: 'FundFlow',
-        component: () => import('@/views/FundFlowView.vue'),
-        meta: { title: '资金流向' },
-      },
-      {
         path: 'lockup',
         name: 'Lockup',
         component: () => import('@/views/LockupView.vue'),

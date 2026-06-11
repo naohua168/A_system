@@ -134,7 +134,6 @@ const dataItems = [
   { path: '/industry-compare', label: '行业对比', desc: '90 行业涨跌排行·资金流向', icon: Histogram },
   { path: '/northbound', label: '北向资金', desc: '沪深港通实时资金流向', icon: TrendCharts },
   { path: '/dragon-tiger', label: '龙虎榜', desc: '席位数据·净买入排行', icon: Aim },
-  { path: '/fund-flow', label: '资金流向', desc: '个股/行业/概念资金流入排行', icon: TrendCharts },
   { path: '/lockup', label: '限售解禁', desc: '解禁日历·个股查询', icon: Reading },
 ]
 

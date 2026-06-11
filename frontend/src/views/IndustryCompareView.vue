@@ -4,7 +4,8 @@
     <header class="ic-top">
       <h1>行业对比</h1>
       <div class="ic-toolbar">
-        <span class="today-label">今日 · {{ todayStr }}</span>
+        <ReviewDatePicker @change="(d:string) => { reviewDate.value = d; fetchData() }" />
+        <span class="today-label">{{ reviewDate ? reviewDate : '今日 · ' + todayStr }}</span>
         <el-radio-group v-model="sortBy" size="small" @change="onSortChange">
           <el-radio-button value="changePct">涨跌幅</el-radio-button>
           <el-radio-button value="top">涨跌榜</el-radio-button>
@@ -150,20 +151,22 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { getIndustryCompare } from '@/api/signal'
+import { getIndustryCompare, getHistoryIndustryCompare } from '@/api/signal'
 import echarts from '@/utils/echarts'
 import { useApiRetry, safeRecords, safeNum } from '@/composables/useApiRetry'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import ReviewDatePicker from '@/components/common/ReviewDatePicker.vue'
 
 
 const todayStr = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+const reviewDate = ref('')
 const sortBy = ref('changePct')
 const searchQuery = ref('')
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
 
 const { data: rawData, loading, error, fetch: fetchData } = useApiRetry(
-  () => getIndustryCompare(),
+  () => reviewDate.value ? getHistoryIndustryCompare(reviewDate.value) : getIndustryCompare(),
   { maxRetries: 1, showError: false, errorMessage: '行业对比数据加载失败' }
 )
 
@@ -283,7 +286,7 @@ watch(error, () => chart?.clear())
 
 function handleResize() { chart?.resize() }
 onMounted(() => { fetchData(); window.addEventListener('resize', handleResize) })
-useAutoRefresh(fetchData, 120_000)
+useAutoRefresh(() => { if (!reviewDate.value) fetchData() }, 120_000)
 onUnmounted(() => { chart?.dispose(); window.removeEventListener('resize', handleResize) })
 </script>
 

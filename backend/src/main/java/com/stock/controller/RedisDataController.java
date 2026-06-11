@@ -310,6 +310,14 @@ public class RedisDataController {
         return redisReader.getAsList("market:northbound");
     }
 
+    /** 北向资金分钟级时序（262 个时间点） */
+    @GetMapping("/signal/northbound/minute")
+    public List<Map<String, Object>> northboundMinute(@RequestParam(defaultValue = "") String date) {
+        String key = date.isBlank() ? "market:northbound_minute:" + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
+                                    : "market:northbound_minute:" + date.replace("-", "");
+        return redisReader.getAsList(key);
+    }
+
     @GetMapping("/signal/hot-reason")
     public List<Map<String, Object>> hotReason(@RequestParam(required = false) String date) {
         return redisReader.getAsList("market:hot_reason");
@@ -328,12 +336,6 @@ public class RedisDataController {
     @GetMapping("/signal/dragon-tiger/stock/{code}")
     public List<Map<String, Object>> dragonTigerByStock(@PathVariable String code) {
         return redisReader.getAsList("market:dragon_tiger_" + code);
-    }
-
-    @GetMapping("/signal/fund-flow/{code}")
-    public List<Map<String, Object>> fundFlow(@PathVariable String code,
-                                               @RequestParam(defaultValue = "20") int limit) {
-        return redisReader.getAsList("market:fund_flow_" + code);
     }
 
     @GetMapping("/signal/concept-blocks/{code}")

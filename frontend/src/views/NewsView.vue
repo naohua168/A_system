@@ -125,7 +125,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Calendar, WarningFilled, Document } from '@element-plus/icons-vue'
-import { getClsNews, getGlobalNews } from '@/api/info'
+import { getClsNews, getGlobalNews, getHistoryNews } from '@/api/info'
 import type { ClsNewsItem, GlobalNewsItem } from '@/types'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
@@ -295,39 +295,67 @@ async function loadData() {
   allItems.value = []
   clsDone.value = false
   globalDone.value = false
+  const isHistory = activeDate.value !== fmtDate(today)
 
   try {
-    const [clsRes, globalRes] = await Promise.all([
-      getClsNews(100).catch(() => ({ records: [] as ClsNewsItem[], total: 0 })),
-      getGlobalNews(100).catch(() => ({ records: [] as GlobalNewsItem[], total: 0 })),
-    ])
+    let clsRes: any, globalRes: any
+    if (isHistory) {
+      // 复盘模式：从 MySQL stock_history.info_news 查询历史数据
+      ;[clsRes, globalRes] = await Promise.all([
+        getHistoryNews(activeDate.value, 'cls').catch(() => ({ records: [], total: 0 })),
+        getHistoryNews(activeDate.value, 'global').catch(() => ({ records: [], total: 0 })),
+      ])
+      // 转换历史数据为前端格式（后端 info_news 字段名不同）
+      const toFeed = (item: any, type: 'cls' | 'global') => ({
+        id: `his-${type}-${item.news_id || item.id || Math.random()}`,
+        type,
+        title: item.title || '',
+        date: activeDate.value,
+        time: '00:00',
+        content: item.summary || item.content || '',
+        source: type === 'cls' ? '财联社' : '全球资讯',
+        url: item.url || '',
+      })
+      allItems.value = [
+        ...((clsRes?.records || clsRes || []).map((r: any) => toFeed(r, 'cls'))),
+        ...((globalRes?.records || globalRes || []).map((r: any) => toFeed(r, 'global'))),
+      ]
+      clsDone.value = true
+      globalDone.value = true
+    } else {
+      // 实时模式：从 Redis 获取最新资讯
+      ;[clsRes, globalRes] = await Promise.all([
+        getClsNews(100).catch(() => ({ records: [] as ClsNewsItem[], total: 0 })),
+        getGlobalNews(100).catch(() => ({ records: [] as GlobalNewsItem[], total: 0 })),
+      ])
 
-    // 转换 + 去重
-    let idx = 0
-    const raw: FeedItem[] = [
-      ...((clsRes?.records || []).map((r: any) => cls2feed(r, idx++))),
-      ...((globalRes?.records || []).map((r: any) => global2feed(r, idx++))),
-    ]
-    const seen = new Set<string>()
-    raw.forEach(i => { if (!seen.has(i.id)) { seen.add(i.id); allItems.value.push(i) } })
+      // 转换 + 去重
+      let idx = 0
+      const raw: FeedItem[] = [
+        ...((clsRes?.records || []).map((r: any) => cls2feed(r, idx++))),
+        ...((globalRes?.records || []).map((r: any) => global2feed(r, idx++))),
+      ]
+      const seen = new Set<string>()
+      raw.forEach(i => { if (!seen.has(i.id)) { seen.add(i.id); allItems.value.push(i) } })
 
-    // 可用日期（按从早到晚排列）
-    const ds = new Set<string>()
-    allItems.value.forEach(i => {
-      if (i.date && /^\d{4}-\d{2}-\d{2}$/.test(i.date)) ds.add(i.date)
-    })
-    availableDates.value = Array.from(ds).sort()
+      // 可用日期（按从早到晚排列）
+      const ds = new Set<string>()
+      allItems.value.forEach(i => {
+        if (i.date && /^\d{4}-\d{2}-\d{2}$/.test(i.date)) ds.add(i.date)
+      })
+      availableDates.value = Array.from(ds).sort()
 
-    // 默认定位到今天或最近有数据的日期
-    const todayStr = fmtDate(today)
-    if (availableDates.value.includes(todayStr)) {
-      activeDate.value = todayStr
-    } else if (availableDates.value.length > 0) {
-      activeDate.value = availableDates.value[0]
+      // 默认定位到今天或最近有数据的日期
+      const todayStr = fmtDate(today)
+      if (availableDates.value.includes(todayStr)) {
+        activeDate.value = todayStr
+      } else if (availableDates.value.length > 0) {
+        activeDate.value = availableDates.value[0]
+      }
+
+      clsDone.value = (clsRes?.records || []).length < 100
+      globalDone.value = (globalRes?.records || []).length < 100
     }
-
-    clsDone.value = (clsRes?.records || []).length < 100
-    globalDone.value = (globalRes?.records || []).length < 100
   } catch (e: any) {
     error.value = e?.message || '加载失败'
   } finally {
@@ -406,10 +434,17 @@ function openLink(item: FeedItem) {
 }
 
 onMounted(loadData)
-useAutoRefresh(loadData, 300_000)
+useAutoRefresh(() => {
+  if (activeDate.value === fmtDate(today)) loadData()
+}, 300_000)
 
-// 切换日期时重置分页
-watch(activeDate, () => { displayCount.value = PAGE_SIZE })
+// 切换日期时：历史日期重新加载，实时日期仅重置分页
+watch(activeDate, (newDate, oldDate) => {
+  displayCount.value = PAGE_SIZE
+  if (newDate !== oldDate && newDate !== fmtDate(today)) {
+    loadData()
+  }
+})
 </script>
 
 <style scoped lang="scss">

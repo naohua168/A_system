@@ -734,72 +734,75 @@ def main():
                 now = datetime.now()
                 h, wd = now.hour, now.weekday()
                 is_trading_day = wd < 5
-                am_session = 9 <= h < 11
-                pm_session = 13 <= h < 15
-                after_market = 15 <= h < 18
                 today_str = now.strftime("%Y-%m-%d")
 
-                if is_trading_day and (am_session or pm_session):
-                    # 交易时段: 每1分钟 auto_seed 刷新 Redis（直取 API，跳过熔断采集器）
-                    try:
-                        import subprocess as _sp
-                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=30)
-                    except:
-                        pass
-                    if am_session and h == 9 and now.minute < 30:
-                        interval = 30  # 9:00-9:30 集合竞价 30s
-                    else:
-                        interval = 1  # 盘中 1min
-                    print(f"\n⏳ 交易时段: 等待 {interval} 分钟...\n")
-                    time.sleep(interval * 60)
+                # ── 持续刷新新闻（盘中/盘后均运行，每5分钟） ──
+                try:
+                    runner.collect_cls_news()
+                except:
+                    pass
+                try:
+                    runner.collect_global_news()
+                except:
+                    pass
+                # ── 刷新 Redis 新闻（run_collector的新闻采集只写CSV，Redis需单独刷新）──
+                try:
+                    import subprocess as _sp2
+                    _sp2.run([sys.executable, '-c',
+                        'import sys; sys.path.insert(0,"/app"); from auto_seed import _ensure_news_data; _ensure_news_data()'],
+                        capture_output=True, timeout=20)
+                except Exception:
+                    pass
 
-                elif is_trading_day and after_market and last_batch_date != today_str:
-                    # 收盘后: 先刷新 Redis（auto_seed 自带直取），再后台尝试其他采集
-                    print(f"📊 收盘批处理 [{now:%H:%M}]")
-                    try:
-                        import subprocess as _sp
-                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=120)
-                    except:
-                        pass
-                    try:
-                        runner.collect_kline()
-                    except:
-                        pass
-                    try:
-                        runner.collect_hot_reason()
-                    except:
-                        pass
-                    try:
-                        runner.collect_northbound()
-                    except:
-                        pass
-                    try:
-                        runner.collect_global_news()
-                    except:
-                        pass
-                    if args.sync:
-                        runner._run_sync()
-                    last_batch_date = today_str
-                    print(f"\n⏳ 批处理完成: 等待下次交易时段...\n")
-                    time.sleep(1800)  # 30min
+                # ── 日K/分钟K线刷新（后台启动，不阻塞主循环）──
+                try:
+                    import subprocess as _sp3
+                    # 分钟K线TTL检查
+                    _ret = _sp3.run([sys.executable, '-c',
+                        'import sys; sys.path.insert(0,"/app"); from auto_seed import _min_kline_needs_refresh; ' +
+                        'exit(0 if _min_kline_needs_refresh() else 1)'],
+                        capture_output=True, timeout=15)
+                    if _ret.returncode == 0:
+                        for _p in ['5min', '15min', '30min', '60min']:
+                            _sp3.Popen([sys.executable, '/app/seed_kline.py', '--period', _p],
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        print(f'  [{datetime.now():%H:%M:%S}] 分钟K线刷新已启动（4周期）')
+                except Exception:
+                    pass
 
-                else:
-                    # 非交易时段: 每30分钟刷新 Redis（auto_seed 自带直取，跳过熔断的采集器）
+                # ── 日K结算检查：最新K线日期非今日 → 后台重采（攻克腾讯API延迟问题）──
+                try:
+                    import subprocess as _spk
+                    _kdate_ret = _spk.run([sys.executable, '-c',
+                        'import sys,json,subprocess as sp; ' +
+                        'r=sp.run(["redis-cli","-h","redis","GET","market:kline_000001"],capture_output=True,text=True,timeout=5); ' +
+                        'd=json.loads(r.stdout.strip()) if r.stdout.strip() else []; ' +
+                        'latest_date=d[0].get("tradeDate","") if d else ""; ' +
+                        'today=__import__("datetime").date.today().strftime("%Y%m%d"); ' +
+                        'exit(0 if latest_date != today else 1)'],
+                        capture_output=True, timeout=15)
+                    if _kdate_ret.returncode == 0:
+                        _spk.Popen([sys.executable, '/app/seed_kline.py'],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        print(f'  [{datetime.now():%H:%M:%S}] 日K结算未就绪，后台重采...')
+                except Exception:
+                    pass
+
+                # ── 收盘快照：交易日 15:00 后触发（每天一次） ──
+                if is_trading_day and h >= 15:
                     try:
-                        import subprocess as _sp
-                        _sp.run(['python3', '-u', '/app/auto_seed.py'], capture_output=True, timeout=90)
-                    except:
+                        import subprocess as _sp4
+                        _sp4.run([sys.executable, '-c',
+                            'import sys; sys.path.insert(0,"/app"); from auto_seed import data_rollover; data_rollover()'],
+                            capture_output=True, timeout=600)
+                    except Exception:
                         pass
-                    # 后台尝试采集新闻（非阻塞，失败不影响主流程）
-                    try:
-                        runner.collect_global_news()
-                    except:
-                        pass
-                    if args.sync:
-                        runner._run_sync()
-                    interval = 30
-                    print(f"\n⏳ 非交易时段: 等待 {interval} 分钟...\n")
-                    time.sleep(interval * 60)
+
+                if args.sync:
+                    runner._run_sync()
+                interval = 5
+                print(f"\n⏳ 新闻刷新: 等待 {interval} 分钟...\n")
+                time.sleep(interval * 60)
 
                 if not _running:
                     break

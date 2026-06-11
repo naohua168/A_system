@@ -101,6 +101,10 @@ services:
       - type: bind
         source: ../backend/pom.xml
         target: /app/pom.xml
+      # [核心] 缠论分析引擎 — Python 桥接脚本
+      - type: bind
+        source: ../analysis-algorithms
+        target: /analysis-algorithms
       # [加速] Maven 本地仓库持久化 (避免每次重启重复下载)
       - maven-repo:/root/.m2
       # [加速] Maven target 缓存 (避免每次重启全量编译)
@@ -108,9 +112,13 @@ services:
     environment:
       # Spring Boot 配置
       - SPRING_PROFILES_ACTIVE=dev
+      - TZ=Asia/Shanghai
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD:-hadoop123}
+      - SPRING_DATASOURCE_HISTORY_URL=jdbc:mysql://mysql:3306/stock_history?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      - SPRING_DATASOURCE_HISTORY_USERNAME=root
+      - SPRING_DATASOURCE_HISTORY_PASSWORD=${MYSQL_ROOT_PASSWORD:-hadoop123}
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
       - AI_SERVICE_URL=http://ai-service:8000

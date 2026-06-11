@@ -25,8 +25,11 @@
           :cell-style="{ padding: '8px' }">
           <el-table-column label="解禁日期" width="110" prop="lockupDate" sortable />
           <el-table-column label="类型" min-width="140" prop="lockupType" />
-          <el-table-column label="占流通股%" width="100" align="right">
-            <template #default="{ row }">{{ (row.floatRatio || 0) > 0 ? (row.floatRatio * 100).toFixed(2) + '%' : '-' }}</template>
+          <el-table-column label="解禁股数(股)" width="110" align="right">
+            <template #default="{ row }">{{ row.shares ? (row.shares >= 1e8 ? (row.shares/1e8).toFixed(2)+'亿' : (row.shares/1e4).toFixed(1)+'万') : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="占流通股%" width="90" align="right">
+            <template #default="{ row }">{{ (row.floatRatio || 0) > 0 ? row.floatRatio.toFixed(2) + '%' : '-' }}</template>
           </el-table-column>
           <el-table-column label="状态" width="70" align="center">
             <template #default="{ row }">
@@ -112,8 +115,11 @@
             </el-table-column>
             <el-table-column label="名称" width="90" prop="stockName" />
             <el-table-column label="类型" min-width="140" prop="lockupType" show-overflow-tooltip />
-            <el-table-column label="占流通股" width="90" align="right">
-              <template #default="{ row }">{{ (row.floatRatio || 0) > 0 ? (row.floatRatio * 100).toFixed(2) + '%' : '-' }}</template>
+            <el-table-column label="解禁股数" width="100" align="right">
+              <template #default="{ row }">{{ row.shares ? (row.shares >= 1e8 ? (row.shares/1e8).toFixed(2)+'亿' : (row.shares/1e4).toFixed(1)+'万') : '-' }}</template>
+            </el-table-column>
+            <el-table-column label="占流通股%" width="85" align="right">
+              <template #default="{ row }">{{ (row.floatRatio || 0) > 0 ? row.floatRatio.toFixed(2) + '%' : '-' }}</template>
             </el-table-column>
             <el-table-column label="距今日" width="80" align="center">
               <template #default="{ row }">

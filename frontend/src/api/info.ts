@@ -32,3 +32,8 @@ export function getGlobalNews(limit = 20): Promise<GlobalNewsResponse> {
 export function getFilings(code: string, page = 1, size = 20): Promise<FilingResponse> {
   return request.get('/v2/info/filings/' + code, { params: { page, size } })
 }
+
+/** 历史资讯查询 */
+export function getHistoryNews(date?: string, source = 'cls'): Promise<{ records: any[]; total: number }> {
+  return request.get('/v2/history/news', { params: { date, source } })
+}

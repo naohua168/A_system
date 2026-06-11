@@ -32,6 +32,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mysql/init_history.sql:/docker-entrypoint-initdb.d/init_history.sql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-hadoop123}
       MYSQL_DATABASE: stock_analysis
@@ -131,11 +132,16 @@ services:
       - "8082:8082"
     volumes:
       - backend-logs:/app/logs
+      - ../analysis-algorithms:/analysis-algorithms:ro
     environment:
+      - TZ=Asia/Shanghai
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       - SPRING_DATASOURCE_USERNAME=${MYSQL_USER:-root}
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD:-hadoop123}
+      - HISTORY_DATASOURCE_JDBC_URL=jdbc:mysql://mysql:3306/stock_history?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      - HISTORY_DATASOURCE_USERNAME=${MYSQL_USER:-root}
+      - HISTORY_DATASOURCE_PASSWORD=${MYSQL_PASSWORD:-hadoop123}
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-}

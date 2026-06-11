@@ -20,8 +20,10 @@ RUN mvn clean package -DskipTests -B -q
 # ---- 运行阶段 ----
 FROM eclipse-temurin:17-jre-alpine
 
-# 安装 curl (健康检查用) 并清理
-RUN apk add --no-cache curl && \
+# 安装 curl (健康检查用)、python3 (缠论分析用) 并清理
+RUN apk add --no-cache curl python3 py3-pip && \
+    pip3 install --break-system-packages redis && \
+    rm -rf /root/.cache/pip && \
     addgroup -S spring && \
     adduser -S spring -G spring -u 1000
 

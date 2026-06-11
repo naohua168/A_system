@@ -7,10 +7,11 @@
         <span class="page-subtitle">今日强势股题材归因 · 概念聚类分析</span>
       </div>
       <div class="header-right">
-        <span class="live-indicator" v-if="lastUpdated">
+        <ReviewDatePicker @change="(d:string) => { reviewDate.value = d; fetchAll() }" />
+        <span class="live-indicator" v-if="lastUpdated && !reviewDate">
           <span class="live-dot" /> {{ lastUpdated }}
         </span>
-        <span class="today-label">今日 · {{ todayStr }}</span>
+        <span class="today-label">{{ reviewDate || '今日 · ' + todayStr }}</span>
         <el-button v-if="error" type="warning" size="small" @click="fetchAll" :loading="loading">重试</el-button>
       </div>
     </div>
@@ -168,7 +169,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getHotReason } from '@/api/signal'
+import { getHotReason, getHistoryHotReason } from '@/api/signal'
+import ReviewDatePicker from '@/components/common/ReviewDatePicker.vue'
 import { getStockList } from '@/api/market'
 import { useApiRetry, safeRecords, safeNum, safeStr } from '@/composables/useApiRetry'
 
@@ -183,13 +185,14 @@ const stockMap = ref<Record<string, any>>({})
 const conceptFilter = ref('')
 const selectedConcept = ref('')
 const lastUpdated = ref('')
+const reviewDate = ref('')
 const pollingTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const stockRefreshTick = ref(0)  // 每4次poll刷新一次stock_basic
 
 /** 仅获取题材热点（轻量快速） */
 async function fetchHotOnly() {
   try {
-    const hotRes = await getHotReason()
+    const hotRes = reviewDate.value ? await getHistoryHotReason(reviewDate.value) : await getHotReason()
     let arr: any[] = []
     const raw = hotRes as any
     if (Array.isArray(raw)) arr = raw
@@ -205,7 +208,7 @@ async function fetchAll() {
   error.value = null
   try {
     const [hotRes, listRes] = await Promise.all([
-      getHotReason(),
+      reviewDate.value ? getHistoryHotReason(reviewDate.value) : getHotReason(),
       getStockList({ page: 1, size: 5000 })
     ])
     // 解析 hot_reason
@@ -239,6 +242,7 @@ function startPolling() {
   stopPolling()
   let tick = 0
   pollingTimer.value = setInterval(async () => {
+    if (reviewDate.value) return
     tick++
     if (tick % 4 === 0) {
       await fetchAll()

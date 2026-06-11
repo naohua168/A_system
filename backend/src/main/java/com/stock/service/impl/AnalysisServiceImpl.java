@@ -270,24 +270,25 @@ public class AnalysisServiceImpl implements AnalysisService {
     }
 
     public Map<String, Object> getChanlunAnalysis(String stockCode, int days, boolean preferIndex) {
+        return getChanlunAnalysis(stockCode, days, "day", preferIndex);
+    }
+
+    @Override
+    public Map<String, Object> getChanlunAnalysis(String stockCode, int days, String period, boolean preferIndex) {
         Path klineFile = null;
         try {
-            // 1. 从 Redis 读取 K 线数据
-            //    优先股票K线 → 降级指数K线；preferIndex=true 时反转优先级
+            // 1. 从 Redis 读取 K 线数据（按周期选择正确 key）
             String klineJson = null;
-            if (preferIndex) {
-                klineJson = redisReader.getAsJson("market:index_kline_" + stockCode);
-                if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
-                    klineJson = redisReader.getAsJson("market:kline_" + stockCode);
-                }
-            } else {
-                klineJson = redisReader.getAsJson("market:kline_" + stockCode);
-                if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
-                    klineJson = redisReader.getAsJson("market:index_kline_" + stockCode);
-                }
+            String periodSuffix = ("day".equals(period) || period == null) ? "" : "_" + period;
+            String prefix = "market" + (preferIndex ? ":index_kline" : ":kline");
+            String fallbackPrefix = "market" + (preferIndex ? ":kline" : ":index_kline");
+
+            klineJson = redisReader.getAsJson(prefix + periodSuffix + "_" + stockCode);
+            if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
+                klineJson = redisReader.getAsJson(fallbackPrefix + periodSuffix + "_" + stockCode);
             }
             if (klineJson == null || klineJson.isBlank() || "[]".equals(klineJson)) {
-                log.warn("缠论Redis K线数据为空: code={}", stockCode);
+                log.warn("缠论Redis K线数据为空: code={}, period={}", stockCode, period);
                 Map<String, Object> err = new HashMap<>();
                 err.put("error", "Redis无K线数据: " + stockCode);
                 err.put("bi", Collections.emptyList());
@@ -302,11 +303,12 @@ public class AnalysisServiceImpl implements AnalysisService {
             klineFile = Files.createTempFile("chanlun_" + stockCode + "_", ".json");
             Files.writeString(klineFile, klineJson, java.nio.charset.StandardCharsets.UTF_8);
 
-            // 3. 调用 Python 分析引擎，传入 K 线文件路径
+            // 3. 调用 Python 分析引擎，传入 K 线文件路径和当前周期
             ProcessBuilder pb = new ProcessBuilder(
                     PYTHON, "-W", "ignore", BRIDGE_SCRIPT,
                     "--code", stockCode,
                     "--days", String.valueOf(days),
+                    "--period", period,
                     "--kline-file", klineFile.toAbsolutePath().toString()
             );
             pb.redirectErrorStream(true);

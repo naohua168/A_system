@@ -390,7 +390,7 @@ function getChanlunCount(): number {
 async function fetchChanlunData() {
   if (!showChanlun.value) return
   try {
-    const data = await getChanlunAnalysis(code, getChanlunCount(), 'index')
+    const data = await getChanlunAnalysis(code, getChanlunCount(), activePeriod.value, 'index')
     if (data && (data as any).error) {
       console.warn('[Index] 缠论API错误:', (data as any).error)
       setChanlunData(null, true)

@@ -43,8 +43,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 INDEX_PREFIXES = ('0', '399')
 
 
-def _load_kline_from_redis(code: str, days: int = 365, prefer_index: bool = False) -> Optional[pd.DataFrame]:
-    """从 Redis 直接读取 K 线数据，自动检测股票/指数类型"""
+def _load_kline_from_redis(code: str, days: int = 365, prefer_index: bool = False, period: str = 'day') -> Optional[pd.DataFrame]:
+    """从 Redis 直接读取 K 线数据，自动检测股票/指数类型，支持多周期"""
     import datetime as dt
     try:
         import redis as redis_mod
@@ -54,11 +54,16 @@ def _load_kline_from_redis(code: str, days: int = 365, prefer_index: bool = Fals
     except Exception:
         return None
 
-    # 决定读取顺序：仅当 prefer_index=True 时优先指数K线
+    # 周期后缀：day 无后缀，其他周期加 _5min _15min 等
+    suffix = '' if period == 'day' else f'_{period}'
+    stock_key = f"market:kline{suffix}_{code}"
+    index_key = f"market:index_kline{suffix}_{code}"
+
+    # 决定读取顺序
     if prefer_index:
-        keys = [f"market:index_kline_{code}", f"market:kline_{code}"]
+        keys = [index_key, stock_key]
     else:
-        keys = [f"market:kline_{code}", f"market:index_kline_{code}"]
+        keys = [stock_key, index_key]
 
     raw = None
     for key in keys:
@@ -278,8 +283,8 @@ def _run_chanlun_analysis(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def get_chanlun_data(code: str, days: int = 365, kline_file: str = None, prefer_index: bool = False) -> Dict[str, Any]:
-    """获取指定股票的缠论分析数据"""
+def get_chanlun_data(code: str, days: int = 365, kline_file: str = None, prefer_index: bool = False, period: str = 'day') -> Dict[str, Any]:
+    """获取指定股票的缠论分析数据（支持K线周期参数）"""
     df = None
 
     # 如果 Java 传入了 kline_file，检查文件数据是否与预期类型匹配
@@ -302,14 +307,14 @@ def get_chanlun_data(code: str, days: int = 365, kline_file: str = None, prefer_
                         sample_price = 0
                     # 价格 > 200 且代码以 0/399 开头 → 这是被错标的指数数据
                     if sample_price > 200 and code.startswith(('0', '399')):
-                        df = _load_kline_from_redis(code, days, True)
+                        df = _load_kline_from_redis(code, days, True, period)
                     # 价格 <= 200 且代码非 0/399 开头 → 正常个股
                     elif sample_price <= 200 and not code.startswith(('0', '399')):
                         pass  # 股票数据正常
                 # 深度检测：文件是指数格式但代码非指数前缀
                 if has_index and not has_stock:
                     if not code.startswith(('0', '399')):
-                        df = _load_kline_from_redis(code, days, False)
+                        df = _load_kline_from_redis(code, days, False, period)
                     else:
                         # 代码本身是指数（0/399开头），文件也已正确(closePoint)，
                         # 直接从文件加载，避免降级到Redis个股K线
@@ -319,7 +324,7 @@ def get_chanlun_data(code: str, days: int = 365, kline_file: str = None, prefer_
 
     # 未从文件获取到正确数据，尝试从 Redis 读取
     if df is None:
-        df = _load_kline_from_redis(code, days, prefer_index)
+        df = _load_kline_from_redis(code, days, prefer_index, period)
 
     # Redis 失败 + 有文件 → 兜底使用文件数据
     if df is None and kline_file:
@@ -340,6 +345,7 @@ def main():
     parser = argparse.ArgumentParser(description="缠论图表数据桥接")
     parser.add_argument("--code", required=True, help="股票代码")
     parser.add_argument("--days", type=int, default=365, help="K线天数")
+    parser.add_argument("--period", default="day", help="K线周期: day/week/month/5min/15min/30min/60min")
     parser.add_argument("--kline-file", default=None, help="K线数据文件路径（兼容保留）")
     parser.add_argument("--type", default="auto", choices=["auto", "stock", "index"],
                         help="数据类型: auto(自动检测)/stock(个股)/index(指数)")
@@ -349,7 +355,7 @@ def main():
     prefer_index = (args.type == "index")
 
     try:
-        result = get_chanlun_data(args.code, args.days, args.kline_file, prefer_index)
+        result = get_chanlun_data(args.code, args.days, args.kline_file, prefer_index, args.period)
         print(json.dumps(result, ensure_ascii=False, default=str))
     except Exception as e:
         print(json.dumps({"error": str(e), "bi": [], "zhongshu": [],

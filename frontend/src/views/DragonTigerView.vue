@@ -4,7 +4,8 @@
     <header class="dt-top">
       <h1>龙虎榜</h1>
       <div class="dt-toolbar">
-        <span class="today-label">今日 · {{ todayStr }}</span>
+        <ReviewDatePicker @change="(d:string) => { reviewDate.value = d; fetchData() }" />
+        <span class="today-label">{{ reviewDate ? reviewDate : '今日 · ' + todayStr }}</span>
         <el-button v-if="error" type="warning" size="small" @click="fetchData" :loading="loading">重试</el-button>
         <el-button size="small" text @click="fetchData" :loading="loading" v-else>刷新</el-button>
       </div>
@@ -144,16 +145,18 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDragonTigerDaily } from '@/api/signal'
+import { getDragonTigerDaily, getHistoryDragonTiger } from '@/api/signal'
 import { useApiRetry, safeRecords, safeNum, safeStr } from '@/composables/useApiRetry'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import ReviewDatePicker from '@/components/common/ReviewDatePicker.vue'
 
 const router = useRouter()
 const todayStr = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+const reviewDate = ref('')
 const searchQuery = ref('')
 
 const { data: rawData, loading, error, fetch: fetchData } = useApiRetry(
-  () => getDragonTigerDaily(),
+  () => reviewDate.value ? getHistoryDragonTiger(reviewDate.value) : getDragonTigerDaily(),
   { maxRetries: 1, showError: false, errorMessage: '龙虎榜数据加载失败' }
 )
 
@@ -242,7 +245,7 @@ function goToStock(codeOrRow: any) {
 }
 
 onMounted(fetchData)
-useAutoRefresh(fetchData, 120_000)
+useAutoRefresh(() => { if (!reviewDate.value) fetchData() }, 120_000)
 </script>
 
 <style scoped lang="scss">

@@ -1,2 +1,4 @@
-ERROR: Invalid argument/option - ';'.
-Type "TASKKILL /?" for usage.
+A subdirectory or file f:\bs\A_system\backend\target already exists.
+Error occurred while processing: f:\bs\A_system\backend\target.
+The filename, directory name, or volume label syntax is incorrect.
+Error occurred while processing: cd /d f:\bs\A_system\backend && mvn package -DskipTests 2>target\maven_err.txt.

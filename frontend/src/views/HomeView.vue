@@ -1,5 +1,9 @@
 <template>
   <div class="home-view">
+    <!-- ─── 复盘日期选择器 ─── -->
+    <div class="review-bar">
+      <ReviewDatePicker @change="onDateChange" />
+    </div>
     <!-- ─── 市场情绪横幅 ─── -->
     <section class="section sentiment-banner">
       <template v-if="!homeLoaded">
@@ -312,12 +316,6 @@
     <!-- ─── 涨跌排行 ─── -->
     <AnalysisPanel />
 
-    <!-- 行业详情右侧面板 -->
-    <SectorDetailPanel
-      v-model="showSectorPanel"
-      :sector-name="selectedSectorName"
-      :sector-change="selectedSectorChange"
-    />
   </div>
 </template>
 
@@ -326,16 +324,17 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, ArrowLeft, Setting, Pointer, Plus, Close, TrendCharts, DataAnalysis, Histogram, Aim } from '@element-plus/icons-vue'
 import TreemapChart from '@/components/chart/TreemapChart.vue'
-import SectorDetailPanel from '@/components/chart/SectorDetailPanel.vue'
 import { getStockList, getIndustryTreemap } from '@/api/market'
-import { getIndexList } from '@/api/index'
-import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare } from '@/api/signal'
+import { getIndexList, getHistoryIndexList } from '@/api/index'
+import { getNorthboundLatest, getHotReason, getDragonTigerDaily, getIndustryCompare,
+         getHistoryIndustryCompare, getHistoryNorthbound, getHistoryHotReason, getHistoryDragonTiger } from '@/api/signal'
 import { formatPrice, formatPercent, formatPoints, getChangeClass } from '@/utils/format'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { useMarketWebSocket } from '@/composables/useMarketWebSocket'
 import { safeNum } from '@/composables/useApiRetry'
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ReviewDatePicker from '@/components/common/ReviewDatePicker.vue'
 import AnalysisPanel from '@/components/chart/AnalysisPanel.vue'
 import type {
   HotReason, IndustryTopItem, IndexCard, SectorNode, HomeStockCard,
@@ -347,6 +346,7 @@ const scrollRef = ref<HTMLElement>()
 const scrollPos = ref(0)
 const showIndexManager = ref(false)
 const chartRef = ref<HTMLElement>()
+const reviewDate = ref('')
 const treemapRef = ref()
 
 /** 主页面数据加载完成标记 */
@@ -373,13 +373,24 @@ function asArray(raw: any): any[] {
   return []
 }
 
-/** 并行加载信号层数据 */
+/** 复盘日期切换 */
+function onDateChange(date: string) {
+  reviewDate.value = date
+  loadSignalData()
+  loadIndices()
+  loadMarketStats()
+  loadHotStocks()
+  loadSectorData()
+}
+
+/** 并行加载信号层数据（复盘模式走历史API） */
 async function loadSignalData() {
+  const isReview = !!reviewDate.value
   const [nbRes, hotRes, indRes, dtRes] = await Promise.allSettled([
-    getNorthboundLatest(1).catch(() => null),
-    getHotReason().catch(() => null),
-    getIndustryCompare().catch(() => null),
-    getDragonTigerDaily().catch(() => null),
+    isReview ? getHistoryNorthbound(reviewDate.value) : getNorthboundLatest(1).catch(() => null),
+    isReview ? getHistoryHotReason(reviewDate.value) : getHotReason().catch(() => null),
+    isReview ? getHistoryIndustryCompare(reviewDate.value) : getIndustryCompare().catch(() => null),
+    isReview ? getHistoryDragonTiger(reviewDate.value) : getDragonTigerDaily().catch(() => null),
   ])
   // 北向资金 — 取最后一条
   if (nbRes.status === 'fulfilled' && nbRes.value) {
@@ -434,18 +445,30 @@ const availableIndices = computed(() =>
   allIndexData.value.filter(i => !visibleIndices.value.find(v => v.code === i.code))
 )
 
+/** 将后端指数数据映射为前端卡片格式 */
+function toIndexCard(item: any): IndexCard {
+  const price = Number(item.closePoint) || 0
+  const changePct = Number(item.changePct ?? item.changePercent) || 0
+  // 涨跌点数 = 当前价 - 昨收盘；昨收盘 = 当前价 / (1 + 涨跌幅%)
+  const preClose = price / (1 + changePct / 100)
+  const changePoints = price - preClose
+  return {
+    code: item.indexCode,
+    name: item.indexName,
+    price,
+    changePercent: changePct,
+    changePoints,
+    isCustom: !DEFAULT_INDICES_CODES.includes(item.indexCode),
+  }
+}
+
 async function loadIndices() {
   try {
-    const data = await getIndexList()
+    const data = reviewDate.value
+      ? await getHistoryIndexList(reviewDate.value)
+      : await getIndexList()
     if (Array.isArray(data) && data.length > 0) {
-      allIndexData.value = data.map((item: any) => ({
-        code: item.indexCode,
-        name: item.indexName,
-        price: Number(item.closePoint) || 0,
-        changePercent: Number(item.changePct ?? item.changePercent) || 0,
-        changePoints: Number(item.closePoint) ? (Number(item.closePoint) * Number(item.changePct ?? item.changePercent) / 100) : 0,
-        isCustom: !DEFAULT_INDICES_CODES.includes(item.indexCode),
-      }))
+      allIndexData.value = data.map(toIndexCard)
       const defaults = allIndexData.value.filter(d => DEFAULT_INDICES_CODES.includes(d.code))
       visibleIndices.value = defaults.length ? defaults : allIndexData.value.slice(0, 4)
     }
@@ -473,10 +496,6 @@ function goToIndex(code: string) { router.push(`/index/${code}`) }
 
 /** 板块云图 */
 const sectorData = ref<SectorNode[]>([])
-const showSectorPanel = ref(false)
-const selectedSectorName = ref('')
-const selectedSectorChange = ref(0)
-
 /** 热门股票 — 取涨跌幅绝对值最高的前10只 */
 const hotStocks = ref<HomeStockCard[]>([])
 async function loadHotStocks() {
@@ -571,12 +590,8 @@ async function loadSectorData() {
   } catch { /* ignore */ }
 }
 
-function onSectorClick(data: { name?: string }) {
-  const name = data?.name || ''
-  if (!name || !sectorData.value.find(s => s.name === name)) return
-  selectedSectorName.value = name
-  selectedSectorChange.value = sectorData.value.find(s => s.name === name)?.changePercent || 0
-  showSectorPanel.value = true
+function onSectorClick(_data: { name?: string }) {
+  // 行业详情面板已移除（企业防火墙屏蔽成分股API）
 }
 
 onMounted(async () => {
@@ -587,20 +602,15 @@ onMounted(async () => {
 // WebSocket 实时推送（替代轮询的主力）
 const ws = useMarketWebSocket()
 ws.subscribe('indices', (data: any) => {
+  if (reviewDate.value) return  // 复盘模式不覆盖历史数据
   if (Array.isArray(data) && data.length > 0) {
-    allIndexData.value = data.map((item: any) => ({
-      code: item.indexCode || '',
-      name: item.indexName || '',
-      price: Number(item.closePoint) || 0,
-      changePercent: Number(item.changePct ?? item.changePercent) || 0,
-      changePoints: Number(item.closePoint) ? (Number(item.closePoint) * Number(item.changePct ?? item.changePercent) / 100) : 0,
-      isCustom: !DEFAULT_INDICES_CODES.includes(item.indexCode),
-    }))
+    allIndexData.value = data.map(toIndexCard)
     const defaults = allIndexData.value.filter(d => DEFAULT_INDICES_CODES.includes(d.code))
     if (defaults.length) visibleIndices.value = defaults
   }
 })
 ws.subscribe('signals', (data: any) => {
+  if (reviewDate.value) return  // 复盘模式不覆盖历史数据
   if (!data) return
   // 北向资金
   if (data.northbound?.length) {
@@ -631,9 +641,11 @@ ws.subscribe('signals', (data: any) => {
   }
 })
 ws.subscribe('stats', (data: any) => {
+  if (reviewDate.value) return  // 复盘模式不覆盖历史数据
   if (data) marketStats.value = { total: data.total || 0, up: data.up || 0, down: data.down || 0, flat: data.flat || 0 }
 })
 ws.subscribe('sector', (data: any) => {
+  if (reviewDate.value) return  // 复盘模式不覆盖历史数据
   if (Array.isArray(data) && data.length) {
     sectorData.value = data.filter((r: any) => r && r.industryName)
       .map((r: any) => ({ name: r.industryName || '', value: Number(r.stocks) || Number(r.stockCount) || Number(r.mcapYi) || 0, changePercent: Number(r.changePct ?? r.changePercent) || 0 }))
@@ -643,14 +655,14 @@ ws.subscribe('sector', (data: any) => {
 
 // 轮询作为 WS 降级保障（间隔拉长为兜底）
 useAutoRefresh(() => {
-  loadSignalData()
-  loadIndices()
+  if (!reviewDate.value) loadSignalData()
+  if (!reviewDate.value) loadIndices()
 }, 60_000)
 useAutoRefresh(() => {
-  loadMarketStats()
-  loadHotStocks()
+  if (!reviewDate.value) loadMarketStats()
+  if (!reviewDate.value) loadHotStocks()
 }, 120_000)
-useAutoRefresh(() => loadSectorData(), 300_000)
+useAutoRefresh(() => { if (!reviewDate.value) loadSectorData() }, 300_000)
 </script>
 
 <style scoped lang="scss">
@@ -658,6 +670,11 @@ useAutoRefresh(() => loadSectorData(), 300_000)
   max-width: 1200px;
   margin: 0 auto;
   padding: $spacing-lg;
+}
+.review-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0 4px;
 }
 .section { margin-bottom: $spacing-xl; }
 .section-header {
